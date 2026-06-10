@@ -1,0 +1,401 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================================
+// ENUMS
+// ============================================================
+
+enum UserRole {
+  OWNER
+  ADMIN
+  VIEWER
+}
+
+enum MonitorType {
+  PING
+  HTTP
+  HTTPS
+  TCP
+  UDP
+  SSL
+  DNS
+  API
+  KEYWORD
+}
+
+enum MonitorStatus {
+  UP
+  DOWN
+  DEGRADED
+  UNKNOWN
+  MAINTENANCE
+}
+
+enum IncidentStatus {
+  OPEN
+  ACKNOWLEDGED
+  RESOLVED
+}
+
+enum AlertChannel {
+  EMAIL
+  WHATSAPP
+  TELEGRAM
+  SLACK
+  TEAMS
+  WEBHOOK
+}
+
+enum AlertTrigger {
+  MONITOR_DOWN
+  MONITOR_RECOVERY
+  HIGH_LATENCY
+  PACKET_LOSS
+  SSL_EXPIRY
+  DNS_FAILURE
+}
+
+enum InvitationStatus {
+  PENDING
+  ACCEPTED
+  EXPIRED
+  REVOKED
+}
+
+// ============================================================
+// ORGANIZATION (Multi-Tenant Root)
+// ============================================================
+
+model Organization {
+  id        String    @id @default(uuid()) @db.Uuid
+  name      String
+  slug      String    @unique
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+
+  users                User[]
+  invitations          TeamInvitation[]
+  monitors             Monitor[]
+  incidents            Incident[]
+  alertChannels        AlertChannelConfig[]
+  alertRules           AlertRule[]
+  alertLogs            AlertLog[]
+  maintenanceWindows   MaintenanceWindow[]
+  settings             OrganizationSettings?
+
+  @@index([slug])
+  @@index([deletedAt])
+  @@map("organizations")
+}
+
+// ============================================================
+// USER
+// ============================================================
+
+model User {
+  id             String    @id @default(uuid()) @db.Uuid
+  email          String
+  passwordHash   String    @map("password_hash")
+  firstName      String    @map("first_name")
+  lastName       String    @map("last_name")
+  role           UserRole  @default(VIEWER)
+  emailVerified  Boolean   @default(false) @map("email_verified")
+  isActive       Boolean   @default(true) @map("is_active")
+  lastLoginAt    DateTime? @map("last_login_at")
+  organizationId String    @map("organization_id") @db.Uuid
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
+  deletedAt      DateTime? @map("deleted_at")
+
+  organization        Organization         @relation(fields: [organizationId], references: [id])
+  refreshTokens       RefreshToken[]
+  emailVerifications  EmailVerification[]
+  passwordResets      PasswordReset[]
+  sentInvitations     TeamInvitation[]     @relation("InvitedBy")
+  acceptedInvitations TeamInvitation[]     @relation("AcceptedBy")
+  assignedIncidents   Incident[]           @relation("AssignedIncidents")
+
+  @@unique([email, organizationId])
+  @@index([organizationId])
+  @@index([email])
+  @@index([deletedAt])
+  @@map("users")
+}
+
+// ============================================================
+// AUTH TOKENS
+// ============================================================
+
+model RefreshToken {
+  id        String    @id @default(uuid()) @db.Uuid
+  token     String    @unique
+  userId    String    @map("user_id") @db.Uuid
+  expiresAt DateTime  @map("expires_at")
+  revokedAt DateTime? @map("revoked_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([token])
+  @@map("refresh_tokens")
+}
+
+model EmailVerification {
+  id        String   @id @default(uuid()) @db.Uuid
+  token     String   @unique
+  userId    String   @map("user_id") @db.Uuid
+  expiresAt DateTime @map("expires_at")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([token])
+  @@map("email_verifications")
+}
+
+model PasswordReset {
+  id        String    @id @default(uuid()) @db.Uuid
+  token     String    @unique
+  userId    String    @map("user_id") @db.Uuid
+  expiresAt DateTime  @map("expires_at")
+  usedAt    DateTime? @map("used_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([token])
+  @@map("password_resets")
+}
+
+// ============================================================
+// TEAM INVITATIONS
+// ============================================================
+
+model TeamInvitation {
+  id             String           @id @default(uuid()) @db.Uuid
+  email          String
+  role           UserRole         @default(VIEWER)
+  token          String           @unique
+  status         InvitationStatus @default(PENDING)
+  organizationId String           @map("organization_id") @db.Uuid
+  invitedById    String           @map("invited_by_id") @db.Uuid
+  acceptedById   String?          @map("accepted_by_id") @db.Uuid
+  expiresAt      DateTime         @map("expires_at")
+  acceptedAt     DateTime?        @map("accepted_at")
+  createdAt      DateTime         @default(now()) @map("created_at")
+  updatedAt      DateTime         @updatedAt @map("updated_at")
+
+  organization Organization @relation(fields: [organizationId], references: [id])
+  invitedBy    User         @relation("InvitedBy", fields: [invitedById], references: [id])
+  acceptedBy   User?        @relation("AcceptedBy", fields: [acceptedById], references: [id])
+
+  @@index([organizationId])
+  @@index([email])
+  @@index([token])
+  @@index([status])
+  @@map("team_invitations")
+}
+
+// ============================================================
+// MONITORS
+// ============================================================
+
+model Monitor {
+  id              String        @id @default(uuid()) @db.Uuid
+  name            String
+  description     String?
+  type            MonitorType
+  target          String
+  status          MonitorStatus @default(UNKNOWN)
+  tags            String[]      @default([])
+  group           String?
+  checkInterval   Int           @default(60) @map("check_interval")
+  timeout         Int           @default(30)
+  retryCount      Int           @default(3) @map("retry_count")
+  isActive        Boolean       @default(true) @map("is_active")
+  maintenanceMode Boolean       @default(false) @map("maintenance_mode")
+  organizationId  String        @map("organization_id") @db.Uuid
+  lastResponseTime Int?         @map("last_response_time")
+  lastCheckedAt   DateTime?     @map("last_checked_at")
+  uptimePercent   Float         @default(100) @map("uptime_percent")
+  createdAt       DateTime      @default(now()) @map("created_at")
+  updatedAt       DateTime      @updatedAt @map("updated_at")
+  deletedAt       DateTime?     @map("deleted_at")
+
+  organization        Organization        @relation(fields: [organizationId], references: [id])
+  checks              MonitorCheck[]
+  incidents           Incident[]
+  alertRules          AlertRule[]
+  maintenanceWindows  MaintenanceWindow[]
+
+  @@index([organizationId])
+  @@index([status])
+  @@index([deletedAt])
+  @@map("monitors")
+}
+
+model MonitorCheck {
+  id           String        @id @default(uuid()) @db.Uuid
+  monitorId    String        @map("monitor_id") @db.Uuid
+  status       MonitorStatus
+  responseTime Int?          @map("response_time")
+  packetLoss   Float?        @map("packet_loss")
+  errorMessage String?       @map("error_message")
+  createdAt    DateTime      @default(now()) @map("created_at")
+
+  monitor Monitor @relation(fields: [monitorId], references: [id], onDelete: Cascade)
+
+  @@index([monitorId])
+  @@index([createdAt])
+  @@map("monitor_checks")
+}
+
+// ============================================================
+// INCIDENTS
+// ============================================================
+
+enum IncidentSeverity {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+model Incident {
+  id             String           @id @default(uuid()) @db.Uuid
+  monitorId      String           @map("monitor_id") @db.Uuid
+  organizationId String           @map("organization_id") @db.Uuid
+  status         IncidentStatus   @default(OPEN)
+  severity       IncidentSeverity @default(HIGH)
+  startedAt      DateTime         @map("started_at")
+  endedAt        DateTime?        @map("ended_at")
+  duration       Int?
+  rootCause      String?          @map("root_cause")
+  notes          String?
+  assignedUserId String?          @map("assigned_user_id") @db.Uuid
+  createdAt      DateTime         @default(now()) @map("created_at")
+  updatedAt      DateTime         @updatedAt @map("updated_at")
+
+  monitor      Monitor      @relation(fields: [monitorId], references: [id])
+  organization Organization @relation(fields: [organizationId], references: [id])
+  assignedUser User?        @relation("AssignedIncidents", fields: [assignedUserId], references: [id])
+
+  @@index([organizationId])
+  @@index([monitorId])
+  @@index([status])
+  @@map("incidents")
+}
+
+// ============================================================
+// ALERTS
+// ============================================================
+
+model AlertChannelConfig {
+  id             String       @id @default(uuid()) @db.Uuid
+  organizationId String       @map("organization_id") @db.Uuid
+  channel        AlertChannel
+  name           String
+  config         Json         @default("{}")
+  isActive       Boolean      @default(true) @map("is_active")
+  createdAt      DateTime     @default(now()) @map("created_at")
+  updatedAt      DateTime     @updatedAt @map("updated_at")
+
+  organization Organization @relation(fields: [organizationId], references: [id])
+  rules        AlertRule[]
+  logs         AlertLog[]
+
+  @@index([organizationId])
+  @@map("alert_channels")
+}
+
+model AlertRule {
+  id             String       @id @default(uuid()) @db.Uuid
+  organizationId String       @map("organization_id") @db.Uuid
+  monitorId      String?      @map("monitor_id") @db.Uuid
+  channelId      String       @map("channel_id") @db.Uuid
+  trigger        AlertTrigger
+  isActive       Boolean      @default(true) @map("is_active")
+  createdAt      DateTime     @default(now()) @map("created_at")
+  updatedAt      DateTime     @updatedAt @map("updated_at")
+
+  organization Organization       @relation(fields: [organizationId], references: [id])
+  monitor      Monitor?             @relation(fields: [monitorId], references: [id])
+  channel      AlertChannelConfig   @relation(fields: [channelId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@map("alert_rules")
+}
+
+enum AlertLogStatus {
+  SENT
+  FAILED
+  PENDING
+}
+
+model AlertLog {
+  id             String         @id @default(uuid()) @db.Uuid
+  organizationId String         @map("organization_id") @db.Uuid
+  channelId      String?        @map("channel_id") @db.Uuid
+  monitorId      String?        @map("monitor_id") @db.Uuid
+  trigger        AlertTrigger
+  status         AlertLogStatus @default(PENDING)
+  message        String?
+  createdAt      DateTime       @default(now()) @map("created_at")
+
+  organization Organization        @relation(fields: [organizationId], references: [id])
+  channel      AlertChannelConfig? @relation(fields: [channelId], references: [id])
+
+  @@index([organizationId])
+  @@index([createdAt])
+  @@map("alert_logs")
+}
+
+// ============================================================
+// MAINTENANCE
+// ============================================================
+
+model MaintenanceWindow {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  monitorId      String?  @map("monitor_id") @db.Uuid
+  title          String
+  startTime      DateTime @map("start_time")
+  endTime        DateTime @map("end_time")
+  reason         String?
+  pauseAlerts    Boolean  @default(true) @map("pause_alerts")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  organization Organization @relation(fields: [organizationId], references: [id])
+  monitor      Monitor?     @relation(fields: [monitorId], references: [id])
+
+  @@index([organizationId])
+  @@map("maintenance_windows")
+}
+
+// ============================================================
+// ORGANIZATION SETTINGS
+// ============================================================
+
+model OrganizationSettings {
+  organizationId       String   @id @map("organization_id") @db.Uuid
+  latencyThresholdMs   Int      @default(1000) @map("latency_threshold_ms")
+  notificationEmail    String?  @map("notification_email")
+  timezone             String   @default("UTC")
+  createdAt            DateTime @default(now()) @map("created_at")
+  updatedAt            DateTime @updatedAt @map("updated_at")
+
+  organization Organization @relation(fields: [organizationId], references: [id])
+
+  @@map("organization_settings")
+}

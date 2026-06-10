@@ -1,0 +1,92 @@
+# ============================================================
+# NetWatch monorepo — dependencies & package managers
+# ============================================================
+node_modules/
+.pnpm-store/
+.pnp
+.pnp.js
+
+# ============================================================
+# Build outputs
+# ============================================================
+dist/
+.next/
+out/
+build/
+*.tsbuildinfo
+.turbo/
+
+# ============================================================
+# Environment & secrets (never commit)
+# ============================================================
+.env
+.env.*
+!.env.example
+apps/backend/.env
+apps/frontend/.env
+apps/frontend/.env.local
+apps/frontend/.env.*.local
+
+# ============================================================
+# Local databases & dev data
+# ============================================================
+.pglite/
+.pgdata/
+postgres_data/
+redis_data/
+*.db
+*.sqlite
+
+# ============================================================
+# Logs & debug
+# ============================================================
+logs/
+*.log
+npm-debug.log*
+pnpm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# ============================================================
+# Test & coverage
+# ============================================================
+coverage/
+.nyc_output/
+.jest/
+test-results/
+playwright-report/
+playwright/.cache/
+
+# ============================================================
+# Prisma (keep migrations; ignore local lock noise if any)
+# ============================================================
+apps/backend/prisma/migrations/**/migration_lock.toml
+
+# ============================================================
+# IDE & editors
+# ============================================================
+.idea/
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json.example
+*.swp
+*.swo
+*~
+
+# ============================================================
+# OS
+# ============================================================
+.DS_Store
+.DS_Store?
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# ============================================================
+# Misc
+# ============================================================
+*.pem
+.cache/
+tmp/
+temp/
+.vercel

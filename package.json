@@ -1,0 +1,33 @@
+{
+  "name": "netwatch",
+  "version": "1.0.0",
+  "private": true,
+  "description": "NetWatch - Enterprise Network Monitoring Platform",
+  "scripts": {
+    "dev": "pnpm run --parallel dev",
+    "dev:backend": "pnpm --filter @netwatch/backend dev",
+    "dev:frontend": "pnpm --filter @netwatch/frontend dev",
+    "build": "pnpm run --recursive build",
+    "test": "pnpm run --recursive test",
+    "lint": "pnpm run --recursive lint",
+    "db:generate": "pnpm --filter @netwatch/backend db:generate",
+    "db:migrate": "pnpm --filter @netwatch/backend db:migrate",
+    "db:push": "pnpm --filter @netwatch/backend db:push",
+    "db:seed": "node scripts/seed-demo-user.mjs",
+    "docker:up": "docker compose up -d",
+    "docker:down": "docker compose down",
+    "db:dev": "node scripts/start-dev-db.mjs",
+    "start:all": "node scripts/run-dev.mjs"
+  },
+  "engines": {
+    "node": ">=20.0.0",
+    "pnpm": ">=9.0.0"
+  },
+  "packageManager": "pnpm@9.15.0",
+  "devDependencies": {
+    "@electric-sql/pglite": "^0.5.1",
+    "@electric-sql/pglite-socket": "^0.2.1",
+    "embedded-postgres": "18.4.0-beta.17",
+    "postgres": "^3.4.9"
+  }
+}
