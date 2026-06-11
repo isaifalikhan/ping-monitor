@@ -12,6 +12,8 @@ import {
   Users,
   Settings,
   Wrench,
+  ScrollText,
+  ExternalLink,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -23,7 +25,12 @@ const navItems = [
   { href: '/reports', label: 'Reports', icon: BarChart3 },
   { href: '/team', label: 'Team', icon: Users },
   { href: '/maintenance', label: 'Maintenance', icon: Wrench },
+  { href: '/audit-logs', label: 'Audit Logs', icon: ScrollText },
   { href: '/settings', label: 'Settings', icon: Settings },
+];
+
+const externalLinks = [
+  { href: '/status', label: 'Status Page', icon: ExternalLink },
 ];
 
 export function Sidebar() {
@@ -58,6 +65,24 @@ export function Sidebar() {
           );
         })}
       </nav>
+      <div className="border-t p-4 space-y-1">
+        <p className="px-3 text-xs font-medium text-muted-foreground uppercase tracking-wider mb-2">Public</p>
+        {externalLinks.map((item) => {
+          const Icon = item.icon;
+          return (
+            <a
+              key={item.href}
+              href={item.href}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
+            >
+              <Icon className="h-4 w-4" />
+              {item.label}
+            </a>
+          );
+        })}
+      </div>
     </aside>
   );
 }

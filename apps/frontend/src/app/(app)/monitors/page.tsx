@@ -12,6 +12,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
 import { Card, CardContent } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
 import { useMonitors, useUpdateMonitor, useDeleteMonitor } from '@/hooks/use-monitors';
 import { MONITOR_TYPES } from '@/lib/validations/monitor';
 
@@ -91,9 +92,10 @@ export default function MonitorsPage() {
                 <thead>
                   <tr className="border-b text-left text-muted-foreground">
                     <th className="px-6 py-3 font-medium">Name</th>
+                    <th className="px-6 py-3 font-medium">Group</th>
                     <th className="px-6 py-3 font-medium">Type</th>
-                    <th className="px-6 py-3 font-medium">Target</th>
                     <th className="px-6 py-3 font-medium">Status</th>
+                    <th className="px-6 py-3 font-medium">Uptime</th>
                     <th className="px-6 py-3 font-medium">Response</th>
                     <th className="px-6 py-3 font-medium">Last Check</th>
                     <th className="px-6 py-3 font-medium">Actions</th>
@@ -102,15 +104,30 @@ export default function MonitorsPage() {
                 <tbody>
                   {data.items.map((m) => (
                     <tr key={m.id} className="border-b last:border-0 hover:bg-muted/50">
-                      <td className="px-6 py-3 font-medium">
-                        {m.name}
-                        {!m.isActive && (
-                          <span className="ml-2 text-xs text-muted-foreground">(paused)</span>
-                        )}
+                      <td className="px-6 py-3">
+                        <div>
+                          <p className="font-medium">
+                            {m.name}
+                            {!m.isActive && <span className="ml-2 text-xs text-muted-foreground">(paused)</span>}
+                          </p>
+                          <p className="text-xs text-muted-foreground truncate max-w-[200px]">{m.target}</p>
+                          {m.tags.length > 0 && (
+                            <div className="flex gap-1 mt-1 flex-wrap">
+                              {m.tags.slice(0, 3).map((t) => (
+                                <Badge key={t} variant="muted" className="text-[10px] px-1.5 py-0">{t}</Badge>
+                              ))}
+                            </div>
+                          )}
+                        </div>
                       </td>
-                      <td className="px-6 py-3">{m.type}</td>
-                      <td className="px-6 py-3 text-muted-foreground max-w-[200px] truncate">{m.target}</td>
+                      <td className="px-6 py-3 text-muted-foreground">{m.group ?? '—'}</td>
+                      <td className="px-6 py-3"><Badge variant="outline">{m.type}</Badge></td>
                       <td className="px-6 py-3"><StatusBadge status={m.status} /></td>
+                      <td className="px-6 py-3">
+                        <span className={m.uptimePercent >= 99.9 ? 'text-green-500' : m.uptimePercent >= 99 ? 'text-amber-500' : 'text-red-500'}>
+                          {m.uptimePercent}%
+                        </span>
+                      </td>
                       <td className="px-6 py-3">{m.lastResponseTime != null ? `${m.lastResponseTime}ms` : '—'}</td>
                       <td className="px-6 py-3 text-muted-foreground">
                         {m.lastCheckedAt ? new Date(m.lastCheckedAt).toLocaleString() : 'Never'}

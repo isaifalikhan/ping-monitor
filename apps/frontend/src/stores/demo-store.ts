@@ -9,8 +9,10 @@ import type {
   Incident,
   AlertChannel,
   AlertRule,
+  AlertDelivery,
   MaintenanceWindow,
   TeamMember,
+  AuditLogEntry,
 } from '@/lib/types';
 import {
   initialMonitors,
@@ -19,12 +21,14 @@ import {
   initialIncidents,
   initialAlertChannels,
   initialAlertRules,
+  initialAlertDeliveries,
   initialRecentAlerts,
   initialTeamMembers,
   initialPendingInvitations,
   initialMaintenanceWindows,
   initialSettings,
   initialOrganization,
+  initialAuditLogs,
 } from '@/lib/mock-data';
 
 function uid(prefix: string) {
@@ -39,6 +43,19 @@ export interface DemoSettings {
   latencyThresholdMs: number;
   notificationEmail: string;
   timezone: string;
+  defaultCheckInterval: number;
+  defaultTimeout: number;
+  retentionDays: number;
+  enablePublicStatusPage: boolean;
+  statusPageSlug: string;
+  sessionTimeoutMinutes: number;
+  requireMfa: boolean;
+  ipAllowlist: string;
+  brandPrimaryColor: string;
+  brandLogoUrl: string;
+  slackWebhook: string;
+  pagerdutyKey: string;
+  datadogApiKey: string;
 }
 
 interface DemoState {
@@ -48,7 +65,9 @@ interface DemoState {
   incidents: Incident[];
   alertChannels: AlertChannel[];
   alertRules: AlertRule[];
+  alertDeliveries: AlertDelivery[];
   recentAlerts: typeof initialRecentAlerts;
+  auditLogs: AuditLogEntry[];
   maintenanceWindows: MaintenanceWindow[];
   teamMembers: TeamMember[];
   pendingInvitations: { id: string; email: string; role: string; expiresAt: string }[];
@@ -113,7 +132,9 @@ export const useDemoStore = create<DemoState>((set, get) => ({
   incidents: [...initialIncidents],
   alertChannels: [...initialAlertChannels],
   alertRules: [...initialAlertRules],
+  alertDeliveries: [...initialAlertDeliveries],
   recentAlerts: [...initialRecentAlerts],
+  auditLogs: [...initialAuditLogs],
   maintenanceWindows: [...initialMaintenanceWindows],
   teamMembers: [...initialTeamMembers],
   pendingInvitations: [...initialPendingInvitations],
@@ -315,6 +336,7 @@ export const useDemoStore = create<DemoState>((set, get) => ({
       endTime: String(data.endTime),
       reason: data.reason ? String(data.reason) : null,
       pauseAlerts: Boolean(data.pauseAlerts),
+      status: 'UPCOMING',
       createdAt: new Date().toISOString(),
     };
     set((s) => ({ maintenanceWindows: [window, ...s.maintenanceWindows] }));

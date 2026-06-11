@@ -13,8 +13,10 @@ import { StatCard } from '@/components/dashboard/stat-card';
 import {
   ResponseTimeChart,
   UptimeChart,
+  Uptime24hChart,
   IncidentChart,
   MonitorDistributionChart,
+  StatusDistributionChart,
 } from '@/components/dashboard/charts';
 import {
   RecentAlertsTable,
@@ -49,12 +51,14 @@ export default function DashboardPage() {
 
       <div className="grid gap-4 lg:grid-cols-3">
         <ResponseTimeChart />
+        <Uptime24hChart />
         <UptimeChart />
       </div>
 
-      <div className="grid gap-4 lg:grid-cols-2">
+      <div className="grid gap-4 lg:grid-cols-2 xl:grid-cols-3">
         <IncidentChart />
         <MonitorDistributionChart />
+        <StatusDistributionChart />
       </div>
 
       <div className="grid gap-4 xl:grid-cols-2">

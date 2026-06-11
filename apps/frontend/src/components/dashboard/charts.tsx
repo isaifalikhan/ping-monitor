@@ -105,6 +105,82 @@ export function IncidentChart() {
   );
 }
 
+export function Uptime24hChart() {
+  const { uptime24h } = useDashboardCharts();
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-base">Uptime (24h)</CardTitle>
+      </CardHeader>
+      <CardContent>
+        <ResponsiveContainer width="100%" height={240}>
+          <AreaChart data={uptime24h}>
+            <defs>
+              <linearGradient id="uptimeGradient" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="5%" stopColor="hsl(142 76% 36%)" stopOpacity={0.3} />
+                <stop offset="95%" stopColor="hsl(142 76% 36%)" stopOpacity={0} />
+              </linearGradient>
+            </defs>
+            <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
+            <XAxis dataKey="hour" className="text-xs" />
+            <YAxis domain={[97, 100]} unit="%" className="text-xs" />
+            <Tooltip />
+            <Area
+              type="monotone"
+              dataKey="uptime"
+              stroke="hsl(142 76% 36%)"
+              fill="url(#uptimeGradient)"
+            />
+          </AreaChart>
+        </ResponsiveContainer>
+      </CardContent>
+    </Card>
+  );
+}
+
+export function StatusDistributionChart() {
+  const { statusDistribution } = useDashboardCharts();
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-base">Status Distribution</CardTitle>
+      </CardHeader>
+      <CardContent>
+        <ResponsiveContainer width="100%" height={240}>
+          <PieChart>
+            <Pie
+              data={statusDistribution}
+              dataKey="value"
+              nameKey="name"
+              cx="50%"
+              cy="50%"
+              innerRadius={50}
+              outerRadius={80}
+              paddingAngle={2}
+            >
+              {statusDistribution.map((entry) => (
+                <Cell key={entry.name} fill={entry.color} />
+              ))}
+            </Pie>
+            <Tooltip />
+          </PieChart>
+        </ResponsiveContainer>
+        <div className="mt-2 grid grid-cols-3 gap-2 text-xs">
+          {statusDistribution.map((item) => (
+            <div key={item.name} className="flex items-center gap-2">
+              <div className="h-2 w-2 rounded-full" style={{ background: item.color }} />
+              <span className="text-muted-foreground">{item.name}</span>
+              <span className="ml-auto font-medium">{item.value}</span>
+            </div>
+          ))}
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
 export function MonitorDistributionChart() {
   const { monitorDistribution } = useDashboardCharts();
 

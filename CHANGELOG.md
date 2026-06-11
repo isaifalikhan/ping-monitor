@@ -1,5 +1,22 @@
 # Changelog
 
+## [Unreleased] - Demo Excellence Phase
+
+### Enterprise Demo Polish
+- Expanded mock data with 12 enterprise monitors, 6 incidents (timeline, RCA, assigned engineers), alert delivery history, audit logs, and status page data
+- Dashboard: 24h uptime chart, status distribution chart, 7 stat cards, recent alerts/incidents/checks feeds
+- New **Public Status Page** at `/status` with service health, 90-day uptime, incidents, and maintenance
+- New **Audit Logs** page at `/audit-logs` with category filtering
+- Alerts: delivery history, success rate stats, channel icons (Email, Slack, Teams, Telegram, WhatsApp)
+- Incidents: expandable rows with timeline, root cause analysis, and resolution notes
+- Team: avatars, activity status, last login, permissions matrix
+- Maintenance: upcoming/active/completed tabs plus timeline view
+- Settings: tabbed sections (General, Monitoring, Notifications, Security, Branding, Integrations)
+- Reports: monthly/quarterly SLA, incident, and availability report cards with PDF/CSV/Excel export
+- Monitors: tags, groups, uptime columns; enhanced detail page
+- Shared UI: Avatar, Tabs, Skeleton components
+- Sidebar: Audit Logs nav + public Status Page link
+
 ## [Unreleased] - Demo Login Seed
 
 ### Demo account

@@ -4,7 +4,8 @@ import { use, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useForm } from 'react-hook-form';
-import { ArrowLeft, Clock, TrendingUp, Activity } from 'lucide-react';
+import { ArrowLeft, Clock, TrendingUp, Activity, Tag } from 'lucide-react';
+import { Badge } from '@/components/ui/badge';
 import {
   LineChart,
   Line,
@@ -159,6 +160,15 @@ export default function MonitorDetailPage({ params }: { params: Promise<{ id: st
             </form>
           </CardContent>
         </Card>
+      )}
+
+      {(monitor.group || monitor.tags.length > 0) && (
+        <div className="flex flex-wrap items-center gap-2">
+          {monitor.group && <Badge variant="outline">{monitor.group}</Badge>}
+          {monitor.tags.map((t) => (
+            <Badge key={t} variant="muted"><Tag className="h-3 w-3 mr-1 inline" />{t}</Badge>
+          ))}
+        </div>
       )}
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">

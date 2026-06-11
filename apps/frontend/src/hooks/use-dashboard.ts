@@ -8,8 +8,10 @@ import { DEMO_MODE } from '@/lib/demo-mode';
 import {
   responseTimeTrend,
   uptimeTrend,
+  uptime24h,
   incidentTrend,
   monitorDistribution,
+  statusDistribution,
 } from '@/lib/mock-data';
 
 export function useDashboardStats() {
@@ -40,8 +42,10 @@ export function useDashboardCharts() {
   return {
     responseTimeTrend,
     uptimeTrend,
+    uptime24h,
     incidentTrend,
     monitorDistribution,
+    statusDistribution,
   };
 }
 

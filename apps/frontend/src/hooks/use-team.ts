@@ -4,6 +4,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiClient } from '@/lib/api-client';
 import type { TeamMember } from '@/lib/types';
 import { DEMO_MODE } from '@/lib/demo-mode';
+import { permissionsMatrix } from '@/lib/mock-data';
 import { useDemoStore, demoDelay } from '@/stores/demo-store';
 import { toast } from '@/hooks/use-toast';
 
@@ -32,6 +33,10 @@ export function useTeam() {
   }
 
   return apiQuery;
+}
+
+export function usePermissionsMatrix() {
+  return DEMO_MODE ? permissionsMatrix : [];
 }
 
 export function useUpdateMember() {

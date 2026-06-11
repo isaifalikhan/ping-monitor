@@ -4,6 +4,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiClient } from '@/lib/api-client';
 import type { AlertChannel, AlertRule } from '@/lib/types';
 import { DEMO_MODE } from '@/lib/demo-mode';
+import { alertStats } from '@/lib/mock-data';
 import { useDemoStore, demoDelay } from '@/stores/demo-store';
 import { toast } from '@/hooks/use-toast';
 
@@ -107,6 +108,25 @@ export function useCreateAlertRule() {
       toast({ title: 'Failed to create rule', variant: 'destructive' });
     },
   });
+}
+
+export function useAlertDeliveries() {
+  const alertDeliveries = useDemoStore((s) => s.alertDeliveries);
+  if (!DEMO_MODE) return { data: [], isLoading: false };
+  return { data: alertDeliveries, isLoading: false };
+}
+
+export function useAlertStats() {
+  if (!DEMO_MODE) {
+    return {
+      totalSent: 0,
+      totalFailed: 0,
+      successRate: 0,
+      last24h: 0,
+      avgDeliveryMs: 0,
+    };
+  }
+  return alertStats;
 }
 
 export function useTestAlert() {
