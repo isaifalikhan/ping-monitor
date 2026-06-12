@@ -5,6 +5,7 @@ import { AlertsService } from './alerts.service';
 import { CreateAlertChannelDto } from './dto/create-channel.dto';
 import { CreateAlertRuleDto } from './dto/create-rule.dto';
 import { OrgId } from '../../common/decorators/org-id.decorator';
+import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { Roles } from '../../common/decorators/roles.decorator';
 
 @ApiTags('Alerts')
@@ -22,8 +23,12 @@ export class AlertsController {
   @Post('channels')
   @Roles(UserRole.ADMIN)
   @ApiOperation({ summary: 'Create alert channel' })
-  createChannel(@OrgId() organizationId: string, @Body() dto: CreateAlertChannelDto) {
-    return this.alertsService.createChannel(organizationId, dto);
+  createChannel(
+    @OrgId() organizationId: string,
+    @CurrentUser('email') actor: string,
+    @Body() dto: CreateAlertChannelDto,
+  ) {
+    return this.alertsService.createChannel(organizationId, dto, actor);
   }
 
   @Get('rules')
@@ -50,5 +55,17 @@ export class AlertsController {
   @ApiOperation({ summary: 'List alert logs' })
   getLogs(@OrgId() organizationId: string) {
     return this.alertsService.getLogs(organizationId);
+  }
+
+  @Get('deliveries')
+  @ApiOperation({ summary: 'Alert delivery history' })
+  getDeliveries(@OrgId() organizationId: string) {
+    return this.alertsService.getDeliveries(organizationId);
+  }
+
+  @Get('stats')
+  @ApiOperation({ summary: 'Alert delivery statistics' })
+  getStats(@OrgId() organizationId: string) {
+    return this.alertsService.getStats(organizationId);
   }
 }

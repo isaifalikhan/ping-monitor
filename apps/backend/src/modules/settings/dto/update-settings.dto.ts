@@ -1,5 +1,5 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { IsInt, IsOptional, IsString, IsEmail, Min, Max } from 'class-validator';
+import { IsInt, IsOptional, IsString, IsEmail, IsBoolean, IsObject, Min, Max } from 'class-validator';
 
 export class UpdateSettingsDto {
   @ApiPropertyOptional()
@@ -18,4 +18,14 @@ export class UpdateSettingsDto {
   @IsOptional()
   @IsString()
   timezone?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsBoolean()
+  enablePublicStatusPage?: boolean;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsObject()
+  preferences?: Record<string, unknown>;
 }

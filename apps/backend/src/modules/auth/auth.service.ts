@@ -18,6 +18,7 @@ import {
 import { PrismaService } from '../../prisma/prisma.service';
 import { MailService } from '../mail/mail.service';
 import { AuthTokenService } from './auth-token.service';
+import { AuditService } from '../audit/audit.service';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
 import { InviteMemberDto } from './dto/invite-member.dto';
@@ -30,6 +31,7 @@ export class AuthService {
     private readonly prisma: PrismaService,
     private readonly mailService: MailService,
     private readonly tokenService: AuthTokenService,
+    private readonly auditService: AuditService,
   ) {}
 
   async register(dto: RegisterDto) {
@@ -105,6 +107,14 @@ export class AuthService {
     });
 
     const tokens = await this.tokenService.generateTokens(user);
+
+    void this.auditService.log({
+      organizationId: user.organizationId,
+      category: 'SECURITY',
+      action: 'User logged in',
+      actor: user.email,
+      actorUserId: user.id,
+    });
 
     return {
       user: this.mapUser(user),

@@ -25,8 +25,9 @@ export class SettingsController {
   updateSettings(
     @OrgId() organizationId: string,
     @CurrentUser('role') role: UserRole,
+    @CurrentUser('email') actor: string,
     @Body() dto: UpdateSettingsDto,
   ) {
-    return this.settingsService.updateSettings(organizationId, role, dto);
+    return this.settingsService.updateSettings(organizationId, role, dto, actor);
   }
 }

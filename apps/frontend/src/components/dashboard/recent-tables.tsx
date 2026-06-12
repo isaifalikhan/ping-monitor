@@ -1,36 +1,12 @@
 'use client';
 
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { cn } from '@/lib/utils';
+import { StatusBadge } from '@/components/shared/status-badge';
 import {
   useDashboardRecentAlerts,
   useDashboardRecentIncidents,
   useDashboardRecentChecks,
 } from '@/hooks/use-dashboard';
-
-function StatusBadge({ status }: { status: string }) {
-  const styles: Record<string, string> = {
-    UP: 'bg-green-500/10 text-green-500',
-    DOWN: 'bg-red-500/10 text-red-500',
-    DEGRADED: 'bg-amber-500/10 text-amber-500',
-    OPEN: 'bg-red-500/10 text-red-500',
-    ACKNOWLEDGED: 'bg-amber-500/10 text-amber-500',
-    RESOLVED: 'bg-green-500/10 text-green-500',
-    sent: 'bg-green-500/10 text-green-500',
-    failed: 'bg-red-500/10 text-red-500',
-  };
-
-  return (
-    <span
-      className={cn(
-        'inline-flex rounded-full px-2 py-0.5 text-xs font-medium',
-        styles[status] || 'bg-muted text-muted-foreground',
-      )}
-    >
-      {status}
-    </span>
-  );
-}
 
 export function RecentAlertsTable() {
   const recentAlerts = useDashboardRecentAlerts();
@@ -59,7 +35,7 @@ export function RecentAlertsTable() {
                   <td className="px-6 py-3">{row.type}</td>
                   <td className="px-6 py-3">{row.channel}</td>
                   <td className="px-6 py-3">
-                    <StatusBadge status={row.status} />
+                    <StatusBadge status={row.status === 'sent' ? 'UP' : 'DOWN'} />
                   </td>
                   <td className="px-6 py-3 text-muted-foreground">{row.time}</td>
                 </tr>
@@ -116,7 +92,7 @@ export function RecentChecksTable() {
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="text-base">Recent Checks</CardTitle>
+        <CardTitle className="text-base">Recent Monitor Activity</CardTitle>
       </CardHeader>
       <CardContent className="p-0">
         <div className="overflow-x-auto">

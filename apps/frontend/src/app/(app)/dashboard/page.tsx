@@ -45,7 +45,14 @@ export default function DashboardPage() {
         <StatCard title="Offline" value={stats.offline} icon={XCircle} variant="danger" />
         <StatCard title="Degraded" value={stats.degraded} icon={AlertTriangle} variant="warning" />
         <StatCard title="Active Incidents" value={stats.activeIncidents} icon={Activity} variant="danger" />
-        <StatCard title="Uptime" value={`${stats.uptimePercent}%`} icon={TrendingUp} variant="success" trend="↑ 0.02%" subtitle="last 30 days" />
+        <StatCard
+          title="Uptime"
+          value={`${stats.uptimePercent}%`}
+          icon={TrendingUp}
+          variant="success"
+          trend={stats.offline > 0 ? `↓ ${stats.offline} offline` : '↑ stable'}
+          subtitle="last 30 days"
+        />
         <StatCard title="Avg Response" value={`${stats.avgResponseTime}ms`} icon={Clock} subtitle="last 24 hours" />
       </div>
 

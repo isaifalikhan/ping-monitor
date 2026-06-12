@@ -41,7 +41,7 @@ export default function ReportsPage() {
     });
   };
 
-  if (isLoading) return <LoadingState />;
+  if (isLoading) return <LoadingState variant="skeleton" />;
 
   return (
     <div className="space-y-6">

@@ -128,7 +128,7 @@ export default function MaintenancePage() {
     );
   };
 
-  if (isLoading) return <LoadingState />;
+  if (isLoading) return <LoadingState variant="skeleton" />;
 
   const tabs = [
     { id: 'all', label: 'All', count: windows?.length },

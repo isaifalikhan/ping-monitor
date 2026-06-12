@@ -13,6 +13,10 @@ import { AlertsModule } from './modules/alerts/alerts.module';
 import { MaintenanceModule } from './modules/maintenance/maintenance.module';
 import { ReportsModule } from './modules/reports/reports.module';
 import { SettingsModule } from './modules/settings/settings.module';
+import { ChecksModule } from './modules/checks/checks.module';
+import { AuditModule } from './modules/audit/audit.module';
+import { DashboardModule } from './modules/dashboard/dashboard.module';
+import { StatusPageModule } from './modules/status-page/status-page.module';
 
 @Module({
   imports: [
@@ -33,6 +37,10 @@ import { SettingsModule } from './modules/settings/settings.module';
     MaintenanceModule,
     ReportsModule,
     SettingsModule,
+    ChecksModule,
+    AuditModule,
+    DashboardModule,
+    StatusPageModule,
     HealthModule,
   ],
   providers: [

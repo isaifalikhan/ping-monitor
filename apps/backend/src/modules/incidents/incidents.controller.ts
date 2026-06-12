@@ -25,15 +25,20 @@ export class IncidentsController {
   acknowledge(
     @OrgId() organizationId: string,
     @CurrentUser('sub') userId: string,
+    @CurrentUser('email') actor: string,
     @Param('id') id: string,
   ) {
-    return this.incidentsService.acknowledge(organizationId, id, userId);
+    return this.incidentsService.acknowledge(organizationId, id, userId, actor);
   }
 
   @Patch(':id/resolve')
   @Roles(UserRole.ADMIN)
   @ApiOperation({ summary: 'Resolve incident' })
-  resolve(@OrgId() organizationId: string, @Param('id') id: string) {
-    return this.incidentsService.resolve(organizationId, id);
+  resolve(
+    @OrgId() organizationId: string,
+    @CurrentUser('email') actor: string,
+    @Param('id') id: string,
+  ) {
+    return this.incidentsService.resolve(organizationId, id, actor);
   }
 }

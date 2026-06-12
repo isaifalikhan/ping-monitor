@@ -46,7 +46,7 @@ export default function TeamPage() {
     );
   };
 
-  if (isLoading) return <LoadingState />;
+  if (isLoading) return <LoadingState variant="skeleton" />;
 
   return (
     <div className="space-y-6">

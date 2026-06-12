@@ -1,5 +1,32 @@
 # Changelog
 
+## [Unreleased] - Demo Polish + Monitoring Engine
+
+### Option A — Demo gap fixes
+- Dashboard charts now derive from demo store (status/type distribution, incident counts)
+- Recent monitor activity shows all 12 monitors sorted by latest check
+- Incident ack/resolve appends timeline events with actor name
+- Completed inc-004 mock data (assigned engineer, RCA, notes)
+- Settings: all 6 tabs save via unified form + `updateSettings`
+- Header search navigates to `/monitors?search=`
+- Mobile navigation drawer for small screens
+- Loading skeleton variant on key pages; shared StatusBadge in recent tables
+- Deterministic status page uptime history (no Math.random)
+
+### Option B — Production backend + API wiring
+- New `ChecksModule`: HTTP/HTTPS/API, TCP, DNS, SSL check executor
+- `monitorCheck.create` on every check run; monitor status/uptime updated
+- Auto-incident open on failure, auto-resolve on recovery
+- In-process scheduler (default, 30s tick); optional BullMQ when `CHECKS_USE_REDIS=true`
+- New monitor triggers immediate check via `ChecksScheduler.enqueueMonitorCheck`
+- New `AuditModule` with `GET /audit-logs`; audit events on login, monitor/incident/settings/alert changes
+- New `DashboardModule` with stats, charts, and recent feeds endpoints
+- New public `GET /public/status/:slug` status page API
+- Settings API extended with `enablePublicStatusPage` and `preferences` JSON
+- Alerts API: `GET /alerts/deliveries` and `GET /alerts/stats`
+- Frontend hooks wired for production APIs when `DEMO_MODE=false`
+- Seed script seeds sample audit logs and enables public status page for demo org
+
 ## [Unreleased] - Demo Excellence Phase
 
 ### Enterprise Demo Polish

@@ -39,8 +39,12 @@ export class MonitorsController {
   @Post()
   @Roles(UserRole.ADMIN)
   @ApiOperation({ summary: 'Create monitor' })
-  create(@OrgId() organizationId: string, @Body() dto: CreateMonitorDto) {
-    return this.monitorsService.create(organizationId, dto);
+  create(
+    @OrgId() organizationId: string,
+    @CurrentUser('email') actor: string,
+    @Body() dto: CreateMonitorDto,
+  ) {
+    return this.monitorsService.create(organizationId, dto, actor);
   }
 
   @Patch(':id')
@@ -49,10 +53,11 @@ export class MonitorsController {
   update(
     @OrgId() organizationId: string,
     @CurrentUser('role') role: UserRole,
+    @CurrentUser('email') actor: string,
     @Param('id') id: string,
     @Body() dto: UpdateMonitorDto,
   ) {
-    return this.monitorsService.update(organizationId, id, dto, role);
+    return this.monitorsService.update(organizationId, id, dto, role, actor);
   }
 
   @Delete(':id')
@@ -61,8 +66,9 @@ export class MonitorsController {
   remove(
     @OrgId() organizationId: string,
     @CurrentUser('role') role: UserRole,
+    @CurrentUser('email') actor: string,
     @Param('id') id: string,
   ) {
-    return this.monitorsService.remove(organizationId, id, role);
+    return this.monitorsService.remove(organizationId, id, role, actor);
   }
 }

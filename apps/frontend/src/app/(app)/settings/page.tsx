@@ -24,7 +24,7 @@ export default function SettingsPage() {
   const updateSettings = useUpdateSettings();
   const [tab, setTab] = useState('general');
 
-  const { register, handleSubmit, reset } = useForm<DemoSettings>();
+  const { register, handleSubmit, reset, watch } = useForm<DemoSettings>();
 
   useEffect(() => {
     if (data?.settings) {
@@ -33,17 +33,13 @@ export default function SettingsPage() {
   }, [data, reset]);
 
   const onSubmit = (formData: DemoSettings) => {
-    updateSettings.mutate({
-      latencyThresholdMs: formData.latencyThresholdMs,
-      notificationEmail: formData.notificationEmail,
-      timezone: formData.timezone,
-    });
+    updateSettings.mutate(formData);
   };
 
-  if (isLoading) return <LoadingState />;
+  if (isLoading) return <LoadingState variant="skeleton" />;
 
   const isOwner = DEMO_MODE || user?.role === 'OWNER';
-  const settings = data?.settings as DemoSettings | undefined;
+  const requireMfa = watch('requireMfa');
 
   const tabs = [
     { id: 'general', label: 'General' },
@@ -54,45 +50,52 @@ export default function SettingsPage() {
     { id: 'integrations', label: 'Integrations' },
   ];
 
+  const SaveButton = () =>
+    isOwner ? (
+      <Button type="submit" disabled={updateSettings.isPending}>
+        Save Settings
+      </Button>
+    ) : null;
+
   return (
     <div className="space-y-6 max-w-3xl">
       <PageHeader title="Settings" description="Organization and platform configuration" />
 
       <Tabs tabs={tabs} active={tab} onChange={setTab} />
 
-      {tab === 'general' && (
-        <>
-          <Card>
-            <CardHeader><CardTitle className="text-base">Organization Profile</CardTitle></CardHeader>
-            <CardContent className="space-y-3">
-              <div>
-                <Label className="text-muted-foreground">Organization</Label>
-                <p className="font-medium">{data?.organization?.name}</p>
-              </div>
-              <div>
-                <Label className="text-muted-foreground">Slug</Label>
-                <p className="font-medium">{data?.organization?.slug}</p>
-              </div>
-              <div>
-                <Label className="text-muted-foreground">Public Status Page</Label>
-                <div className="flex items-center gap-2 mt-1">
-                  <Badge variant={settings?.enablePublicStatusPage ? 'success' : 'muted'}>
-                    {settings?.enablePublicStatusPage ? 'Enabled' : 'Disabled'}
-                  </Badge>
-                  {settings?.enablePublicStatusPage && (
-                    <a href="/status" target="_blank" rel="noopener noreferrer" className="text-sm text-primary hover:underline">
-                      /status/{settings.statusPageSlug}
-                    </a>
-                  )}
+      <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
+        {tab === 'general' && (
+          <>
+            <Card>
+              <CardHeader><CardTitle className="text-base">Organization Profile</CardTitle></CardHeader>
+              <CardContent className="space-y-3">
+                <div>
+                  <Label className="text-muted-foreground">Organization</Label>
+                  <p className="font-medium">{data?.organization?.name}</p>
                 </div>
-              </div>
-            </CardContent>
-          </Card>
+                <div>
+                  <Label className="text-muted-foreground">Slug</Label>
+                  <p className="font-medium">{data?.organization?.slug}</p>
+                </div>
+                <div className="space-y-2">
+                  <Label>Status Page Slug</Label>
+                  <Input {...register('statusPageSlug')} disabled={!isOwner} />
+                </div>
+                <label className="flex items-center gap-2 text-sm">
+                  <input type="checkbox" {...register('enablePublicStatusPage')} disabled={!isOwner} />
+                  Enable public status page
+                </label>
+                {watch('enablePublicStatusPage') && (
+                  <a href="/status" target="_blank" rel="noopener noreferrer" className="text-sm text-primary hover:underline block">
+                    View /status
+                  </a>
+                )}
+              </CardContent>
+            </Card>
 
-          <Card>
-            <CardHeader><CardTitle className="text-base">Regional Settings</CardTitle></CardHeader>
-            <CardContent>
-              <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+            <Card>
+              <CardHeader><CardTitle className="text-base">Regional Settings</CardTitle></CardHeader>
+              <CardContent className="space-y-4">
                 <div className="space-y-2">
                   <Label>Timezone</Label>
                   <Select {...register('timezone')} disabled={!isOwner}>
@@ -102,129 +105,132 @@ export default function SettingsPage() {
                     <option value="Asia/Dubai">Asia/Dubai</option>
                   </Select>
                 </div>
-                {isOwner && <Button type="submit" disabled={updateSettings.isPending}>Save Settings</Button>}
-              </form>
-            </CardContent>
-          </Card>
+                <SaveButton />
+              </CardContent>
+            </Card>
 
+            <Card>
+              <CardHeader><CardTitle className="text-base">Theme</CardTitle></CardHeader>
+              <CardContent>
+                <div className="flex gap-2">
+                  <Button type="button" variant={theme === 'light' ? 'default' : 'outline'} onClick={() => setTheme('light')}>Light</Button>
+                  <Button type="button" variant={theme === 'dark' ? 'default' : 'outline'} onClick={() => setTheme('dark')}>Dark</Button>
+                  <Button type="button" variant={theme === 'system' ? 'default' : 'outline'} onClick={() => setTheme('system')}>System</Button>
+                </div>
+              </CardContent>
+            </Card>
+          </>
+        )}
+
+        {tab === 'monitoring' && (
           <Card>
-            <CardHeader><CardTitle className="text-base">Theme</CardTitle></CardHeader>
-            <CardContent>
-              <div className="flex gap-2">
-                <Button variant={theme === 'light' ? 'default' : 'outline'} onClick={() => setTheme('light')}>Light</Button>
-                <Button variant={theme === 'dark' ? 'default' : 'outline'} onClick={() => setTheme('dark')}>Dark</Button>
-                <Button variant={theme === 'system' ? 'default' : 'outline'} onClick={() => setTheme('system')}>System</Button>
+            <CardHeader><CardTitle className="text-base">Monitoring Defaults</CardTitle></CardHeader>
+            <CardContent className="space-y-4">
+              <div className="space-y-2">
+                <Label>High Latency Threshold (ms)</Label>
+                <Input type="number" {...register('latencyThresholdMs', { valueAsNumber: true })} disabled={!isOwner} />
               </div>
+              <div className="space-y-2">
+                <Label>Default Check Interval (seconds)</Label>
+                <Input type="number" {...register('defaultCheckInterval', { valueAsNumber: true })} disabled={!isOwner} />
+              </div>
+              <div className="space-y-2">
+                <Label>Default Timeout (seconds)</Label>
+                <Input type="number" {...register('defaultTimeout', { valueAsNumber: true })} disabled={!isOwner} />
+              </div>
+              <div className="space-y-2">
+                <Label>Data Retention (days)</Label>
+                <Input type="number" {...register('retentionDays', { valueAsNumber: true })} disabled={!isOwner} />
+              </div>
+              <SaveButton />
             </CardContent>
           </Card>
-        </>
-      )}
+        )}
 
-      {tab === 'monitoring' && (
-        <Card>
-          <CardHeader><CardTitle className="text-base">Monitoring Defaults</CardTitle></CardHeader>
-          <CardContent className="space-y-4">
-            <div className="space-y-2">
-              <Label>High Latency Threshold (ms)</Label>
-              <Input type="number" defaultValue={settings?.latencyThresholdMs} disabled={!isOwner} />
-            </div>
-            <div className="space-y-2">
-              <Label>Default Check Interval (seconds)</Label>
-              <Input type="number" defaultValue={settings?.defaultCheckInterval} disabled={!isOwner} />
-            </div>
-            <div className="space-y-2">
-              <Label>Default Timeout (seconds)</Label>
-              <Input type="number" defaultValue={settings?.defaultTimeout} disabled={!isOwner} />
-            </div>
-            <div className="space-y-2">
-              <Label>Data Retention (days)</Label>
-              <Input type="number" defaultValue={settings?.retentionDays} disabled={!isOwner} />
-            </div>
-            {isOwner && <Button disabled={updateSettings.isPending}>Save Monitoring Settings</Button>}
-          </CardContent>
-        </Card>
-      )}
-
-      {tab === 'notifications' && (
-        <Card>
-          <CardHeader><CardTitle className="text-base">Notification Settings</CardTitle></CardHeader>
-          <CardContent className="space-y-4">
-            <div className="space-y-2">
-              <Label>Default Notification Email</Label>
-              <Input type="email" defaultValue={settings?.notificationEmail} disabled={!isOwner} />
-            </div>
-            <div className="space-y-2">
-              <Label>Slack Webhook</Label>
-              <Input defaultValue={settings?.slackWebhook} disabled={!isOwner} />
-            </div>
-            {isOwner && <Button disabled={updateSettings.isPending}>Save Notification Settings</Button>}
-          </CardContent>
-        </Card>
-      )}
-
-      {tab === 'security' && (
-        <Card>
-          <CardHeader><CardTitle className="text-base">Security</CardTitle></CardHeader>
-          <CardContent className="space-y-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <Label>Require MFA</Label>
-                <p className="text-sm text-muted-foreground">Enforce multi-factor authentication for all users</p>
+        {tab === 'notifications' && (
+          <Card>
+            <CardHeader><CardTitle className="text-base">Notification Settings</CardTitle></CardHeader>
+            <CardContent className="space-y-4">
+              <div className="space-y-2">
+                <Label>Default Notification Email</Label>
+                <Input type="email" {...register('notificationEmail')} disabled={!isOwner} />
               </div>
-              <Badge variant={settings?.requireMfa ? 'success' : 'muted'}>
-                {settings?.requireMfa ? 'Enabled' : 'Disabled'}
-              </Badge>
-            </div>
-            <div className="space-y-2">
-              <Label>Session Timeout (minutes)</Label>
-              <Input type="number" defaultValue={settings?.sessionTimeoutMinutes} disabled={!isOwner} />
-            </div>
-            <div className="space-y-2">
-              <Label>IP Allowlist</Label>
-              <Input placeholder="Leave empty to allow all" defaultValue={settings?.ipAllowlist} disabled={!isOwner} />
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {tab === 'branding' && (
-        <Card>
-          <CardHeader><CardTitle className="text-base">Branding</CardTitle></CardHeader>
-          <CardContent className="space-y-4">
-            <div className="space-y-2">
-              <Label>Primary Color</Label>
-              <div className="flex items-center gap-3">
-                <div className="h-8 w-8 rounded border" style={{ backgroundColor: settings?.brandPrimaryColor }} />
-                <Input defaultValue={settings?.brandPrimaryColor} disabled={!isOwner} />
+              <div className="space-y-2">
+                <Label>Slack Webhook</Label>
+                <Input {...register('slackWebhook')} disabled={!isOwner} />
               </div>
-            </div>
-            <div className="space-y-2">
-              <Label>Logo URL</Label>
-              <Input placeholder="https://..." defaultValue={settings?.brandLogoUrl} disabled={!isOwner} />
-            </div>
-          </CardContent>
-        </Card>
-      )}
+              <SaveButton />
+            </CardContent>
+          </Card>
+        )}
 
-      {tab === 'integrations' && (
-        <Card>
-          <CardHeader><CardTitle className="text-base">Integrations</CardTitle></CardHeader>
-          <CardContent className="space-y-4">
-            <div className="space-y-2">
-              <Label>PagerDuty Integration Key</Label>
-              <Input defaultValue={settings?.pagerdutyKey} disabled={!isOwner} />
-            </div>
-            <div className="space-y-2">
-              <Label>Datadog API Key</Label>
-              <Input placeholder="Not configured" defaultValue={settings?.datadogApiKey} disabled={!isOwner} />
-            </div>
-            <div className="space-y-2">
-              <Label>Slack Webhook</Label>
-              <Input defaultValue={settings?.slackWebhook} disabled={!isOwner} />
-            </div>
-          </CardContent>
-        </Card>
-      )}
+        {tab === 'security' && (
+          <Card>
+            <CardHeader><CardTitle className="text-base">Security</CardTitle></CardHeader>
+            <CardContent className="space-y-4">
+              <label className="flex items-center justify-between gap-4">
+                <div>
+                  <Label>Require MFA</Label>
+                  <p className="text-sm text-muted-foreground">Enforce multi-factor authentication for all users</p>
+                </div>
+                <Badge variant={requireMfa ? 'success' : 'muted'}>
+                  {requireMfa ? 'Enabled' : 'Disabled'}
+                </Badge>
+              </label>
+              <label className="flex items-center gap-2 text-sm">
+                <input type="checkbox" {...register('requireMfa')} disabled={!isOwner} />
+                Enable MFA requirement
+              </label>
+              <div className="space-y-2">
+                <Label>Session Timeout (minutes)</Label>
+                <Input type="number" {...register('sessionTimeoutMinutes', { valueAsNumber: true })} disabled={!isOwner} />
+              </div>
+              <div className="space-y-2">
+                <Label>IP Allowlist</Label>
+                <Input placeholder="Leave empty to allow all" {...register('ipAllowlist')} disabled={!isOwner} />
+              </div>
+              <SaveButton />
+            </CardContent>
+          </Card>
+        )}
+
+        {tab === 'branding' && (
+          <Card>
+            <CardHeader><CardTitle className="text-base">Branding</CardTitle></CardHeader>
+            <CardContent className="space-y-4">
+              <div className="space-y-2">
+                <Label>Primary Color</Label>
+                <div className="flex items-center gap-3">
+                  <div className="h-8 w-8 rounded border" style={{ backgroundColor: watch('brandPrimaryColor') }} />
+                  <Input {...register('brandPrimaryColor')} disabled={!isOwner} />
+                </div>
+              </div>
+              <div className="space-y-2">
+                <Label>Logo URL</Label>
+                <Input placeholder="https://..." {...register('brandLogoUrl')} disabled={!isOwner} />
+              </div>
+              <SaveButton />
+            </CardContent>
+          </Card>
+        )}
+
+        {tab === 'integrations' && (
+          <Card>
+            <CardHeader><CardTitle className="text-base">Integrations</CardTitle></CardHeader>
+            <CardContent className="space-y-4">
+              <div className="space-y-2">
+                <Label>PagerDuty Integration Key</Label>
+                <Input {...register('pagerdutyKey')} disabled={!isOwner} />
+              </div>
+              <div className="space-y-2">
+                <Label>Datadog API Key</Label>
+                <Input placeholder="Not configured" {...register('datadogApiKey')} disabled={!isOwner} />
+              </div>
+              <SaveButton />
+            </CardContent>
+          </Card>
+        )}
+      </form>
 
       <Card>
         <CardHeader><CardTitle className="text-base">Account</CardTitle></CardHeader>

@@ -89,6 +89,7 @@ model Organization {
   alertLogs            AlertLog[]
   maintenanceWindows   MaintenanceWindow[]
   settings             OrganizationSettings?
+  auditLogs            AuditLog[]
 
   @@index([slug])
   @@index([deletedAt])
@@ -388,14 +389,48 @@ model MaintenanceWindow {
 // ============================================================
 
 model OrganizationSettings {
-  organizationId       String   @id @map("organization_id") @db.Uuid
-  latencyThresholdMs   Int      @default(1000) @map("latency_threshold_ms")
-  notificationEmail    String?  @map("notification_email")
-  timezone             String   @default("UTC")
-  createdAt            DateTime @default(now()) @map("created_at")
-  updatedAt            DateTime @updatedAt @map("updated_at")
+  organizationId           String   @id @map("organization_id") @db.Uuid
+  latencyThresholdMs       Int      @default(1000) @map("latency_threshold_ms")
+  notificationEmail        String?  @map("notification_email")
+  timezone                 String   @default("UTC")
+  enablePublicStatusPage   Boolean  @default(true) @map("enable_public_status_page")
+  preferences              Json     @default("{}")
+  createdAt                DateTime @default(now()) @map("created_at")
+  updatedAt                DateTime @updatedAt @map("updated_at")
 
   organization Organization @relation(fields: [organizationId], references: [id])
 
   @@map("organization_settings")
+}
+
+// ============================================================
+// AUDIT LOGS
+// ============================================================
+
+enum AuditLogCategory {
+  USER
+  MONITOR
+  ALERT
+  SECURITY
+  SETTINGS
+  INCIDENT
+}
+
+model AuditLog {
+  id             String           @id @default(uuid()) @db.Uuid
+  organizationId String           @map("organization_id") @db.Uuid
+  category       AuditLogCategory
+  action         String
+  actor          String
+  actorUserId    String?          @map("actor_user_id") @db.Uuid
+  target         String?
+  ipAddress      String?          @map("ip_address")
+  createdAt      DateTime         @default(now()) @map("created_at")
+
+  organization Organization @relation(fields: [organizationId], references: [id])
+
+  @@index([organizationId])
+  @@index([category])
+  @@index([createdAt])
+  @@map("audit_logs")
 }

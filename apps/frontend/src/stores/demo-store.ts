@@ -86,8 +86,8 @@ interface DemoState {
   deleteMonitor: (id: string) => void;
 
   getIncidents: (status?: string) => Incident[];
-  acknowledgeIncident: (id: string) => void;
-  resolveIncident: (id: string) => void;
+  acknowledgeIncident: (id: string, actor?: string) => void;
+  resolveIncident: (id: string, actor?: string) => void;
 
   addAlertChannel: (data: { channel: string; name: string; config: Record<string, unknown> }) => AlertChannel;
   addAlertRule: (data: { channelId: string; trigger: string; monitorId?: string }) => AlertRule;
@@ -111,6 +111,14 @@ interface DemoState {
   };
   getRecentIncidents: () => { id: string; monitor: string; status: string; duration: string; started: string }[];
   getRecentChecks: () => { id: string; monitor: string; status: string; responseTime: number | null; time: string }[];
+  getDashboardCharts: () => {
+    responseTimeTrend: { time: string; ms: number }[];
+    uptimeTrend: { day: string; uptime: number }[];
+    uptime24h: { hour: string; uptime: number }[];
+    incidentTrend: { day: string; incidents: number }[];
+    monitorDistribution: { name: string; value: number; color: string }[];
+    statusDistribution: { name: string; value: number; color: string }[];
+  };
   getReportSummary: (from?: string, to?: string) => {
     summary: {
       totalMonitors: number;
@@ -235,20 +243,51 @@ export const useDemoStore = create<DemoState>((set, get) => ({
     return status ? items.filter((i) => i.status === status) : items;
   },
 
-  acknowledgeIncident: (id) => {
-    set((s) => ({
-      incidents: s.incidents.map((i) =>
-        i.id === id ? { ...i, status: 'ACKNOWLEDGED' } : i,
-      ),
-    }));
-  },
-
-  resolveIncident: (id) => {
+  acknowledgeIncident: (id, actor = 'You') => {
     const now = new Date().toISOString();
     set((s) => ({
       incidents: s.incidents.map((i) =>
         i.id === id
-          ? { ...i, status: 'RESOLVED', endedAt: now, duration: i.duration ?? 0 }
+          ? {
+              ...i,
+              status: 'ACKNOWLEDGED',
+              timeline: [
+                ...(i.timeline ?? []),
+                {
+                  id: uid('t'),
+                  type: 'ACKNOWLEDGED' as const,
+                  message: `Incident acknowledged by ${actor}`,
+                  user: actor,
+                  createdAt: now,
+                },
+              ],
+            }
+          : i,
+      ),
+    }));
+  },
+
+  resolveIncident: (id, actor = 'You') => {
+    const now = new Date().toISOString();
+    set((s) => ({
+      incidents: s.incidents.map((i) =>
+        i.id === id
+          ? {
+              ...i,
+              status: 'RESOLVED',
+              endedAt: now,
+              duration: i.duration ?? 0,
+              timeline: [
+                ...(i.timeline ?? []),
+                {
+                  id: uid('t'),
+                  type: 'RESOLVED' as const,
+                  message: `Incident resolved by ${actor}`,
+                  user: actor,
+                  createdAt: now,
+                },
+              ],
+            }
           : i,
       ),
     }));
@@ -393,8 +432,8 @@ export const useDemoStore = create<DemoState>((set, get) => ({
       })),
 
   getRecentChecks: () => {
-    const checks: { id: string; monitor: string; status: string; responseTime: number | null; time: string }[] = [];
-    for (const m of get().monitors.slice(0, 6)) {
+    const checks: { id: string; monitor: string; status: string; responseTime: number | null; time: string; sortKey: number }[] = [];
+    for (const m of get().monitors) {
       const latest = get().monitorChecks[m.id]?.[0];
       if (latest) {
         checks.push({
@@ -403,10 +442,97 @@ export const useDemoStore = create<DemoState>((set, get) => ({
           status: latest.status,
           responseTime: latest.responseTime ?? null,
           time: new Date(latest.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          sortKey: new Date(latest.createdAt).getTime(),
         });
       }
     }
-    return checks;
+    return checks
+      .sort((a, b) => b.sortKey - a.sortKey)
+      .slice(0, 12)
+      .map(({ sortKey: _, ...rest }) => rest);
+  },
+
+  getDashboardCharts: () => {
+    const monitors = get().monitors.filter((m) => m.isActive);
+    const incidents = get().incidents;
+    const allChecks = get().monitorChecks;
+
+    const online = monitors.filter((m) => m.status === 'UP').length;
+    const offline = monitors.filter((m) => m.status === 'DOWN').length;
+    const degraded = monitors.filter((m) => m.status === 'DEGRADED').length;
+
+    const typeBuckets: Record<string, number> = {};
+    for (const m of monitors) {
+      let bucket = 'Other';
+      if (m.type === 'HTTP' || m.type === 'HTTPS') bucket = 'HTTP/HTTPS';
+      else if (m.type === 'TCP') bucket = 'TCP';
+      else if (m.type === 'DNS' || m.type === 'SSL') bucket = 'DNS/SSL';
+      else if (m.type === 'PING' || m.type === 'API') bucket = 'PING/API';
+      typeBuckets[bucket] = (typeBuckets[bucket] ?? 0) + 1;
+    }
+
+    const monitorDistribution = [
+      { name: 'HTTP/HTTPS', value: typeBuckets['HTTP/HTTPS'] ?? 0, color: 'hsl(var(--primary))' },
+      { name: 'TCP', value: typeBuckets['TCP'] ?? 0, color: 'hsl(38 92% 50%)' },
+      { name: 'DNS/SSL', value: typeBuckets['DNS/SSL'] ?? 0, color: 'hsl(280 70% 50%)' },
+      { name: 'PING/API', value: typeBuckets['PING/API'] ?? 0, color: 'hsl(142 76% 36%)' },
+    ].filter((d) => d.value > 0);
+
+    const statusDistribution = [
+      { name: 'Online', value: online, color: 'hsl(142 76% 36%)' },
+      { name: 'Degraded', value: degraded, color: 'hsl(38 92% 50%)' },
+      { name: 'Offline', value: offline, color: 'hsl(var(--destructive))' },
+    ].filter((d) => d.value > 0);
+
+    const flatChecks = Object.entries(allChecks).flatMap(([monitorId, checks]) =>
+      checks.map((c) => ({ monitorId, ...c })),
+    );
+    const avgMs =
+      monitors.length > 0
+        ? Math.round(
+            monitors
+              .map((m) => m.lastResponseTime ?? 0)
+              .filter((v) => v > 0)
+              .reduce((a, b) => a + b, 0) /
+              Math.max(1, monitors.filter((m) => m.lastResponseTime != null).length),
+          )
+        : 0;
+
+    const responseTimeTrend = ['00:00', '02:00', '04:00', '06:00', '08:00', '10:00', '12:00', '14:00', '16:00', '18:00', '20:00', '22:00', 'Now'].map(
+      (time, i) => ({
+        time,
+        ms: Math.max(0, avgMs + Math.round(Math.sin(i) * 30) + (i === 10 ? 50 : 0)),
+      }),
+    );
+
+    const avgUptime =
+      monitors.length > 0
+        ? monitors.reduce((a, m) => a + m.uptimePercent, 0) / monitors.length
+        : 100;
+
+    const uptimeTrend = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map((day, i) => ({
+      day,
+      uptime: Math.round((avgUptime - (i === 2 ? 0.5 : 0) + (i === 4 ? -0.2 : 0)) * 100) / 100,
+    }));
+
+    const uptime24h = ['00', '02', '04', '06', '08', '10', '12', '14', '16', '18', '20', '22', 'Now'].map((hour, i) => ({
+      hour,
+      uptime: Math.round((avgUptime - (offline > 0 && i >= 8 && i <= 12 ? 1.5 : 0)) * 100) / 100,
+    }));
+
+    const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+    const incidentByDay: Record<string, number> = Object.fromEntries(dayNames.map((d) => [d, 0]));
+    for (const inc of incidents) {
+      const day = dayNames[new Date(inc.startedAt).getDay()];
+      incidentByDay[day] = (incidentByDay[day] ?? 0) + 1;
+    }
+    const incidentTrend = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map((day) => ({
+      day,
+      incidents: incidentByDay[day] ?? 0,
+    }));
+
+    void flatChecks;
+    return { responseTimeTrend, uptimeTrend, uptime24h, incidentTrend, monitorDistribution, statusDistribution };
   },
 
   getReportSummary: () => {

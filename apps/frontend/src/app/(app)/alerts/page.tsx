@@ -69,7 +69,7 @@ export default function AlertsPage() {
     );
   };
 
-  if (loadingChannels || loadingRules) return <LoadingState />;
+  if (loadingChannels || loadingRules) return <LoadingState variant="skeleton" />;
 
   return (
     <div className="space-y-6">

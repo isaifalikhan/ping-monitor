@@ -3,9 +3,52 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiClient } from '@/lib/api-client';
 import { DEMO_MODE } from '@/lib/demo-mode';
-import { useDemoStore, demoDelay } from '@/stores/demo-store';
+import { useDemoStore, demoDelay, type DemoSettings } from '@/stores/demo-store';
 import { toast } from '@/hooks/use-toast';
 import { useAuthStore } from '@/stores/auth-store';
+
+const PREFERENCE_KEYS: (keyof DemoSettings)[] = [
+  'defaultCheckInterval',
+  'defaultTimeout',
+  'retentionDays',
+  'statusPageSlug',
+  'sessionTimeoutMinutes',
+  'requireMfa',
+  'ipAllowlist',
+  'brandPrimaryColor',
+  'brandLogoUrl',
+  'slackWebhook',
+  'pagerdutyKey',
+  'datadogApiKey',
+];
+
+function toApiPayload(data: Partial<DemoSettings>) {
+  const payload: Record<string, unknown> = {};
+  const preferences: Record<string, unknown> = {};
+
+  if (data.latencyThresholdMs != null) {
+    payload.latencyThresholdMs = Number(data.latencyThresholdMs);
+  }
+  if (data.notificationEmail !== undefined) {
+    payload.notificationEmail = data.notificationEmail || null;
+  }
+  if (data.timezone !== undefined) payload.timezone = data.timezone;
+  if (data.enablePublicStatusPage !== undefined) {
+    payload.enablePublicStatusPage = data.enablePublicStatusPage;
+  }
+
+  for (const key of PREFERENCE_KEYS) {
+    if (data[key] !== undefined) preferences[key] = data[key];
+  }
+  if (Object.keys(preferences).length > 0) payload.preferences = preferences;
+
+  return payload;
+}
+
+type SettingsResponse = {
+  organization: { id: string; name: string; slug: string };
+  settings: DemoSettings;
+};
 
 export function useSettings() {
   const settings = useDemoStore((s) => s.settings);
@@ -14,15 +57,7 @@ export function useSettings() {
 
   const apiQuery = useQuery({
     queryKey: ['settings'],
-    queryFn: () =>
-      apiClient.get<{
-        organization: { id: string; name: string; slug: string };
-        settings: {
-          latencyThresholdMs: number;
-          notificationEmail?: string | null;
-          timezone: string;
-        };
-      }>('/settings'),
+    queryFn: () => apiClient.get<SettingsResponse>('/settings'),
     enabled: !DEMO_MODE,
   });
 
@@ -49,27 +84,34 @@ export function useUpdateSettings() {
   const updateSettings = useDemoStore((s) => s.updateSettings);
 
   return useMutation({
-    mutationFn: async (data: {
-      latencyThresholdMs: number;
-      notificationEmail: string;
-      timezone: string;
-    }) => {
+    mutationFn: async (data: Partial<DemoSettings>) => {
       if (DEMO_MODE) {
         await demoDelay();
         updateSettings({
-          latencyThresholdMs: Number(data.latencyThresholdMs),
-          notificationEmail: String(data.notificationEmail ?? ''),
-          timezone: String(data.timezone),
+          ...data,
+          latencyThresholdMs:
+            data.latencyThresholdMs != null ? Number(data.latencyThresholdMs) : undefined,
+          defaultCheckInterval:
+            data.defaultCheckInterval != null ? Number(data.defaultCheckInterval) : undefined,
+          defaultTimeout: data.defaultTimeout != null ? Number(data.defaultTimeout) : undefined,
+          retentionDays: data.retentionDays != null ? Number(data.retentionDays) : undefined,
+          sessionTimeoutMinutes:
+            data.sessionTimeoutMinutes != null ? Number(data.sessionTimeoutMinutes) : undefined,
         });
         return;
       }
-      return apiClient.patch('/settings', data);
+      return apiClient.patch('/settings', toApiPayload(data));
     },
     onSuccess: () => {
       if (DEMO_MODE) {
-        toast({ title: 'Settings saved', description: 'Organization preferences updated (demo).', variant: 'success' });
+        toast({
+          title: 'Settings saved',
+          description: 'Organization preferences updated (demo).',
+          variant: 'success',
+        });
       } else {
         qc.invalidateQueries({ queryKey: ['settings'] });
+        toast({ title: 'Settings saved', variant: 'success' });
       }
     },
     onError: () => {

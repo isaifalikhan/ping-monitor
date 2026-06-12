@@ -112,21 +112,54 @@ export function useCreateAlertRule() {
 
 export function useAlertDeliveries() {
   const alertDeliveries = useDemoStore((s) => s.alertDeliveries);
-  if (!DEMO_MODE) return { data: [], isLoading: false };
-  return { data: alertDeliveries, isLoading: false };
+
+  const apiQuery = useQuery({
+    queryKey: ['alert-deliveries'],
+    queryFn: () =>
+      apiClient.get<
+        {
+          id: string;
+          channel: string;
+          channelName: string;
+          monitor: string;
+          trigger: string;
+          status: string;
+          message?: string;
+          createdAt: string;
+        }[]
+      >('/alerts/deliveries'),
+    enabled: !DEMO_MODE,
+  });
+
+  if (DEMO_MODE) return { data: alertDeliveries, isLoading: false };
+  return { data: apiQuery.data ?? [], isLoading: apiQuery.isLoading };
 }
 
 export function useAlertStats() {
-  if (!DEMO_MODE) {
-    return {
+  const apiQuery = useQuery({
+    queryKey: ['alert-stats'],
+    queryFn: () =>
+      apiClient.get<{
+        totalSent: number;
+        totalFailed: number;
+        successRate: number;
+        last24h: number;
+        avgDeliveryMs: number;
+      }>('/alerts/stats'),
+    enabled: !DEMO_MODE,
+  });
+
+  if (DEMO_MODE) return alertStats;
+
+  return (
+    apiQuery.data ?? {
       totalSent: 0,
       totalFailed: 0,
       successRate: 0,
       last24h: 0,
       avgDeliveryMs: 0,
-    };
-  }
-  return alertStats;
+    }
+  );
 }
 
 export function useTestAlert() {

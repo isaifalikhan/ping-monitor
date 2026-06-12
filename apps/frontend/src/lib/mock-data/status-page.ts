@@ -25,7 +25,7 @@ export const statusPageComponents: StatusPageComponent[] = [
 
 export const statusPageUptimeHistory = Array.from({ length: 90 }, (_, i) => ({
   day: new Date(now - (89 - i) * 86_400_000).toISOString().slice(0, 10),
-  uptime: 99.5 + Math.random() * 0.5 - (i === 45 ? 2 : 0),
+  uptime: Math.round((99.7 + Math.sin(i / 8) * 0.15 - (i === 45 ? 1.8 : 0)) * 100) / 100,
 }));
 
 export const statusPageIncidents = [

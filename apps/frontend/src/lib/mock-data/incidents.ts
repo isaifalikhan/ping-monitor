@@ -58,11 +58,12 @@ export const initialIncidents: Incident[] = [
     monitor: { id: 'mon-006', name: 'Internal ERP', target: 'http://erp.internal.acme-corp.com/status' },
     status: 'OPEN', severity: 'MEDIUM',
     startedAt: mins(120), endedAt: null, duration: 120 * 60,
-    rootCause: null,
-    notes: null,
-    assignedUser: null,
+    rootCause: 'SAP batch job causing connection pool saturation on app tier',
+    notes: 'ERP team investigating batch window overlap with peak hours.',
+    assignedUser: { id: 'usr-004', firstName: 'James', lastName: 'Okonkwo', email: 'james@acme-corp.com' },
     timeline: [
       { id: 't9', type: 'DETECTED', message: 'Response time degraded — 1240ms (threshold: 500ms)', createdAt: mins(120) },
+      { id: 't9b', type: 'NOTE', message: 'Correlated with nightly ETL job start', user: 'James Okonkwo', createdAt: mins(90) },
     ],
   },
   {

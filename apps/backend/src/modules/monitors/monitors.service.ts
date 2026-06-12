@@ -2,13 +2,19 @@ import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/commo
 import { Prisma, MonitorStatus } from '@prisma/client';
 import { UserRole } from '@netwatch/shared';
 import { PrismaService } from '../../prisma/prisma.service';
+import { ChecksScheduler } from '../checks/checks.scheduler';
+import { AuditService } from '../audit/audit.service';
 import { CreateMonitorDto } from './dto/create-monitor.dto';
 import { UpdateMonitorDto } from './dto/update-monitor.dto';
 import { QueryMonitorsDto } from './dto/query-monitors.dto';
 
 @Injectable()
 export class MonitorsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly checksScheduler: ChecksScheduler,
+    private readonly auditService: AuditService,
+  ) {}
 
   private mapMonitor(m: {
     id: string;
@@ -95,7 +101,7 @@ export class MonitorsService {
     return this.mapMonitor(monitor);
   }
 
-  async create(organizationId: string, dto: CreateMonitorDto) {
+  async create(organizationId: string, dto: CreateMonitorDto, actor?: string) {
     const monitor = await this.prisma.monitor.create({
       data: {
         name: dto.name,
@@ -111,10 +117,18 @@ export class MonitorsService {
         status: MonitorStatus.UNKNOWN,
       },
     });
+    void this.checksScheduler.enqueueMonitorCheck(monitor.id);
+    void this.auditService.log({
+      organizationId,
+      category: 'MONITOR',
+      action: `Created monitor "${monitor.name}"`,
+      actor: actor ?? 'System',
+      target: monitor.id,
+    });
     return this.mapMonitor(monitor);
   }
 
-  async update(organizationId: string, id: string, dto: UpdateMonitorDto, role: UserRole) {
+  async update(organizationId: string, id: string, dto: UpdateMonitorDto, role: UserRole, actor?: string) {
     if (role === UserRole.VIEWER) {
       throw new ForbiddenException('Viewers cannot modify monitors');
     }
@@ -123,17 +137,32 @@ export class MonitorsService {
       where: { id },
       data: dto,
     });
+    void this.auditService.log({
+      organizationId,
+      category: 'MONITOR',
+      action: `Updated monitor "${monitor.name}"`,
+      actor: actor ?? 'System',
+      target: monitor.id,
+    });
     return this.mapMonitor(monitor);
   }
 
-  async remove(organizationId: string, id: string, role: UserRole) {
+  async remove(organizationId: string, id: string, role: UserRole, actor?: string) {
     if (role === UserRole.VIEWER) {
       throw new ForbiddenException('Viewers cannot delete monitors');
     }
     await this.findOne(organizationId, id);
+    const monitor = await this.findOne(organizationId, id);
     await this.prisma.monitor.update({
       where: { id },
       data: { deletedAt: new Date(), isActive: false },
+    });
+    void this.auditService.log({
+      organizationId,
+      category: 'MONITOR',
+      action: `Deleted monitor "${monitor.name}"`,
+      actor: actor ?? 'System',
+      target: id,
     });
     return { message: 'Monitor deleted' };
   }

@@ -46,11 +46,41 @@ function loadDatabaseUrl() {
   throw new Error('DATABASE_URL not found in environment or apps/backend/.env');
 }
 
+const SAMPLE_AUDIT_LOGS = [
+  { category: 'SECURITY', action: 'User logged in', actor: 'demo@netwatch.io', target: null, minsAgo: 5 },
+  { category: 'SETTINGS', action: 'Updated organization settings', actor: 'demo@netwatch.io', target: 'Organization settings', minsAgo: 120 },
+  { category: 'MONITOR', action: 'Created monitor "API Health Check"', actor: 'demo@netwatch.io', target: 'monitor', minsAgo: 360 },
+  { category: 'INCIDENT', action: 'Acknowledged incident', actor: 'demo@netwatch.io', target: 'API Health Check', minsAgo: 720 },
+  { category: 'ALERT', action: 'Created alert channel "Email Notifications"', actor: 'demo@netwatch.io', target: 'channel', minsAgo: 1440 },
+  { category: 'USER', action: 'Invited team member viewer@netwatch.io', actor: 'demo@netwatch.io', target: 'VIEWER role', minsAgo: 2880 },
+];
+
 const sql = postgres(loadDatabaseUrl());
+
+async function seedAuditLogs(orgId) {
+  const [{ count }] = await sql`
+    SELECT COUNT(*)::int AS count FROM audit_logs WHERE organization_id = ${orgId}
+  `;
+  if (count > 0) return;
+
+  for (const entry of SAMPLE_AUDIT_LOGS) {
+    await sql`
+      INSERT INTO audit_logs (
+        id, organization_id, category, action, actor, target, created_at
+      ) VALUES (
+        ${randomUUID()}, ${orgId}, ${entry.category}, ${entry.action},
+        ${entry.actor}, ${entry.target},
+        NOW() - (${entry.minsAgo} * INTERVAL '1 minute')
+      )
+    `;
+  }
+  console.log(`Seeded ${SAMPLE_AUDIT_LOGS.length} sample audit logs.`);
+}
 
 try {
   const passwordHash = await bcrypt.hash(DEMO.password, BCRYPT_ROUNDS);
   const email = DEMO.email.toLowerCase();
+  let orgId;
 
   const existingUsers = await sql`
     SELECT u.id, u.organization_id, o.slug
@@ -62,6 +92,7 @@ try {
 
   if (existingUsers.length > 0) {
     const user = existingUsers[0];
+    orgId = user.organization_id;
     await sql`
       UPDATE users
       SET password_hash = ${passwordHash},
@@ -75,7 +106,7 @@ try {
     `;
     console.log('Demo user already exists — password reset to known demo value.\n');
   } else {
-    const orgId = randomUUID();
+    orgId = randomUUID();
     const userId = randomUUID();
 
     await sql.begin(async (tx) => {
@@ -93,17 +124,27 @@ try {
           'OWNER', true, true, ${orgId}, NOW(), NOW()
         )
       `;
-
-      await tx`
-        INSERT INTO organization_settings (
-          organization_id, latency_threshold_ms, notification_email, timezone, created_at, updated_at
-        ) VALUES (${orgId}, 500, ${email}, 'UTC', NOW(), NOW())
-        ON CONFLICT (organization_id) DO NOTHING
-      `;
     });
 
     console.log('Demo user created.\n');
   }
+
+  await sql`
+    INSERT INTO organization_settings (
+      organization_id, latency_threshold_ms, notification_email, timezone,
+      enable_public_status_page, preferences, created_at, updated_at
+    ) VALUES (
+      ${orgId}, 500, ${email}, 'UTC', true,
+      ${JSON.stringify({ statusPageSlug: DEMO.orgSlug, defaultCheckInterval: 60, defaultTimeout: 30 })},
+      NOW(), NOW()
+    )
+    ON CONFLICT (organization_id) DO UPDATE SET
+      enable_public_status_page = true,
+      preferences = COALESCE(organization_settings.preferences, '{}'::jsonb) || ${JSON.stringify({ statusPageSlug: DEMO.orgSlug })}::jsonb,
+      updated_at = NOW()
+  `;
+
+  await seedAuditLogs(orgId);
 
   console.log('══════════════════════════════════════');
   console.log('  NetWatch demo login');

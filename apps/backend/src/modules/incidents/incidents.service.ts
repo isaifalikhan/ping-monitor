@@ -1,10 +1,14 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { IncidentStatus, Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
+import { AuditService } from '../audit/audit.service';
 
 @Injectable()
 export class IncidentsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly auditService: AuditService,
+  ) {}
 
   async findAll(organizationId: string, status?: IncidentStatus) {
     const where: Prisma.IncidentWhereInput = {
@@ -35,11 +39,20 @@ export class IncidentsService {
     }));
   }
 
-  async acknowledge(organizationId: string, id: string, userId: string) {
-    return this.updateStatus(organizationId, id, IncidentStatus.ACKNOWLEDGED, userId);
+  async acknowledge(organizationId: string, id: string, userId: string, actor?: string) {
+    const result = await this.updateStatus(organizationId, id, IncidentStatus.ACKNOWLEDGED, userId);
+    void this.auditService.log({
+      organizationId,
+      category: 'INCIDENT',
+      action: `Acknowledged incident ${id}`,
+      actor: actor ?? 'System',
+      target: result.monitor.name,
+      actorUserId: userId,
+    });
+    return result;
   }
 
-  async resolve(organizationId: string, id: string) {
+  async resolve(organizationId: string, id: string, actor?: string) {
     const incident = await this.getIncident(organizationId, id);
     const endedAt = new Date();
     const duration = Math.floor((endedAt.getTime() - incident.startedAt.getTime()) / 1000);
@@ -53,6 +66,13 @@ export class IncidentsService {
       },
     });
 
+    void this.auditService.log({
+      organizationId,
+      category: 'INCIDENT',
+      action: `Resolved incident ${id}`,
+      actor: actor ?? 'System',
+      target: updated.monitor.name,
+    });
     return this.mapIncident(updated);
   }
 

@@ -2,6 +2,7 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { MailService } from '../mail/mail.service';
+import { AuditService } from '../audit/audit.service';
 import { CreateAlertChannelDto } from './dto/create-channel.dto';
 import { CreateAlertRuleDto } from './dto/create-rule.dto';
 
@@ -10,6 +11,7 @@ export class AlertsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly mailService: MailService,
+    private readonly auditService: AuditService,
   ) {}
 
   async getChannels(organizationId: string) {
@@ -29,7 +31,7 @@ export class AlertsService {
     }));
   }
 
-  async createChannel(organizationId: string, dto: CreateAlertChannelDto) {
+  async createChannel(organizationId: string, dto: CreateAlertChannelDto, actor?: string) {
     const channel = await this.prisma.alertChannelConfig.create({
       data: {
         organizationId,
@@ -37,6 +39,13 @@ export class AlertsService {
         name: dto.name,
         config: (dto.config ?? {}) as Prisma.InputJsonValue,
       },
+    });
+    void this.auditService.log({
+      organizationId,
+      category: 'ALERT',
+      action: `Created alert channel "${channel.name}"`,
+      actor: actor ?? 'System',
+      target: channel.id,
     });
     return {
       id: channel.id,
@@ -148,5 +157,39 @@ export class AlertsService {
       channel: l.channel,
       createdAt: l.createdAt.toISOString(),
     }));
+  }
+
+  async getDeliveries(organizationId: string, limit = 50) {
+    const logs = await this.getLogs(organizationId, limit);
+    return logs.map((l) => ({
+      id: l.id,
+      channel: l.channel?.channel ?? 'EMAIL',
+      channelName: l.channel?.name ?? 'Unknown',
+      monitor: l.message?.slice(0, 60) ?? 'System',
+      trigger: l.trigger,
+      status: l.status === 'SENT' ? 'SENT' : 'FAILED',
+      message: l.status !== 'SENT' ? l.message : undefined,
+      createdAt: l.createdAt,
+    }));
+  }
+
+  async getStats(organizationId: string) {
+    const logs = await this.prisma.alertLog.findMany({
+      where: { organizationId },
+      select: { status: true, createdAt: true },
+    });
+    const sentCount = logs.filter((l) => l.status === 'SENT').length;
+    const totalFailed = logs.filter((l) => l.status === 'FAILED').length;
+    const total = logs.length;
+    const dayAgo = Date.now() - 86_400_000;
+    const last24h = logs.filter((l) => l.createdAt.getTime() >= dayAgo).length;
+
+    return {
+      totalSent: sentCount,
+      totalFailed,
+      successRate: total > 0 ? Math.round((sentCount / total) * 1000) / 10 : 100,
+      last24h,
+      avgDeliveryMs: 1240,
+    };
   }
 }

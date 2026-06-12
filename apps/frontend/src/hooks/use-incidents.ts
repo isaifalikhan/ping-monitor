@@ -6,6 +6,7 @@ import type { Incident } from '@/lib/types';
 import { DEMO_MODE } from '@/lib/demo-mode';
 import { useDemoStore, demoDelay } from '@/stores/demo-store';
 import { toast } from '@/hooks/use-toast';
+import { useAuthStore } from '@/stores/auth-store';
 
 export function useIncidents(status?: string) {
   const incidents = useDemoStore((s) => s.incidents);
@@ -34,12 +35,14 @@ export function useIncidents(status?: string) {
 export function useAcknowledgeIncident() {
   const qc = useQueryClient();
   const acknowledgeIncident = useDemoStore((s) => s.acknowledgeIncident);
+  const user = useAuthStore((s) => s.user);
+  const actor = user ? `${user.firstName} ${user.lastName}` : 'You';
 
   return useMutation({
     mutationFn: async (id: string) => {
       if (DEMO_MODE) {
         await demoDelay();
-        acknowledgeIncident(id);
+        acknowledgeIncident(id, actor);
         return;
       }
       return apiClient.patch(`/incidents/${id}/acknowledge`);
@@ -60,12 +63,14 @@ export function useAcknowledgeIncident() {
 export function useResolveIncident() {
   const qc = useQueryClient();
   const resolveIncident = useDemoStore((s) => s.resolveIncident);
+  const user = useAuthStore((s) => s.user);
+  const actor = user ? `${user.firstName} ${user.lastName}` : 'You';
 
   return useMutation({
     mutationFn: async (id: string) => {
       if (DEMO_MODE) {
         await demoDelay();
-        resolveIncident(id);
+        resolveIncident(id, actor);
         return;
       }
       return apiClient.patch(`/incidents/${id}/resolve`);
