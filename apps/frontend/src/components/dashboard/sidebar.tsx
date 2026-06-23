@@ -30,7 +30,7 @@ const navItems = [
 ];
 
 const externalLinks = [
-  { href: '/status', label: 'Status Page', icon: ExternalLink },
+  { href: '/status', label: 'Infrastructure Status', icon: ExternalLink },
 ];
 
 export function Sidebar() {
@@ -66,7 +66,7 @@ export function Sidebar() {
         })}
       </nav>
       <div className="border-t p-4 space-y-1">
-        <p className="px-3 text-xs font-medium text-muted-foreground uppercase tracking-wider mb-2">Public</p>
+        <p className="px-3 text-xs font-medium text-muted-foreground uppercase tracking-wider mb-2">Internal</p>
         {externalLinks.map((item) => {
           const Icon = item.icon;
           return (

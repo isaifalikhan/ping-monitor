@@ -14,6 +14,7 @@ import { Avatar } from '@/components/ui/avatar';
 import { useTeam, useUpdateMember, useRemoveMember, useInviteMember, usePermissionsMatrix } from '@/hooks/use-team';
 import { useAuthStore } from '@/stores/auth-store';
 import { DEMO_MODE } from '@/lib/demo-mode';
+import { canManageTeam, PERMISSION_COLUMNS } from '@/lib/roles';
 
 function formatLastLogin(date?: string | null) {
   if (!date) return 'Never';
@@ -37,7 +38,8 @@ export default function TeamPage() {
   const [inviteEmail, setInviteEmail] = useState('');
   const [inviteRole, setInviteRole] = useState('VIEWER');
 
-  const canManage = DEMO_MODE || user?.role === 'OWNER' || user?.role === 'ADMIN';
+  const canManage = DEMO_MODE || canManageTeam(user?.role);
+  const isOwner = user?.role === 'OWNER';
 
   const handleInvite = () => {
     inviteMember.mutate(
@@ -72,6 +74,7 @@ export default function TeamPage() {
               <Label>Role</Label>
               <Select value={inviteRole} onChange={(e) => setInviteRole(e.target.value)}>
                 <option value="VIEWER">Viewer</option>
+                <option value="ENGINEER">Engineer</option>
                 <option value="ADMIN">Admin</option>
               </Select>
             </div>
@@ -115,8 +118,9 @@ export default function TeamPage() {
                     {canManage && m.id !== user?.id ? (
                       <Select value={m.role} onChange={(e) => updateMember.mutate({ id: m.id, data: { role: e.target.value } })} className="w-[120px]">
                         <option value="VIEWER">Viewer</option>
+                        <option value="ENGINEER">Engineer</option>
                         <option value="ADMIN">Admin</option>
-                        <option value="OWNER">Owner</option>
+                        {isOwner && <option value="OWNER">Owner</option>}
                       </Select>
                     ) : (
                       <Badge variant="outline">{m.role}</Badge>
@@ -182,20 +186,18 @@ export default function TeamPage() {
               <thead>
                 <tr className="border-b text-muted-foreground">
                   <th className="px-6 py-3 text-left">Permission</th>
-                  <th className="px-6 py-3 text-center">Owner</th>
-                  <th className="px-6 py-3 text-center">Admin</th>
-                  <th className="px-6 py-3 text-center">Network Eng.</th>
-                  <th className="px-6 py-3 text-center">Support Eng.</th>
-                  <th className="px-6 py-3 text-center">Viewer</th>
+                  {PERMISSION_COLUMNS.map((col) => (
+                    <th key={col.key} className="px-6 py-3 text-center">{col.label}</th>
+                  ))}
                 </tr>
               </thead>
               <tbody>
                 {permissions.map((row) => (
                   <tr key={row.permission} className="border-b last:border-0 hover:bg-muted/30">
                     <td className="px-6 py-3">{row.permission}</td>
-                    {(['owner', 'admin', 'network', 'support', 'viewer'] as const).map((col) => (
-                      <td key={col} className="px-6 py-3 text-center">
-                        {row[col] ? <span className="text-green-500">✓</span> : <span className="text-muted-foreground">—</span>}
+                    {PERMISSION_COLUMNS.map((col) => (
+                      <td key={col.key} className="px-6 py-3 text-center">
+                        {row[col.key] ? <span className="text-green-500">✓</span> : <span className="text-muted-foreground">—</span>}
                       </td>
                     ))}
                   </tr>

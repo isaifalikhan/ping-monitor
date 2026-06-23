@@ -3,9 +3,7 @@ export enum MonitorType {
   HTTP = 'HTTP',
   HTTPS = 'HTTPS',
   TCP = 'TCP',
-  UDP = 'UDP',
   SSL = 'SSL',
   DNS = 'DNS',
   API = 'API',
-  KEYWORD = 'KEYWORD',
 }

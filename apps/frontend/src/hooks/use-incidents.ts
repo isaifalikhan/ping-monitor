@@ -32,27 +32,27 @@ export function useIncidents(status?: string) {
   return apiQuery;
 }
 
+function actorName() {
+  const user = useAuthStore.getState().user;
+  return user ? `${user.firstName} ${user.lastName}` : 'You';
+}
+
 export function useAcknowledgeIncident() {
   const qc = useQueryClient();
   const acknowledgeIncident = useDemoStore((s) => s.acknowledgeIncident);
-  const user = useAuthStore((s) => s.user);
-  const actor = user ? `${user.firstName} ${user.lastName}` : 'You';
 
   return useMutation({
     mutationFn: async (id: string) => {
       if (DEMO_MODE) {
         await demoDelay();
-        acknowledgeIncident(id, actor);
+        acknowledgeIncident(id, actorName());
         return;
       }
-      return apiClient.patch(`/incidents/${id}/acknowledge`);
+      return apiClient.patch<Incident>(`/incidents/${id}/acknowledge`);
     },
     onSuccess: () => {
-      if (DEMO_MODE) {
-        toast({ title: 'Incident acknowledged', variant: 'success' });
-      } else {
-        qc.invalidateQueries({ queryKey: ['incidents'] });
-      }
+      toast({ title: 'Incident acknowledged', variant: 'success' });
+      qc.invalidateQueries({ queryKey: ['incidents'] });
     },
     onError: () => {
       toast({ title: 'Failed to acknowledge incident', variant: 'destructive' });
@@ -63,27 +63,64 @@ export function useAcknowledgeIncident() {
 export function useResolveIncident() {
   const qc = useQueryClient();
   const resolveIncident = useDemoStore((s) => s.resolveIncident);
-  const user = useAuthStore((s) => s.user);
-  const actor = user ? `${user.firstName} ${user.lastName}` : 'You';
 
   return useMutation({
-    mutationFn: async (id: string) => {
+    mutationFn: async ({
+      id,
+      rootCause,
+      notes,
+    }: {
+      id: string;
+      rootCause?: string;
+      notes?: string;
+    }) => {
       if (DEMO_MODE) {
         await demoDelay();
-        resolveIncident(id, actor);
+        resolveIncident(id, actorName(), { rootCause, notes });
         return;
       }
-      return apiClient.patch(`/incidents/${id}/resolve`);
+      return apiClient.patch<Incident>(`/incidents/${id}/resolve`, { rootCause, notes });
     },
     onSuccess: () => {
-      if (DEMO_MODE) {
-        toast({ title: 'Incident resolved', variant: 'success' });
-      } else {
-        qc.invalidateQueries({ queryKey: ['incidents'] });
-      }
+      toast({ title: 'Incident resolved', variant: 'success' });
+      qc.invalidateQueries({ queryKey: ['incidents'] });
     },
     onError: () => {
       toast({ title: 'Failed to resolve incident', variant: 'destructive' });
+    },
+  });
+}
+
+export function useUpdateIncident() {
+  const qc = useQueryClient();
+  const updateIncident = useDemoStore((s) => s.updateIncident);
+
+  return useMutation({
+    mutationFn: async ({
+      id,
+      data,
+    }: {
+      id: string;
+      data: {
+        assignedUserId?: string | null;
+        severity?: string;
+        rootCause?: string | null;
+        notes?: string | null;
+        note?: string;
+      };
+    }) => {
+      if (DEMO_MODE) {
+        await demoDelay();
+        updateIncident(id, data, actorName());
+        return;
+      }
+      return apiClient.patch<Incident>(`/incidents/${id}`, data);
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['incidents'] });
+    },
+    onError: () => {
+      toast({ title: 'Failed to update incident', variant: 'destructive' });
     },
   });
 }

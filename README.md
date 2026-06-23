@@ -1,81 +1,79 @@
 # NetWatch
 
-Enterprise-grade Network Monitoring and Infrastructure Health Platform.
+Internal infrastructure monitoring for a single company — ERP systems, servers, network devices, APIs, SSL, and critical services.
 
-## Tech Stack
+## Stack (production)
 
-- **Frontend:** Next.js 15, React, TypeScript, Tailwind CSS, Shadcn/UI, TanStack Query, Zustand
-- **Backend:** NestJS, Prisma, PostgreSQL, Redis, BullMQ
-- **Infrastructure:** Docker, Docker Compose, Nginx
+| Layer | Technology |
+|-------|------------|
+| App | Next.js 15 (App Router) on Vercel |
+| Database | Supabase PostgreSQL |
+| Monitoring | Vercel Cron → `/api/cron/check-monitors` |
+| Auth | Custom JWT + httpOnly cookies |
 
-## Project Structure
+The legacy `apps/backend` NestJS service is **not used** in production.
+
+## Quick start (local)
+
+```bash
+pnpm install
+cp apps/frontend/.env.example apps/frontend/.env.local
+# Add Supabase URL + SUPABASE_SERVICE_ROLE_KEY + JWT_SECRET + CRON_SECRET
+pnpm dev
+```
+
+Open http://localhost:3001
+
+Optional seed data:
+
+```bash
+pnpm db:seed
+# Login: demo@netwatch.io / Demo1234!
+```
+
+## Production deployment
+
+See **[apps/frontend/DEPLOYMENT.md](apps/frontend/DEPLOYMENT.md)** for the full guide:
+
+- Supabase setup and migrations
+- Vercel configuration and cron
+- Environment variables
+- Post-deploy verification checklist
+- Security and operations
+
+## Project structure
 
 ```
-apps/
-  frontend/     # Next.js 15 App Router
-  backend/      # NestJS API
-packages/
-  shared/       # Shared types, enums, validators
-  config/       # Environment validation
-infrastructure/
-  docker/       # Production Dockerfiles
-  nginx/        # Nginx reverse proxy config
+apps/frontend/          # Next.js app (deploy this to Vercel)
+  src/app/api/          # API routes
+  src/lib/monitoring/   # Check executor + cron
+  src/lib/services/     # Business logic
+  supabase/             # schema.sql + migrations
+packages/shared/        # Shared types and enums
+apps/backend/           # Legacy — not deployed
 ```
 
-## Getting Started
+## Key environment variables
 
-### Prerequisites
+| Variable | Required |
+|----------|----------|
+| `NEXT_PUBLIC_SUPABASE_URL` | Yes |
+| `SUPABASE_SERVICE_ROLE_KEY` | Yes |
+| `JWT_SECRET` (32+ chars) | Yes |
+| `CRON_SECRET` | Yes (production) |
+| `NEXT_PUBLIC_DEMO_MODE=false` | Yes (production) |
+| `APP_URL` | Yes (production) |
+| `SMTP_*` | Optional (email alerts) |
 
-- Node.js 20+
-- pnpm 9+
-- Docker & Docker Compose
+## Roles
 
-### Setup
-
-1. Copy environment variables:
-   ```bash
-   cp .env.example .env
-   ```
-
-2. Start infrastructure:
-   ```bash
-   docker compose up -d
-   ```
-
-3. Install dependencies:
-   ```bash
-   pnpm install
-   ```
-
-4. Run database migrations:
-   ```bash
-   pnpm db:generate
-   pnpm db:migrate
-   ```
-
-5. Start development servers:
-   ```bash
-   pnpm dev
-   ```
-
-- Frontend: http://localhost:3000
-- Backend API: http://localhost:4000/api/v1
-- API Docs: http://localhost:4000/docs
-- MailHog: http://localhost:8025
-
-## Phase 1 Progress
-
-- [x] **Module 1: Authentication & Organizations**
-  - Register, Login, Logout, Refresh Token
-  - Forgot/Reset Password, Email Verification
-  - Team Invitations
-  - Multi-tenant organization scoping
-  - Role-based access control (OWNER, ADMIN, VIEWER)
-- [ ] Module 2: Dashboard (full)
-- [ ] Module 3: Monitor CRUD
-- [ ] Module 4: Ping Monitoring
-- [ ] Module 5: Email Alerts
+| Role | Access |
+|------|--------|
+| Owner | Full access + company settings |
+| Admin | Monitors, alerts, maintenance, team, audit logs |
+| Engineer | Incidents, view monitors & reports |
+| Viewer | Read-only |
 
 ## License
 
-Proprietary - All rights reserved.
+Proprietary — All rights reserved.

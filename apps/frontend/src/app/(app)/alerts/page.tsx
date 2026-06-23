@@ -22,9 +22,16 @@ import {
   useTestAlert,
 } from '@/hooks/use-alerts';
 import { useMonitors } from '@/hooks/use-monitors';
+import { MaintenanceBanner } from '@/components/maintenance/maintenance-banner';
+import { useActiveMaintenance } from '@/hooks/use-maintenance';
 
-const CHANNELS = ['EMAIL', 'WHATSAPP', 'TELEGRAM', 'SLACK', 'TEAMS', 'WEBHOOK'] as const;
-const TRIGGERS = ['MONITOR_DOWN', 'MONITOR_RECOVERY', 'HIGH_LATENCY', 'PACKET_LOSS', 'SSL_EXPIRY', 'DNS_FAILURE'] as const;
+import {
+  ALERT_TRIGGERS,
+  ALERT_TRIGGER_LABELS,
+  SUPPORTED_ALERT_CHANNELS,
+  PLANNED_ALERT_CHANNELS,
+  isSupportedAlertChannel,
+} from '@/lib/alerts/triggers';
 
 const channelIcons: Record<string, typeof Mail> = {
   EMAIL: Mail,
@@ -41,6 +48,7 @@ export default function AlertsPage() {
   const { data: deliveries } = useAlertDeliveries();
   const stats = useAlertStats();
   const { data: monitors } = useMonitors();
+  const { data: activeMaintenance } = useActiveMaintenance();
   const createChannel = useCreateAlertChannel();
   const createRule = useCreateAlertRule();
   const testAlert = useTestAlert();
@@ -55,7 +63,10 @@ export default function AlertsPage() {
   const [ruleMonitorId, setRuleMonitorId] = useState('');
 
   const handleCreateChannel = () => {
-    const config = channelType === 'EMAIL' ? { email: channelEmail } : { url: channelEmail };
+    const config =
+      channelType === 'EMAIL'
+        ? { email: channelEmail }
+        : { url: channelEmail };
     createChannel.mutate(
       { channel: channelType, name: channelName, config },
       { onSuccess: () => { setShowChannelForm(false); setChannelName(''); setChannelEmail(''); } },
@@ -74,6 +85,12 @@ export default function AlertsPage() {
   return (
     <div className="space-y-6">
       <PageHeader title="Alerts" description="Configure notification channels and alert rules" />
+
+      <MaintenanceBanner
+        activeWindows={activeMaintenance ?? []}
+        monitors={monitors?.items ?? []}
+        variant="compact"
+      />
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <StatCard title="Total Sent" value={stats.totalSent.toLocaleString()} icon={Send} />
@@ -102,12 +119,23 @@ export default function AlertsPage() {
             <div className="space-y-2">
               <Label>Channel Type</Label>
               <Select value={channelType} onChange={(e) => setChannelType(e.target.value)}>
-                {CHANNELS.map((c) => <option key={c} value={c}>{c}</option>)}
+                {SUPPORTED_ALERT_CHANNELS.map((c) => (
+                  <option key={c} value={c}>{c}</option>
+                ))}
               </Select>
+              <p className="text-xs text-muted-foreground">
+                Coming soon: {PLANNED_ALERT_CHANNELS.join(', ')}
+              </p>
             </div>
             <div className="space-y-2">
-              <Label>{channelType === 'EMAIL' ? 'Email Address' : 'Webhook / Config'}</Label>
-              <Input value={channelEmail} onChange={(e) => setChannelEmail(e.target.value)} placeholder={channelType === 'EMAIL' ? 'ops@company.com' : 'https://...'} />
+              <Label>
+                {channelType === 'EMAIL' ? 'Email address' : channelType === 'SLACK' ? 'Slack webhook URL' : 'Webhook URL'}
+              </Label>
+              <Input
+                value={channelEmail}
+                onChange={(e) => setChannelEmail(e.target.value)}
+                placeholder={channelType === 'EMAIL' ? 'ops@company.com' : 'https://hooks.slack.com/...'}
+              />
             </div>
             <Button onClick={handleCreateChannel} disabled={createChannel.isPending || !channelName}>Save Channel</Button>
           </CardContent>
@@ -128,7 +156,9 @@ export default function AlertsPage() {
             <div className="space-y-2">
               <Label>Trigger</Label>
               <Select value={ruleTrigger} onChange={(e) => setRuleTrigger(e.target.value)}>
-                {TRIGGERS.map((t) => <option key={t} value={t}>{t.replace(/_/g, ' ')}</option>)}
+                {ALERT_TRIGGERS.map((t) => (
+                  <option key={t} value={t}>{ALERT_TRIGGER_LABELS[t]}</option>
+                ))}
               </Select>
             </div>
             <div className="space-y-2">
@@ -161,12 +191,16 @@ export default function AlertsPage() {
             <tbody>
               {channels?.map((c) => {
                 const Icon = channelIcons[c.channel] ?? Mail;
+                const supported = isSupportedAlertChannel(c.channel);
                 return (
                   <tr key={c.id} className="border-b last:border-0 hover:bg-muted/50 transition-colors">
                     <td className="px-6 py-3">
                       <div className="flex items-center gap-2 font-medium">
                         <Icon className="h-4 w-4 text-muted-foreground" />
                         {c.name}
+                        {!supported && (
+                          <Badge variant="muted" className="text-[10px]">Coming soon</Badge>
+                        )}
                       </div>
                     </td>
                     <td className="px-6 py-3"><Badge variant="outline">{c.channel}</Badge></td>
@@ -179,7 +213,12 @@ export default function AlertsPage() {
                     </td>
                     <td className="px-6 py-3"><StatusBadge status={c.isActive ? 'UP' : 'DOWN'} /></td>
                     <td className="px-6 py-3">
-                      <Button size="sm" variant="outline" onClick={() => testAlert.mutate(c.id)} disabled={testAlert.isPending}>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => testAlert.mutate(c.id)}
+                        disabled={testAlert.isPending || !supported}
+                      >
                         <Zap className="h-3 w-3 mr-1" />Test
                       </Button>
                     </td>
@@ -206,7 +245,9 @@ export default function AlertsPage() {
             <tbody>
               {rules?.map((r) => (
                 <tr key={r.id} className="border-b last:border-0 hover:bg-muted/50">
-                  <td className="px-6 py-3">{r.trigger.replace(/_/g, ' ')}</td>
+                  <td className="px-6 py-3">
+                    {ALERT_TRIGGER_LABELS[r.trigger as keyof typeof ALERT_TRIGGER_LABELS] ?? r.trigger.replace(/_/g, ' ')}
+                  </td>
                   <td className="px-6 py-3">{r.channel.name}</td>
                   <td className="px-6 py-3">{r.monitor?.name ?? 'All monitors'}</td>
                   <td className="px-6 py-3"><StatusBadge status={r.isActive ? 'UP' : 'DOWN'} /></td>
@@ -235,7 +276,9 @@ export default function AlertsPage() {
                 <tr key={d.id} className="border-b last:border-0 hover:bg-muted/50">
                   <td className="px-6 py-3 font-medium">{d.monitor}</td>
                   <td className="px-6 py-3">{d.channelName}</td>
-                  <td className="px-6 py-3">{d.trigger.replace(/_/g, ' ')}</td>
+                  <td className="px-6 py-3">
+                    {ALERT_TRIGGER_LABELS[d.trigger as keyof typeof ALERT_TRIGGER_LABELS] ?? d.trigger.replace(/_/g, ' ')}
+                  </td>
                   <td className="px-6 py-3">
                     <StatusBadge status={d.status === 'SENT' ? 'UP' : 'DOWN'} />
                     {d.message && <p className="text-xs text-muted-foreground mt-0.5">{d.message}</p>}

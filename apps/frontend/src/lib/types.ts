@@ -10,6 +10,36 @@ export interface Monitor {
 
   target: string;
 
+  category?: string | null;
+
+  port?: number | null;
+
+  deviceLocation?: string | null;
+
+  rackCabinet?: string | null;
+
+  switchPort?: string | null;
+
+  deviceOwner?: string | null;
+
+  criticality?: string;
+
+  vendor?: string | null;
+
+  model?: string | null;
+
+  ipAddress?: string | null;
+
+  snmpCommunity?: string | null;
+
+  snmpVersion?: string | null;
+
+  interfaceName?: string | null;
+
+  interfaceStatus?: string | null;
+
+  bandwidthUsageMbps?: number | null;
+
   status: string;
 
   tags: string[];
@@ -25,6 +55,14 @@ export interface Monitor {
   isActive: boolean;
 
   maintenanceMode: boolean;
+
+  inMaintenance?: boolean;
+
+  alertsPaused?: boolean;
+
+  maintenanceWindow?: { id: string; title: string } | null;
+
+  displayStatus?: string;
 
   lastResponseTime?: number | null;
 
@@ -62,7 +100,7 @@ export interface IncidentTimelineEvent {
 
   id: string;
 
-  type: 'DETECTED' | 'ACKNOWLEDGED' | 'ESCALATED' | 'NOTE' | 'RESOLVED';
+  type: 'DETECTED' | 'ACKNOWLEDGED' | 'ASSIGNED' | 'ALERT_SENT' | 'ESCALATED' | 'NOTE' | 'RESOLVED';
 
   message: string;
 

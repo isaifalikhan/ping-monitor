@@ -11,29 +11,17 @@ import {
   statusPageMaintenance,
 } from '@/lib/mock-data';
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000/api/v1';
-
-async function fetchPublicStatus(slug: string) {
-  const response = await fetch(`${API_URL}/public/status/${slug}`);
-  const json = await response.json();
-  if (!response.ok || !json.success) {
-    throw new Error(json.error || 'Failed to load status page');
-  }
-  return json.data as {
-    config: typeof statusPageConfig;
-    components: typeof statusPageComponents;
-    uptimeHistory: typeof statusPageUptimeHistory;
-    incidents: typeof statusPageIncidents;
-    maintenance: typeof statusPageMaintenance;
-  };
-}
-
 export function useStatusPage(slug = 'netwatch-demo') {
-  const resolvedSlug = slug;
-
   const apiQuery = useQuery({
-    queryKey: ['status-page', resolvedSlug],
-    queryFn: () => fetchPublicStatus(resolvedSlug),
+    queryKey: ['status-page', slug],
+    queryFn: () =>
+      apiClient.get<{
+        config: typeof statusPageConfig;
+        components: typeof statusPageComponents;
+        uptimeHistory: typeof statusPageUptimeHistory;
+        incidents: typeof statusPageIncidents;
+        maintenance: typeof statusPageMaintenance;
+      }>(`/public/status/${slug}`),
     enabled: !DEMO_MODE,
   });
 
@@ -52,7 +40,7 @@ export function useStatusPage(slug = 'netwatch-demo') {
   return {
     config: apiQuery.data?.config ?? {
       organizationName: 'Loading…',
-      slug: resolvedSlug,
+      slug,
       overallStatus: 'UP' as const,
       overallUptime90d: 100,
       lastUpdated: new Date().toISOString(),

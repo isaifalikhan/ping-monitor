@@ -15,8 +15,8 @@ export default function HomePage() {
             <Link href="/login">
               <Button variant="ghost">Sign in</Button>
             </Link>
-            <Link href="/register">
-              <Button>Get Started</Button>
+            <Link href="/login">
+              <Button>Sign in to NetWatch</Button>
             </Link>
           </div>
         </div>
@@ -25,23 +25,18 @@ export default function HomePage() {
       <main>
         <section className="container mx-auto px-4 py-24 text-center">
           <h1 className="text-4xl md:text-6xl font-bold tracking-tight mb-6">
-            Monitor Your Infrastructure
+            Internal Infrastructure
             <br />
-            <span className="text-primary">With Confidence</span>
+            <span className="text-primary">Monitoring</span>
           </h1>
           <p className="text-xl text-muted-foreground max-w-2xl mx-auto mb-8">
-            Real-time monitoring for websites, APIs, servers, and network devices.
-            Detect incidents before they impact your users.
+            Monitor ERP systems, servers, switches, routers, firewalls, APIs, databases,
+            and critical internal services from one dashboard.
           </p>
           <div className="flex gap-4 justify-center">
-            <Link href="/register">
-              <Button size="lg" className="gap-2">
-                Start Free Trial <ArrowRight className="h-4 w-4" />
-              </Button>
-            </Link>
             <Link href="/login">
-              <Button size="lg" variant="outline">
-                Sign In
+              <Button size="lg" className="gap-2">
+                Open Dashboard <ArrowRight className="h-4 w-4" />
               </Button>
             </Link>
           </div>
@@ -51,18 +46,18 @@ export default function HomePage() {
           {[
             {
               icon: Zap,
-              title: 'Real-time Monitoring',
-              description: 'Continuous checks with instant alerts when issues arise.',
+              title: 'Infrastructure Checks',
+              description: 'HTTP, HTTPS, TCP, DNS, SSL, and availability monitoring for internal devices.',
             },
             {
               icon: Shield,
-              title: 'Enterprise Security',
-              description: 'Multi-tenant isolation, role-based access, and audit logs.',
+              title: 'Role-Based Access',
+              description: 'Owner, Admin, Engineer, and Viewer roles for your IT operations team.',
             },
             {
               icon: BarChart3,
-              title: 'Advanced Analytics',
-              description: 'Uptime reports, SLA tracking, and performance insights.',
+              title: 'Incidents & Reports',
+              description: 'Automatic incidents, alert delivery, uptime tracking, and operational reports.',
             },
           ].map((feature) => (
             <div key={feature.title} className="rounded-lg border p-6 space-y-3">

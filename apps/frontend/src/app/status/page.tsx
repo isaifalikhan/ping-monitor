@@ -1,8 +1,10 @@
 'use client';
 
+import { useSearchParams } from 'next/navigation';
 import { Activity, CheckCircle2, AlertTriangle, XCircle, Wrench } from 'lucide-react';
 import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { useStatusPage } from '@/hooks/use-status-page';
+import { DEMO_MODE } from '@/lib/demo-mode';
 import { cn } from '@/lib/utils';
 
 const statusConfig = {
@@ -20,16 +22,25 @@ const incidentStatusColors: Record<string, string> = {
 };
 
 export default function StatusPage() {
-  const { config, components, uptimeHistory, incidents, maintenance } = useStatusPage();
+  const searchParams = useSearchParams();
+  const slug = searchParams.get('slug') ?? (DEMO_MODE ? 'netwatch-demo' : 'acme-corp');
+  const { config, components, uptimeHistory, incidents, maintenance } = useStatusPage(slug);
   const overall = statusConfig[config.overallStatus] ?? statusConfig.UP;
   const OverallIcon = overall.icon;
+  const brandColor = (config as { brandPrimaryColor?: string }).brandPrimaryColor;
+  const brandLogo = (config as { brandLogoUrl?: string | null }).brandLogoUrl;
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-screen bg-background" style={brandColor ? { ['--primary' as string]: brandColor } : undefined}>
       <header className="border-b bg-card">
         <div className="mx-auto max-w-4xl px-6 py-8">
           <div className="flex items-center gap-3 mb-6">
-            <Activity className="h-8 w-8 text-primary" />
+            {brandLogo ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={brandLogo} alt="" className="h-10 w-10 rounded object-contain" />
+            ) : (
+              <Activity className="h-8 w-8 text-primary" />
+            )}
             <div>
               <h1 className="text-2xl font-bold">{config.organizationName}</h1>
               <p className="text-sm text-muted-foreground">System Status</p>

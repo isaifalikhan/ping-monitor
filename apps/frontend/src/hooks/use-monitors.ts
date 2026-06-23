@@ -2,10 +2,11 @@
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiClient } from '@/lib/api-client';
-import type { Monitor, Paginated } from '@/lib/types';
+import type { Monitor, Paginated, MaintenanceWindow } from '@/lib/types';
 import { DEMO_MODE } from '@/lib/demo-mode';
 import { useDemoStore, demoDelay } from '@/stores/demo-store';
 import { toast } from '@/hooks/use-toast';
+import { getMonitorMaintenanceState, resolveMaintenanceStatus } from '@/lib/maintenance/utils';
 
 function filterMonitors(
   monitors: Monitor[],
@@ -28,6 +29,7 @@ function filterMonitors(
 
 export function useMonitors(params?: { search?: string; status?: string; type?: string }) {
   const monitors = useDemoStore((s) => s.monitors);
+  const maintenanceWindows = useDemoStore((s) => s.maintenanceWindows);
 
   const apiQuery = useQuery({
     queryKey: ['monitors', params],
@@ -36,7 +38,21 @@ export function useMonitors(params?: { search?: string; status?: string; type?: 
   });
 
   if (DEMO_MODE) {
-    const items = filterMonitors(monitors, params);
+    let items = filterMonitors(monitors, params).map((m) => {
+      const state = getMonitorMaintenanceState(m, maintenanceWindows);
+      return {
+        ...m,
+        inMaintenance: state.inMaintenance,
+        alertsPaused: state.alertsPaused,
+        maintenanceWindow: state.maintenanceWindow,
+        displayStatus: state.displayStatus,
+      };
+    });
+    if (params?.status === 'MAINTENANCE') {
+      items = items.filter((m) => m.inMaintenance);
+    } else if (params?.status) {
+      items = items.filter((m) => m.status === params.status && !m.inMaintenance);
+    }
     return {
       data: { items, total: items.length, page: 1, limit: 100, totalPages: 1 },
       isLoading: false,
@@ -53,6 +69,7 @@ export function useMonitor(id: string) {
   const monitors = useDemoStore((s) => s.monitors);
   const monitorChecks = useDemoStore((s) => s.monitorChecks);
   const incidents = useDemoStore((s) => s.incidents);
+  const maintenanceWindows = useDemoStore((s) => s.maintenanceWindows);
   const getMonitorDetail = useDemoStore((s) => s.getMonitorDetail);
 
   const apiQuery = useQuery({
@@ -63,6 +80,7 @@ export function useMonitor(id: string) {
         checks: unknown[];
         incidents: unknown[];
         alertHistory: unknown[];
+        maintenanceWindows?: MaintenanceWindow[];
       }>(`/monitors/${id}`),
     enabled: !DEMO_MODE && !!id,
   });
@@ -71,8 +89,32 @@ export function useMonitor(id: string) {
     void monitors;
     void monitorChecks;
     void incidents;
+    const detail = id ? getMonitorDetail(id) : null;
+    if (!detail) {
+      return {
+        data: undefined,
+        isLoading: false,
+        isError: false,
+        error: null,
+        refetch: async () => ({}),
+      };
+    }
+    const state = getMonitorMaintenanceState(detail.monitor, maintenanceWindows);
     return {
-      data: id ? getMonitorDetail(id) ?? undefined : undefined,
+      data: {
+        ...detail,
+        monitor: {
+          ...detail.monitor,
+          inMaintenance: state.inMaintenance,
+          alertsPaused: state.alertsPaused,
+          maintenanceWindow: state.maintenanceWindow,
+          displayStatus: state.displayStatus,
+        },
+        maintenanceWindows: maintenanceWindows.filter(
+          (w) => resolveMaintenanceStatus(w.startTime, w.endTime) !== 'COMPLETED' &&
+            (!w.monitor || w.monitor.id === id),
+        ),
+      },
       isLoading: false,
       isError: false,
       error: null,

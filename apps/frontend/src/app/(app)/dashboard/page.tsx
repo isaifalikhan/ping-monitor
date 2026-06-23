@@ -23,12 +23,20 @@ import {
   RecentIncidentsTable,
   RecentChecksTable,
 } from '@/components/dashboard/recent-tables';
+import { LoadingState } from '@/components/shared/loading-state';
 import { useAuthStore } from '@/stores/auth-store';
 import { useDashboardStats } from '@/hooks/use-dashboard';
+import { MaintenanceBanner } from '@/components/maintenance/maintenance-banner';
+import { useActiveMaintenance } from '@/hooks/use-maintenance';
+import { useMonitors } from '@/hooks/use-monitors';
 
 export default function DashboardPage() {
   const { user } = useAuthStore();
-  const { stats } = useDashboardStats();
+  const { stats, isLoading } = useDashboardStats();
+  const { data: activeMaintenance } = useActiveMaintenance();
+  const { data: monitors } = useMonitors();
+
+  if (isLoading) return <LoadingState variant="skeleton" />;
 
   return (
     <div className="space-y-6">
@@ -38,6 +46,11 @@ export default function DashboardPage() {
           Welcome back, {user?.firstName}. Here&apos;s your infrastructure overview.
         </p>
       </div>
+
+      <MaintenanceBanner
+        activeWindows={activeMaintenance ?? []}
+        monitors={monitors?.items ?? []}
+      />
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7">
         <StatCard title="Total Monitors" value={stats.totalMonitors} icon={Monitor} />

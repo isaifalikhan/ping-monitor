@@ -1,6 +1,5 @@
 /**
- * MOCK DATA ONLY - replace with real API later
- * When true, feature pages use local demo state instead of backend APIs.
- * Authentication always uses the real API.
+ * Demo mode loads rich mock data for sales/preview only.
+ * Production internal NetWatch must set NEXT_PUBLIC_DEMO_MODE=false.
  */
-export const DEMO_MODE = true;
+export const DEMO_MODE = process.env.NEXT_PUBLIC_DEMO_MODE !== 'false';

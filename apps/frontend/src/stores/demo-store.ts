@@ -14,6 +14,7 @@ import type {
   TeamMember,
   AuditLogEntry,
 } from '@/lib/types';
+import { resolveMaintenanceStatus } from '@/lib/maintenance/utils';
 import {
   initialMonitors,
   initialMonitorChecks,
@@ -87,7 +88,8 @@ interface DemoState {
 
   getIncidents: (status?: string) => Incident[];
   acknowledgeIncident: (id: string, actor?: string) => void;
-  resolveIncident: (id: string, actor?: string) => void;
+  resolveIncident: (id: string, actor?: string, data?: { rootCause?: string; notes?: string }) => void;
+  updateIncident: (id: string, data: Record<string, unknown>, actor?: string) => void;
 
   addAlertChannel: (data: { channel: string; name: string; config: Record<string, unknown> }) => AlertChannel;
   addAlertRule: (data: { channelId: string; trigger: string; monitorId?: string }) => AlertRule;
@@ -98,6 +100,7 @@ interface DemoState {
   removeMember: (id: string) => void;
 
   createMaintenance: (data: Record<string, unknown>) => MaintenanceWindow;
+  cancelMaintenance: (id: string) => { id: string; action: 'deleted' | 'ended' };
   updateSettings: (data: Partial<DemoSettings>) => void;
 
   getDashboardStats: () => {
@@ -116,6 +119,7 @@ interface DemoState {
     uptimeTrend: { day: string; uptime: number }[];
     uptime24h: { hour: string; uptime: number }[];
     incidentTrend: { day: string; incidents: number }[];
+    categoryDistribution: { name: string; value: number; color: string }[];
     monitorDistribution: { name: string; value: number; color: string }[];
     statusDistribution: { name: string; value: number; color: string }[];
   };
@@ -126,10 +130,12 @@ interface DemoState {
       avgResponseTime: number;
       totalIncidents: number;
       openIncidents: number;
+      resolvedIncidents: number;
     };
     responseTrend: { day: string; ms: number }[];
     incidentTrend: { day: string; count: number }[];
-    monitors: { name: string; uptime: number; status: string }[];
+    monitors: { name: string; uptime: number; status: string; category: string | null }[];
+    period: { from: string; to: string };
   };
 }
 
@@ -184,6 +190,16 @@ export const useDemoStore = create<DemoState>((set, get) => ({
       description: data.description ? String(data.description) : null,
       type: String(data.type),
       target: String(data.target),
+      category: data.category ? String(data.category) : null,
+      port: data.port != null ? Number(data.port) : null,
+      criticality: data.criticality ? String(data.criticality) : 'MEDIUM',
+      deviceLocation: data.deviceLocation ? String(data.deviceLocation) : null,
+      rackCabinet: data.rackCabinet ? String(data.rackCabinet) : null,
+      switchPort: data.switchPort ? String(data.switchPort) : null,
+      deviceOwner: data.deviceOwner ? String(data.deviceOwner) : null,
+      vendor: data.vendor ? String(data.vendor) : null,
+      model: data.model ? String(data.model) : null,
+      ipAddress: data.ipAddress ? String(data.ipAddress) : null,
       status: 'UNKNOWN',
       tags: (data.tags as string[]) ?? [],
       group: data.group ? String(data.group) : null,
@@ -246,17 +262,59 @@ export const useDemoStore = create<DemoState>((set, get) => ({
   acknowledgeIncident: (id, actor = 'You') => {
     const now = new Date().toISOString();
     set((s) => ({
+      incidents: s.incidents.map((i) => {
+        if (i.id !== id) return i;
+        const events: Incident['timeline'] = [
+          {
+            id: uid('t'),
+            type: 'ACKNOWLEDGED',
+            message: `Acknowledged by ${actor}`,
+            user: actor,
+            createdAt: now,
+          },
+        ];
+        const assignedUser = i.assignedUser ?? {
+          id: 'demo-user',
+          firstName: actor.split(' ')[0] ?? 'You',
+          lastName: actor.split(' ').slice(1).join(' ') || '',
+        };
+        if (!i.assignedUser) {
+          events.push({
+            id: uid('t'),
+            type: 'ASSIGNED',
+            message: `Assigned to ${actor}`,
+            user: actor,
+            createdAt: now,
+          });
+        }
+        return {
+          ...i,
+          status: 'ACKNOWLEDGED',
+          assignedUser,
+          timeline: [...(i.timeline ?? []), ...events],
+        };
+      }),
+    }));
+  },
+
+  resolveIncident: (id, actor = 'You', data) => {
+    const now = new Date().toISOString();
+    set((s) => ({
       incidents: s.incidents.map((i) =>
         i.id === id
           ? {
               ...i,
-              status: 'ACKNOWLEDGED',
+              status: 'RESOLVED',
+              endedAt: now,
+              duration: i.duration ?? 0,
+              rootCause: data?.rootCause ?? i.rootCause,
+              notes: data?.notes ?? i.notes,
               timeline: [
                 ...(i.timeline ?? []),
                 {
                   id: uid('t'),
-                  type: 'ACKNOWLEDGED' as const,
-                  message: `Incident acknowledged by ${actor}`,
+                  type: 'RESOLVED' as const,
+                  message: `Resolved by ${actor}`,
                   user: actor,
                   createdAt: now,
                 },
@@ -267,29 +325,49 @@ export const useDemoStore = create<DemoState>((set, get) => ({
     }));
   },
 
-  resolveIncident: (id, actor = 'You') => {
+  updateIncident: (id, data, actor = 'You') => {
     const now = new Date().toISOString();
     set((s) => ({
-      incidents: s.incidents.map((i) =>
-        i.id === id
-          ? {
-              ...i,
-              status: 'RESOLVED',
-              endedAt: now,
-              duration: i.duration ?? 0,
-              timeline: [
-                ...(i.timeline ?? []),
-                {
-                  id: uid('t'),
-                  type: 'RESOLVED' as const,
-                  message: `Incident resolved by ${actor}`,
-                  user: actor,
-                  createdAt: now,
-                },
-              ],
-            }
-          : i,
-      ),
+      incidents: s.incidents.map((i) => {
+        if (i.id !== id) return i;
+        const timeline = [...(i.timeline ?? [])];
+        if (data.note) {
+          timeline.push({
+            id: uid('t'),
+            type: 'NOTE',
+            message: String(data.note),
+            user: actor,
+            createdAt: now,
+          });
+        }
+        if (data.assignedUserId && data.assignedUserId !== i.assignedUser?.id) {
+          const member = get().teamMembers.find((m) => m.id === data.assignedUserId);
+          timeline.push({
+            id: uid('t'),
+            type: 'ASSIGNED',
+            message: `Assigned to ${member ? `${member.firstName} ${member.lastName}` : 'engineer'}`,
+            user: actor,
+            createdAt: now,
+          });
+        }
+        const member = data.assignedUserId
+          ? get().teamMembers.find((m) => m.id === data.assignedUserId)
+          : null;
+        return {
+          ...i,
+          severity: data.severity != null ? String(data.severity) : i.severity,
+          rootCause: data.rootCause !== undefined ? (data.rootCause ? String(data.rootCause) : null) : i.rootCause,
+          notes: data.notes !== undefined ? (data.notes ? String(data.notes) : null) : i.notes,
+          assignedUser: data.assignedUserId
+            ? member
+              ? { id: member.id, firstName: member.firstName, lastName: member.lastName, email: member.email }
+              : i.assignedUser
+            : data.assignedUserId === null
+              ? null
+              : i.assignedUser,
+          timeline,
+        };
+      }),
     }));
   },
 
@@ -335,6 +413,10 @@ export const useDemoStore = create<DemoState>((set, get) => ({
   testAlertChannel: (channelId) => {
     const channel = get().alertChannels.find((c) => c.id === channelId);
     if (!channel) return { status: 'error', message: 'Channel not found' };
+    const supported = ['EMAIL', 'WEBHOOK', 'SLACK'].includes(channel.channel);
+    if (!supported) {
+      return { status: 'error', message: `${channel.channel} is not supported yet` };
+    }
     return {
       status: 'sent',
       message: `Test alert sent via ${channel.channel} to "${channel.name}" (demo simulation)`,
@@ -367,19 +449,43 @@ export const useDemoStore = create<DemoState>((set, get) => ({
     const monitor = data.monitorId
       ? get().monitors.find((m) => m.id === data.monitorId)
       : null;
+    const startTime = String(data.startTime);
+    const endTime = String(data.endTime);
     const window: MaintenanceWindow = {
       id: uid('mw'),
       title: String(data.title),
       monitor: monitor ? { id: monitor.id, name: monitor.name } : null,
-      startTime: String(data.startTime),
-      endTime: String(data.endTime),
+      startTime,
+      endTime,
       reason: data.reason ? String(data.reason) : null,
-      pauseAlerts: Boolean(data.pauseAlerts),
-      status: 'UPCOMING',
+      pauseAlerts: data.pauseAlerts !== false,
+      status: resolveMaintenanceStatus(startTime, endTime),
       createdAt: new Date().toISOString(),
     };
     set((s) => ({ maintenanceWindows: [window, ...s.maintenanceWindows] }));
     return window;
+  },
+
+  cancelMaintenance: (id) => {
+    const existing = get().maintenanceWindows.find((w) => w.id === id);
+    if (!existing) throw new Error('Maintenance window not found');
+    const status = resolveMaintenanceStatus(existing.startTime, existing.endTime);
+    if (status === 'COMPLETED') throw new Error('Completed maintenance windows cannot be cancelled');
+
+    if (status === 'UPCOMING') {
+      set((s) => ({
+        maintenanceWindows: s.maintenanceWindows.filter((w) => w.id !== id),
+      }));
+      return { id, action: 'deleted' as const };
+    }
+
+    const now = new Date().toISOString();
+    set((s) => ({
+      maintenanceWindows: s.maintenanceWindows.map((w) =>
+        w.id === id ? { ...w, endTime: now, status: 'COMPLETED' as const } : w,
+      ),
+    }));
+    return { id, action: 'ended' as const };
   },
 
   updateSettings: (data) => {
@@ -460,28 +566,37 @@ export const useDemoStore = create<DemoState>((set, get) => ({
     const online = monitors.filter((m) => m.status === 'UP').length;
     const offline = monitors.filter((m) => m.status === 'DOWN').length;
     const degraded = monitors.filter((m) => m.status === 'DEGRADED').length;
+    const unknown = monitors.filter((m) => m.status === 'UNKNOWN').length;
 
-    const typeBuckets: Record<string, number> = {};
+    const categoryColors: Record<string, string> = {
+      ERP: 'hsl(var(--primary))',
+      Server: 'hsl(142 76% 36%)',
+      Switch: 'hsl(38 92% 50%)',
+      Router: 'hsl(199 89% 48%)',
+      Firewall: 'hsl(0 72% 51%)',
+      Database: 'hsl(280 70% 50%)',
+      Website: 'hsl(262 83% 58%)',
+      API: 'hsl(173 58% 39%)',
+      DNS: 'hsl(45 93% 47%)',
+      SSL: 'hsl(215 20% 55%)',
+      Other: 'hsl(220 9% 46%)',
+    };
+    const categoryCounts: Record<string, number> = {};
     for (const m of monitors) {
-      let bucket = 'Other';
-      if (m.type === 'HTTP' || m.type === 'HTTPS') bucket = 'HTTP/HTTPS';
-      else if (m.type === 'TCP') bucket = 'TCP';
-      else if (m.type === 'DNS' || m.type === 'SSL') bucket = 'DNS/SSL';
-      else if (m.type === 'PING' || m.type === 'API') bucket = 'PING/API';
-      typeBuckets[bucket] = (typeBuckets[bucket] ?? 0) + 1;
+      const cat = m.category || 'Other';
+      categoryCounts[cat] = (categoryCounts[cat] ?? 0) + 1;
     }
-
-    const monitorDistribution = [
-      { name: 'HTTP/HTTPS', value: typeBuckets['HTTP/HTTPS'] ?? 0, color: 'hsl(var(--primary))' },
-      { name: 'TCP', value: typeBuckets['TCP'] ?? 0, color: 'hsl(38 92% 50%)' },
-      { name: 'DNS/SSL', value: typeBuckets['DNS/SSL'] ?? 0, color: 'hsl(280 70% 50%)' },
-      { name: 'PING/API', value: typeBuckets['PING/API'] ?? 0, color: 'hsl(142 76% 36%)' },
-    ].filter((d) => d.value > 0);
+    const categoryDistribution = Object.entries(categoryCounts).map(([name, value]) => ({
+      name,
+      value,
+      color: categoryColors[name] ?? categoryColors.Other,
+    }));
 
     const statusDistribution = [
       { name: 'Online', value: online, color: 'hsl(142 76% 36%)' },
       { name: 'Degraded', value: degraded, color: 'hsl(38 92% 50%)' },
       { name: 'Offline', value: offline, color: 'hsl(var(--destructive))' },
+      { name: 'Unknown', value: unknown, color: 'hsl(220 9% 46%)' },
     ].filter((d) => d.value > 0);
 
     const flatChecks = Object.entries(allChecks).flatMap(([monitorId, checks]) =>
@@ -532,23 +647,102 @@ export const useDemoStore = create<DemoState>((set, get) => ({
     }));
 
     void flatChecks;
-    return { responseTimeTrend, uptimeTrend, uptime24h, incidentTrend, monitorDistribution, statusDistribution };
+    return {
+      responseTimeTrend,
+      uptimeTrend,
+      uptime24h,
+      incidentTrend,
+      categoryDistribution,
+      monitorDistribution: categoryDistribution,
+      statusDistribution,
+    };
   },
 
-  getReportSummary: () => {
+  getReportSummary: (from?: string, to?: string) => {
+    const toDate = to ? new Date(`${to}T23:59:59`) : new Date();
+    const fromDate = from
+      ? new Date(`${from}T00:00:00`)
+      : new Date(toDate.getTime() - 30 * 86_400_000);
+    const fromMs = fromDate.getTime();
+    const toMs = toDate.getTime();
+
+    const inRange = (iso: string) => {
+      const t = new Date(iso).getTime();
+      return t >= fromMs && t <= toMs;
+    };
+
     const monitors = get().monitors;
-    const incidents = get().incidents;
-    const avgUptime =
-      monitors.length > 0
-        ? Math.round((monitors.reduce((a, m) => a + m.uptimePercent, 0) / monitors.length) * 100) / 100
-        : 100;
-    const responseTimes = monitors
-      .map((m) => m.lastResponseTime)
+    const incidents = get().incidents.filter((i) => inRange(i.startedAt));
+    const allChecks = get().monitorChecks;
+
+    const checksInRange: { monitorId: string; status: string; responseTime: number | null; day: string }[] = [];
+    for (const [monitorId, checks] of Object.entries(allChecks)) {
+      for (const c of checks) {
+        if (!inRange(c.createdAt)) continue;
+        checksInRange.push({
+          monitorId,
+          status: c.status,
+          responseTime: c.responseTime ?? null,
+          day: c.createdAt.slice(0, 10),
+        });
+      }
+    }
+
+    const days: string[] = [];
+    const cur = new Date(fromDate);
+    cur.setHours(0, 0, 0, 0);
+    const end = new Date(toDate);
+    end.setHours(0, 0, 0, 0);
+    while (cur <= end) {
+      days.push(cur.toISOString().slice(0, 10));
+      cur.setDate(cur.getDate() + 1);
+    }
+
+    const responseTrend = days.map((day) => {
+      const dayChecks = checksInRange.filter((c) => c.day === day && c.responseTime != null);
+      const ms =
+        dayChecks.length > 0
+          ? Math.round(dayChecks.reduce((sum, c) => sum + (c.responseTime ?? 0), 0) / dayChecks.length)
+          : 0;
+      return { day, ms };
+    });
+
+    const incidentTrend = days.map((day) => ({
+      day,
+      count: incidents.filter((i) => i.startedAt.slice(0, 10) === day).length,
+    }));
+
+    const monitorRows = monitors.map((m) => {
+      const periodChecks = checksInRange.filter((c) => c.monitorId === m.id);
+      const uptime =
+        periodChecks.length > 0
+          ? Math.round(
+              (periodChecks.filter((c) => c.status === 'UP').length / periodChecks.length) * 10000,
+            ) / 100
+          : m.uptimePercent;
+      return {
+        name: m.name,
+        uptime,
+        status: m.status,
+        category: m.category ?? null,
+      };
+    });
+
+    const responseTimes = checksInRange
+      .map((c) => c.responseTime)
       .filter((v): v is number => v != null);
     const avgResponseTime =
       responseTimes.length > 0
         ? Math.round(responseTimes.reduce((a, b) => a + b, 0) / responseTimes.length)
         : 0;
+
+    const avgUptime =
+      monitorRows.length > 0
+        ? Math.round((monitorRows.reduce((a, m) => a + m.uptime, 0) / monitorRows.length) * 100) / 100
+        : 100;
+
+    const openIncidents = incidents.filter((i) => i.status !== 'RESOLVED').length;
+    const resolvedIncidents = incidents.filter((i) => i.status === 'RESOLVED').length;
 
     return {
       summary: {
@@ -556,31 +750,16 @@ export const useDemoStore = create<DemoState>((set, get) => ({
         avgUptime,
         avgResponseTime,
         totalIncidents: incidents.length,
-        openIncidents: incidents.filter((i) => i.status !== 'RESOLVED').length,
+        openIncidents,
+        resolvedIncidents,
       },
-      responseTrend: [
-        { day: '2026-06-03', ms: 128 },
-        { day: '2026-06-04', ms: 142 },
-        { day: '2026-06-05', ms: 156 },
-        { day: '2026-06-06', ms: 135 },
-        { day: '2026-06-07', ms: 148 },
-        { day: '2026-06-08', ms: 131 },
-        { day: '2026-06-09', ms: avgResponseTime },
-      ],
-      incidentTrend: [
-        { day: '2026-06-03', count: 0 },
-        { day: '2026-06-04', count: 1 },
-        { day: '2026-06-05', count: 2 },
-        { day: '2026-06-06', count: 0 },
-        { day: '2026-06-07', count: 1 },
-        { day: '2026-06-08', count: 0 },
-        { day: '2026-06-09', count: incidents.filter((i) => i.status !== 'RESOLVED').length },
-      ],
-      monitors: monitors.map((m) => ({
-        name: m.name,
-        uptime: m.uptimePercent,
-        status: m.status,
-      })),
+      responseTrend,
+      incidentTrend,
+      monitors: monitorRows,
+      period: {
+        from: fromDate.toISOString().slice(0, 10),
+        to: toDate.toISOString().slice(0, 10),
+      },
     };
   },
 }));

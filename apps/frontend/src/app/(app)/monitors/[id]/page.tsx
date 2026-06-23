@@ -4,7 +4,7 @@ import { use, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useForm } from 'react-hook-form';
-import { ArrowLeft, Clock, TrendingUp, Activity, Tag } from 'lucide-react';
+import { ArrowLeft, Clock, TrendingUp, Activity, Tag, Server, Wrench, BellOff } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import {
   LineChart,
@@ -25,9 +25,45 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
+import { MonitorDeviceFields } from '@/components/monitors/monitor-device-fields';
 import { useMonitor, useUpdateMonitor } from '@/hooks/use-monitors';
-import { MONITOR_TYPES } from '@/lib/validations/monitor';
+import {
+  MONITOR_TYPES,
+  MONITOR_TYPE_LABELS,
+  MONITOR_CATEGORIES,
+  type CreateMonitorFormData,
+  type MonitorCategory,
+  type SupportedMonitorType,
+  type CriticalityLevel,
+} from '@/lib/validations/monitor';
 import type { MonitorCheck } from '@/lib/types';
+
+const criticalityVariant: Record<string, 'muted' | 'default' | 'warning' | 'danger'> = {
+  LOW: 'muted',
+  MEDIUM: 'default',
+  HIGH: 'warning',
+  CRITICAL: 'danger',
+};
+
+function hasDeviceInfo(monitor: {
+  deviceLocation?: string | null;
+  rackCabinet?: string | null;
+  switchPort?: string | null;
+  deviceOwner?: string | null;
+  vendor?: string | null;
+  model?: string | null;
+  ipAddress?: string | null;
+}) {
+  return Boolean(
+    monitor.deviceLocation ||
+    monitor.rackCabinet ||
+    monitor.switchPort ||
+    monitor.deviceOwner ||
+    monitor.vendor ||
+    monitor.model ||
+    monitor.ipAddress,
+  );
+}
 
 export default function MonitorDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
@@ -38,11 +74,14 @@ export default function MonitorDetailPage({ params }: { params: Promise<{ id: st
   const { data, isLoading } = useMonitor(id);
   const updateMonitor = useUpdateMonitor();
 
-  const { register, handleSubmit, reset } = useForm({
+  const { register, handleSubmit, reset } = useForm<CreateMonitorFormData>({
     defaultValues: {
       name: '',
-      type: 'PING',
+      type: 'HTTP',
       target: '',
+      port: undefined,
+      category: 'Other',
+      criticality: 'MEDIUM',
       checkInterval: 60,
       timeout: 30,
       retryCount: 3,
@@ -53,15 +92,29 @@ export default function MonitorDetailPage({ params }: { params: Promise<{ id: st
 
   useEffect(() => {
     if (data?.monitor) {
+      const m = data.monitor;
       reset({
-        name: data.monitor.name,
-        type: data.monitor.type,
-        target: data.monitor.target,
-        checkInterval: data.monitor.checkInterval,
-        timeout: data.monitor.timeout,
-        retryCount: data.monitor.retryCount,
-        group: data.monitor.group ?? '',
-        description: data.monitor.description ?? '',
+        name: m.name,
+        type: m.type as SupportedMonitorType,
+        target: m.target,
+        port: m.port ?? undefined,
+        category: (m.category as MonitorCategory | null) ?? 'Other',
+        criticality: (m.criticality as CriticalityLevel) ?? 'MEDIUM',
+        deviceLocation: m.deviceLocation ?? undefined,
+        rackCabinet: m.rackCabinet ?? undefined,
+        switchPort: m.switchPort ?? undefined,
+        deviceOwner: m.deviceOwner ?? undefined,
+        vendor: m.vendor ?? undefined,
+        model: m.model ?? undefined,
+        ipAddress: m.ipAddress ?? undefined,
+        snmpCommunity: m.snmpCommunity ?? undefined,
+        snmpVersion: (m.snmpVersion as CreateMonitorFormData['snmpVersion']) ?? undefined,
+        interfaceName: m.interfaceName ?? undefined,
+        checkInterval: m.checkInterval,
+        timeout: m.timeout,
+        retryCount: m.retryCount,
+        group: m.group ?? '',
+        description: m.description ?? '',
       });
     }
   }, [data?.monitor, reset]);
@@ -69,7 +122,7 @@ export default function MonitorDetailPage({ params }: { params: Promise<{ id: st
   if (isLoading) return <LoadingState />;
   if (!data) return <p className="text-muted-foreground">Monitor not found</p>;
 
-  const { monitor, checks, incidents, alertHistory } = data;
+  const { monitor, checks, incidents, alertHistory, maintenanceWindows } = data;
   const typedChecks = checks as MonitorCheck[];
   const chartData = typedChecks
     .slice()
@@ -79,9 +132,9 @@ export default function MonitorDetailPage({ params }: { params: Promise<{ id: st
       ms: c.responseTime ?? 0,
     }));
 
-  const onSave = (formData: Record<string, unknown>) => {
+  const onSave = (formData: CreateMonitorFormData) => {
     updateMonitor.mutate(
-      { id, data: formData },
+      { id, data: { ...formData, port: formData.port || undefined } },
       { onSuccess: () => router.replace(`/monitors/${id}`) },
     );
   };
@@ -94,14 +147,33 @@ export default function MonitorDetailPage({ params }: { params: Promise<{ id: st
         </Link>
         <PageHeader
           title={monitor.name}
-          description={`${monitor.type} · ${monitor.target}`}
+          description={`${MONITOR_TYPE_LABELS[data.monitor.type as keyof typeof MONITOR_TYPE_LABELS] ?? monitor.type}${monitor.category ? ` · ${monitor.category}` : ''} · ${monitor.target}${monitor.port ? `:${monitor.port}` : ''}`}
         />
         <div className="ml-auto flex items-center gap-2">
-          <StatusBadge status={monitor.status} />
+          {monitor.criticality && (
+            <Badge variant={criticalityVariant[monitor.criticality] ?? 'muted'}>{monitor.criticality}</Badge>
+          )}
+          <StatusBadge status={monitor.displayStatus ?? monitor.status} />
           {!isEditing && (
-            <Button variant="outline" size="sm" onClick={() => router.push(`/monitors/${id}?edit=1`)}>
-              Edit
-            </Button>
+            <>
+              <Button
+                variant={monitor.maintenanceMode ? 'default' : 'outline'}
+                size="sm"
+                onClick={() =>
+                  updateMonitor.mutate({
+                    id,
+                    data: { maintenanceMode: !monitor.maintenanceMode },
+                  })
+                }
+                disabled={updateMonitor.isPending}
+              >
+                <Wrench className="h-4 w-4 mr-1" />
+                {monitor.maintenanceMode ? 'Exit maintenance' : 'Maintenance mode'}
+              </Button>
+              <Button variant="outline" size="sm" onClick={() => router.push(`/monitors/${id}?edit=1`)}>
+                Edit
+              </Button>
+            </>
           )}
         </div>
       </div>
@@ -115,17 +187,31 @@ export default function MonitorDetailPage({ params }: { params: Promise<{ id: st
                 <Label>Name</Label>
                 <Input {...register('name')} />
               </div>
-              <div className="space-y-2">
-                <Label>Type</Label>
-                <Select {...register('type')}>
-                  {MONITOR_TYPES.map((t) => (
-                    <option key={t} value={t}>{t}</option>
-                  ))}
-                </Select>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label>Type</Label>
+                  <Select {...register('type')}>
+                    {MONITOR_TYPES.map((t) => (
+                      <option key={t} value={t}>{MONITOR_TYPE_LABELS[t]}</option>
+                    ))}
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label>Category</Label>
+                  <Select {...register('category')}>
+                    {MONITOR_CATEGORIES.map((c) => (
+                      <option key={c} value={c}>{c}</option>
+                    ))}
+                  </Select>
+                </div>
               </div>
               <div className="space-y-2">
                 <Label>Target</Label>
                 <Input {...register('target')} />
+              </div>
+              <div className="space-y-2">
+                <Label>Port (optional)</Label>
+                <Input type="number" {...register('port', { valueAsNumber: true })} />
               </div>
               <div className="grid grid-cols-3 gap-4">
                 <div className="space-y-2">
@@ -149,6 +235,7 @@ export default function MonitorDetailPage({ params }: { params: Promise<{ id: st
                 <Label>Notes</Label>
                 <Textarea {...register('description')} />
               </div>
+              <MonitorDeviceFields register={register} />
               <div className="flex gap-2">
                 <Button type="submit" disabled={updateMonitor.isPending}>
                   {updateMonitor.isPending ? 'Saving...' : 'Save Changes'}
@@ -169,6 +256,91 @@ export default function MonitorDetailPage({ params }: { params: Promise<{ id: st
             <Badge key={t} variant="muted"><Tag className="h-3 w-3 mr-1 inline" />{t}</Badge>
           ))}
         </div>
+      )}
+
+      {!isEditing && hasDeviceInfo(monitor) && (
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base flex items-center gap-2">
+              <Server className="h-4 w-4" />
+              Device information
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <dl className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 text-sm">
+              {monitor.ipAddress && (
+                <div><dt className="text-muted-foreground">Management IP</dt><dd className="font-medium">{monitor.ipAddress}</dd></div>
+              )}
+              {monitor.deviceLocation && (
+                <div><dt className="text-muted-foreground">Location</dt><dd className="font-medium">{monitor.deviceLocation}</dd></div>
+              )}
+              {monitor.rackCabinet && (
+                <div><dt className="text-muted-foreground">Rack / cabinet</dt><dd className="font-medium">{monitor.rackCabinet}</dd></div>
+              )}
+              {monitor.switchPort && (
+                <div><dt className="text-muted-foreground">Switch port</dt><dd className="font-medium">{monitor.switchPort}</dd></div>
+              )}
+              {monitor.deviceOwner && (
+                <div><dt className="text-muted-foreground">Owner</dt><dd className="font-medium">{monitor.deviceOwner}</dd></div>
+              )}
+              {monitor.vendor && (
+                <div><dt className="text-muted-foreground">Vendor</dt><dd className="font-medium">{monitor.vendor}</dd></div>
+              )}
+              {monitor.model && (
+                <div><dt className="text-muted-foreground">Model</dt><dd className="font-medium">{monitor.model}</dd></div>
+              )}
+            </dl>
+          </CardContent>
+        </Card>
+      )}
+
+      {!isEditing && (monitor.inMaintenance || (maintenanceWindows?.length ?? 0) > 0) && (
+        <Card className={monitor.inMaintenance ? 'border-amber-500/30 bg-amber-500/5' : undefined}>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base flex items-center gap-2">
+              <Wrench className="h-4 w-4" />
+              Maintenance
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3 text-sm">
+            {monitor.inMaintenance ? (
+              <p>
+                This monitor is in maintenance. Cron checks are skipped
+                {monitor.alertsPaused ? ' and alerts are paused' : ', but alerts remain active'}.
+              </p>
+            ) : (
+              <p className="text-muted-foreground">No active maintenance affecting this monitor.</p>
+            )}
+            {monitor.maintenanceWindow && (
+              <p>
+                Active window: <strong>{monitor.maintenanceWindow.title}</strong>
+              </p>
+            )}
+            {monitor.maintenanceMode && (
+              <Badge variant="warning">Manual maintenance mode enabled</Badge>
+            )}
+            {monitor.alertsPaused && (
+              <Badge variant="muted" className="gap-1">
+                <BellOff className="h-3 w-3" />
+                Alerts paused
+              </Badge>
+            )}
+            {(maintenanceWindows ?? []).length > 0 && (
+              <ul className="text-muted-foreground space-y-1">
+                {maintenanceWindows!.map((w) => (
+                  <li key={w.id}>
+                    {w.title} ({w.status.toLowerCase()}) — alerts {w.pauseAlerts ? 'paused' : 'active'}
+                  </li>
+                ))}
+              </ul>
+            )}
+            <Link href={`/maintenance?monitorId=${id}`}>
+              <Button variant="outline" size="sm">
+                Schedule maintenance
+              </Button>
+            </Link>
+          </CardContent>
+        </Card>
       )}
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">

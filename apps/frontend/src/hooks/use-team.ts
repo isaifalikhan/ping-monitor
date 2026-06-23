@@ -4,7 +4,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiClient } from '@/lib/api-client';
 import type { TeamMember } from '@/lib/types';
 import { DEMO_MODE } from '@/lib/demo-mode';
-import { permissionsMatrix } from '@/lib/mock-data';
+import { PERMISSIONS_MATRIX } from '@/lib/roles';
 import { useDemoStore, demoDelay } from '@/stores/demo-store';
 import { toast } from '@/hooks/use-toast';
 
@@ -36,7 +36,7 @@ export function useTeam() {
 }
 
 export function usePermissionsMatrix() {
-  return DEMO_MODE ? permissionsMatrix : [];
+  return PERMISSIONS_MATRIX;
 }
 
 export function useUpdateMember() {
@@ -110,6 +110,7 @@ export function useInviteMember() {
         toast({ title: 'Invitation sent', description: `Invite sent to ${email} (demo).`, variant: 'success' });
       } else {
         qc.invalidateQueries({ queryKey: ['team'] });
+        toast({ title: 'Invitation sent', description: `Invite email sent to ${email}`, variant: 'success' });
       }
     },
     onError: () => {

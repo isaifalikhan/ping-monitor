@@ -20,6 +20,7 @@ type DashboardCharts = {
   uptimeTrend: { day: string; uptime: number }[];
   uptime24h: { hour: string; uptime: number }[];
   incidentTrend: { day: string; incidents: number }[];
+  categoryDistribution: { name: string; value: number; color: string }[];
   monitorDistribution: { name: string; value: number; color: string }[];
   statusDistribution: { name: string; value: number; color: string }[];
 };
@@ -69,19 +70,21 @@ export function useDashboardCharts() {
   if (DEMO_MODE) {
     void monitors;
     void incidents;
-    return getDashboardCharts();
+    return { ...getDashboardCharts(), isLoading: false };
   }
 
-  return (
-    apiQuery.data ?? {
+  return {
+    ...(apiQuery.data ?? {
       responseTimeTrend: [],
       uptimeTrend: [],
       uptime24h: [],
       incidentTrend: [],
+      categoryDistribution: [],
       monitorDistribution: [],
       statusDistribution: [],
-    }
-  );
+    }),
+    isLoading: apiQuery.isLoading,
+  };
 }
 
 export function useDashboardRecentAlerts() {

@@ -4,19 +4,9 @@ import { useQuery } from '@tanstack/react-query';
 import { apiClient } from '@/lib/api-client';
 import { DEMO_MODE } from '@/lib/demo-mode';
 import { useDemoStore } from '@/stores/demo-store';
+import type { ReportSummaryData } from '@/lib/services/reports';
 
-export interface ReportSummaryData {
-  summary: {
-    totalMonitors: number;
-    avgUptime: number;
-    avgResponseTime: number;
-    totalIncidents: number;
-    openIncidents: number;
-  };
-  responseTrend: { day: string; ms: number }[];
-  incidentTrend: { day: string; count: number }[];
-  monitors: { name: string; uptime: number; status: string }[];
-}
+export type { ReportSummaryData };
 
 export function useReportSummary(from?: string, to?: string) {
   const monitors = useDemoStore((s) => s.monitors);

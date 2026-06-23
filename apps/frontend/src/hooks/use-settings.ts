@@ -79,6 +79,15 @@ export function useSettings() {
   return apiQuery;
 }
 
+export function useSettingsDefaults() {
+  const { data } = useSettings();
+  return {
+    defaultCheckInterval: data?.settings.defaultCheckInterval ?? 60,
+    defaultTimeout: data?.settings.defaultTimeout ?? 30,
+    latencyThresholdMs: data?.settings.latencyThresholdMs ?? 1000,
+  };
+}
+
 export function useUpdateSettings() {
   const qc = useQueryClient();
   const updateSettings = useDemoStore((s) => s.updateSettings);
@@ -106,11 +115,12 @@ export function useUpdateSettings() {
       if (DEMO_MODE) {
         toast({
           title: 'Settings saved',
-          description: 'Organization preferences updated (demo).',
+          description: 'Company settings updated (demo).',
           variant: 'success',
         });
       } else {
         qc.invalidateQueries({ queryKey: ['settings'] });
+        qc.invalidateQueries({ queryKey: ['monitors'] });
         toast({ title: 'Settings saved', variant: 'success' });
       }
     },

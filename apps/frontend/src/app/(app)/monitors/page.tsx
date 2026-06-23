@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { Eye, Pencil, Pause, Trash2, Plus } from 'lucide-react';
+import { Eye, Pencil, Pause, Trash2, Plus, Wrench } from 'lucide-react';
 import { PageHeader } from '@/components/shared/page-header';
 import { StatusBadge } from '@/components/shared/status-badge';
 import { LoadingState } from '@/components/shared/loading-state';
@@ -14,7 +14,16 @@ import { Select } from '@/components/ui/select';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { useMonitors, useUpdateMonitor, useDeleteMonitor } from '@/hooks/use-monitors';
-import { MONITOR_TYPES } from '@/lib/validations/monitor';
+import { MonitorMaintenanceBadge } from '@/components/maintenance/monitor-maintenance-badge';
+import { useMaintenanceWindows } from '@/hooks/use-maintenance';
+import { MONITOR_TYPES, MONITOR_TYPE_LABELS } from '@/lib/validations/monitor';
+
+const criticalityVariant: Record<string, 'muted' | 'default' | 'warning' | 'danger'> = {
+  LOW: 'muted',
+  MEDIUM: 'default',
+  HIGH: 'warning',
+  CRITICAL: 'danger',
+};
 
 export default function MonitorsPage() {
   const router = useRouter();
@@ -29,8 +38,13 @@ export default function MonitorsPage() {
   }, [searchParams]);
 
   const { data, isLoading } = useMonitors({ search, status, type });
+  const { data: maintenanceWindows } = useMaintenanceWindows();
   const updateMonitor = useUpdateMonitor();
   const deleteMonitor = useDeleteMonitor();
+
+  const handleMaintenanceToggle = (id: string, maintenanceMode: boolean) => {
+    updateMonitor.mutate({ id, data: { maintenanceMode: !maintenanceMode } });
+  };
 
   const handlePause = (id: string, isActive: boolean) => {
     updateMonitor.mutate({ id, data: { isActive: !isActive } });
@@ -69,11 +83,12 @@ export default function MonitorsPage() {
           <option value="DOWN">Offline</option>
           <option value="DEGRADED">Degraded</option>
           <option value="UNKNOWN">Unknown</option>
+          <option value="MAINTENANCE">Maintenance</option>
         </Select>
         <Select value={type} onChange={(e) => setType(e.target.value)} className="max-w-[160px]">
           <option value="">All types</option>
           {MONITOR_TYPES.map((t) => (
-            <option key={t} value={t}>{t}</option>
+            <option key={t} value={t}>{MONITOR_TYPE_LABELS[t]}</option>
           ))}
         </Select>
       </div>
@@ -98,7 +113,7 @@ export default function MonitorsPage() {
                 <thead>
                   <tr className="border-b text-left text-muted-foreground">
                     <th className="px-6 py-3 font-medium">Name</th>
-                    <th className="px-6 py-3 font-medium">Group</th>
+                    <th className="px-6 py-3 font-medium">Category</th>
                     <th className="px-6 py-3 font-medium">Type</th>
                     <th className="px-6 py-3 font-medium">Status</th>
                     <th className="px-6 py-3 font-medium">Uptime</th>
@@ -116,19 +131,27 @@ export default function MonitorsPage() {
                             {m.name}
                             {!m.isActive && <span className="ml-2 text-xs text-muted-foreground">(paused)</span>}
                           </p>
-                          <p className="text-xs text-muted-foreground truncate max-w-[200px]">{m.target}</p>
-                          {m.tags.length > 0 && (
-                            <div className="flex gap-1 mt-1 flex-wrap">
-                              {m.tags.slice(0, 3).map((t) => (
-                                <Badge key={t} variant="muted" className="text-[10px] px-1.5 py-0">{t}</Badge>
-                              ))}
-                            </div>
-                          )}
+                          <p className="text-xs text-muted-foreground truncate max-w-[200px]">
+                            {m.ipAddress ?? m.target}
+                          </p>
+                          <div className="flex gap-1 mt-1 flex-wrap items-center">
+                            <MonitorMaintenanceBadge monitor={m} windows={maintenanceWindows} />
+                            {m.criticality && m.criticality !== 'MEDIUM' && (
+                              <Badge variant={criticalityVariant[m.criticality] ?? 'muted'} className="text-[10px] px-1.5 py-0">
+                                {m.criticality}
+                              </Badge>
+                            )}
+                            {m.tags.slice(0, 2).map((t) => (
+                              <Badge key={t} variant="muted" className="text-[10px] px-1.5 py-0">{t}</Badge>
+                            ))}
+                          </div>
                         </div>
                       </td>
-                      <td className="px-6 py-3 text-muted-foreground">{m.group ?? '—'}</td>
-                      <td className="px-6 py-3"><Badge variant="outline">{m.type}</Badge></td>
-                      <td className="px-6 py-3"><StatusBadge status={m.status} /></td>
+                      <td className="px-6 py-3 text-muted-foreground">{m.category ?? '—'}</td>
+                      <td className="px-6 py-3"><Badge variant="outline">{MONITOR_TYPE_LABELS[m.type as keyof typeof MONITOR_TYPE_LABELS] ?? m.type}</Badge></td>
+                      <td className="px-6 py-3">
+                        <StatusBadge status={m.displayStatus ?? m.status} />
+                      </td>
                       <td className="px-6 py-3">
                         <span className={m.uptimePercent >= 99.9 ? 'text-green-500' : m.uptimePercent >= 99 ? 'text-amber-500' : 'text-red-500'}>
                           {m.uptimePercent}%
@@ -145,6 +168,15 @@ export default function MonitorsPage() {
                           </Button>
                           <Button variant="ghost" size="icon" onClick={() => router.push(`/monitors/${m.id}?edit=1`)}>
                             <Pencil className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            title={m.maintenanceMode ? 'Exit maintenance mode' : 'Enter maintenance mode'}
+                            onClick={() => handleMaintenanceToggle(m.id, m.maintenanceMode)}
+                            disabled={updateMonitor.isPending}
+                          >
+                            <Wrench className={`h-4 w-4 ${m.inMaintenance ? 'text-amber-500' : ''}`} />
                           </Button>
                           <Button variant="ghost" size="icon" onClick={() => handlePause(m.id, m.isActive)} disabled={updateMonitor.isPending}>
                             <Pause className="h-4 w-4" />

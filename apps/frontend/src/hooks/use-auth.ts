@@ -67,11 +67,6 @@ export function useAuth() {
     onSuccess: () => router.push('/login'),
   });
 
-  const verifyEmailMutation = useMutation({
-    mutationFn: (token: string) =>
-      apiClient.post('/auth/verify-email', { token }),
-  });
-
   const acceptInvitationMutation = useMutation({
     mutationFn: (data: AcceptInvitationFormData & { token: string }) =>
       apiClient.post<AuthResponse>('/auth/accept-invitation', {
@@ -110,7 +105,6 @@ export function useAuth() {
     logout: logoutMutation,
     forgotPassword: forgotPasswordMutation,
     resetPassword: resetPasswordMutation,
-    verifyEmail: verifyEmailMutation,
     acceptInvitation: acceptInvitationMutation,
     profile: profileQuery,
   };

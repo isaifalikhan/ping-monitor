@@ -14,6 +14,7 @@ datasource db {
 enum UserRole {
   OWNER
   ADMIN
+  ENGINEER
   VIEWER
 }
 

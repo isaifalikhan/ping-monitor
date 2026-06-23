@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { PASSWORD_MIN_LENGTH } from '@netwatch/shared';
 
-const passwordSchema = z
+export const passwordSchema = z
   .string()
   .min(PASSWORD_MIN_LENGTH, `Password must be at least ${PASSWORD_MIN_LENGTH} characters`)
   .regex(/[A-Z]/, 'Password must contain an uppercase letter')
@@ -18,7 +18,7 @@ export const registerSchema = z.object({
   password: passwordSchema,
   firstName: z.string().min(1, 'First name is required').max(50),
   lastName: z.string().min(1, 'Last name is required').max(50),
-  organizationName: z.string().min(2, 'Organization name is required').max(100),
+  organizationName: z.string().min(2, 'Company name is required').max(100),
 });
 
 export const forgotPasswordSchema = z.object({

@@ -1,6 +1,4 @@
-import { ApiResponse } from '@netwatch/shared';
-
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000/api/v1';
+const API_URL = process.env.NEXT_PUBLIC_API_URL || '/api';
 
 export class ApiError extends Error {
   constructor(
@@ -14,10 +12,33 @@ export class ApiError extends Error {
 
 interface RequestOptions extends RequestInit {
   params?: Record<string, string>;
+  _retry?: boolean;
+}
+
+interface ApiResponse<T> {
+  success: boolean;
+  data?: T;
+  error?: string;
+}
+
+let refreshPromise: Promise<boolean> | null = null;
+
+async function tryRefreshSession(): Promise<boolean> {
+  if (!refreshPromise) {
+    refreshPromise = fetch(`${API_URL}/auth/refresh`, {
+      method: 'POST',
+      credentials: 'include',
+    })
+      .then((res) => res.ok)
+      .finally(() => {
+        refreshPromise = null;
+      });
+  }
+  return refreshPromise;
 }
 
 async function request<T>(endpoint: string, options: RequestOptions = {}): Promise<T> {
-  const { params, ...fetchOptions } = options;
+  const { params, _retry, ...fetchOptions } = options;
 
   let url = `${API_URL}${endpoint}`;
   if (params) {
@@ -35,6 +56,13 @@ async function request<T>(endpoint: string, options: RequestOptions = {}): Promi
   });
 
   const data: ApiResponse<T> = await response.json();
+
+  if (response.status === 401 && !_retry && !endpoint.includes('/auth/refresh')) {
+    const refreshed = await tryRefreshSession();
+    if (refreshed) {
+      return request<T>(endpoint, { ...options, _retry: true });
+    }
+  }
 
   if (!response.ok || !data.success) {
     throw new ApiError(data.error || 'An error occurred', response.status);

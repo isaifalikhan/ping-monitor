@@ -1,7 +1,8 @@
 'use client';
 
-import { useState } from 'react';
-import { Plus, Wrench, Clock, CheckCircle2 } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { useSearchParams } from 'next/navigation';
+import { Plus, Wrench, Clock, CheckCircle2, Trash2 } from 'lucide-react';
 import { PageHeader } from '@/components/shared/page-header';
 import { LoadingState } from '@/components/shared/loading-state';
 import { Button } from '@/components/ui/button';
@@ -11,9 +12,14 @@ import { Select } from '@/components/ui/select';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Tabs } from '@/components/ui/tabs';
-import { useMaintenanceWindows, useCreateMaintenance } from '@/hooks/use-maintenance';
+import {
+  useMaintenanceWindows,
+  useCreateMaintenance,
+  useCancelMaintenance,
+} from '@/hooks/use-maintenance';
 import { useMonitors } from '@/hooks/use-monitors';
 import type { MaintenanceWindow } from '@/lib/types';
+import { countMonitorsInMaintenance } from '@/lib/maintenance/utils';
 
 const statusBadge: Record<string, 'warning' | 'success' | 'muted' | 'default'> = {
   UPCOMING: 'default',
@@ -21,9 +27,28 @@ const statusBadge: Record<string, 'warning' | 'success' | 'muted' | 'default'> =
   COMPLETED: 'success',
 };
 
-function MaintenanceTable({ windows }: { windows: MaintenanceWindow[] }) {
+function affectedLabel(window: MaintenanceWindow, monitorCount: number) {
+  if (window.monitor) return window.monitor.name;
+  return `All monitors (${monitorCount})`;
+}
+
+function MaintenanceTable({
+  windows,
+  monitorCount,
+  onCancel,
+  cancelling,
+}: {
+  windows: MaintenanceWindow[];
+  monitorCount: number;
+  onCancel: (id: string) => void;
+  cancelling: boolean;
+}) {
   if (!windows.length) {
-    return <p className="px-6 py-8 text-center text-muted-foreground text-sm">No maintenance windows in this category.</p>;
+    return (
+      <p className="px-6 py-8 text-center text-muted-foreground text-sm">
+        No maintenance windows in this category.
+      </p>
+    );
   }
 
   return (
@@ -31,27 +56,50 @@ function MaintenanceTable({ windows }: { windows: MaintenanceWindow[] }) {
       <thead>
         <tr className="border-b text-muted-foreground">
           <th className="px-6 py-3 text-left">Title</th>
-          <th className="px-6 py-3 text-left">Monitor</th>
+          <th className="px-6 py-3 text-left">Scope</th>
           <th className="px-6 py-3 text-left">Start</th>
           <th className="px-6 py-3 text-left">End</th>
           <th className="px-6 py-3 text-left">Status</th>
+          <th className="px-6 py-3 text-left">Checks</th>
           <th className="px-6 py-3 text-left">Alerts</th>
+          <th className="px-6 py-3 text-left" />
         </tr>
       </thead>
       <tbody>
         {windows.map((w) => (
           <tr key={w.id} className="border-b last:border-0 hover:bg-muted/50 transition-colors">
             <td className="px-6 py-3 font-medium">{w.title}</td>
-            <td className="px-6 py-3">{w.monitor?.name ?? 'All monitors'}</td>
+            <td className="px-6 py-3">{affectedLabel(w, monitorCount)}</td>
             <td className="px-6 py-3 text-muted-foreground">{new Date(w.startTime).toLocaleString()}</td>
             <td className="px-6 py-3 text-muted-foreground">{new Date(w.endTime).toLocaleString()}</td>
             <td className="px-6 py-3">
               <Badge variant={statusBadge[w.status] ?? 'muted'}>{w.status}</Badge>
             </td>
             <td className="px-6 py-3">
+              <Badge variant="warning">Skipped</Badge>
+            </td>
+            <td className="px-6 py-3">
               <Badge variant={w.pauseAlerts ? 'warning' : 'muted'}>
                 {w.pauseAlerts ? 'Paused' : 'Active'}
               </Badge>
+            </td>
+            <td className="px-6 py-3 text-right">
+              {w.status !== 'COMPLETED' && (
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  disabled={cancelling}
+                  onClick={() => {
+                    const msg =
+                      w.status === 'ACTIVE'
+                        ? 'End this maintenance window now? Checks will resume.'
+                        : 'Cancel this scheduled maintenance window?';
+                    if (confirm(msg)) onCancel(w.id);
+                  }}
+                >
+                  <Trash2 className="h-4 w-4 text-destructive" />
+                </Button>
+              )}
             </td>
           </tr>
         ))}
@@ -61,23 +109,47 @@ function MaintenanceTable({ windows }: { windows: MaintenanceWindow[] }) {
 }
 
 function TimelineView({ windows }: { windows: MaintenanceWindow[] }) {
-  const sorted = [...windows].sort((a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime());
+  if (!windows.length) {
+    return (
+      <p className="px-6 py-8 text-center text-muted-foreground text-sm">
+        No maintenance windows scheduled yet.
+      </p>
+    );
+  }
+
+  const sorted = [...windows].sort(
+    (a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime(),
+  );
 
   return (
     <div className="px-6 py-4 space-y-4">
       {sorted.map((w) => (
         <div key={w.id} className="flex gap-4">
           <div className="flex flex-col items-center">
-            <div className={`h-3 w-3 rounded-full ${w.status === 'ACTIVE' ? 'bg-amber-500' : w.status === 'COMPLETED' ? 'bg-green-500' : 'bg-primary'}`} />
+            <div
+              className={`h-3 w-3 rounded-full ${
+                w.status === 'ACTIVE'
+                  ? 'bg-amber-500'
+                  : w.status === 'COMPLETED'
+                    ? 'bg-green-500'
+                    : 'bg-primary'
+              }`}
+            />
             <div className="w-px flex-1 bg-border min-h-[40px]" />
           </div>
           <div className="pb-4 flex-1">
             <div className="flex items-center gap-2">
               <p className="font-medium">{w.title}</p>
-              <Badge variant={statusBadge[w.status] ?? 'muted'} className="text-xs">{w.status}</Badge>
+              <Badge variant={statusBadge[w.status] ?? 'muted'} className="text-xs">
+                {w.status}
+              </Badge>
             </div>
             <p className="text-sm text-muted-foreground mt-1">
-              {w.monitor?.name ?? 'All monitors'} · {new Date(w.startTime).toLocaleString()} — {new Date(w.endTime).toLocaleString()}
+              {w.monitor?.name ?? 'All monitors'} · {new Date(w.startTime).toLocaleString()} —{' '}
+              {new Date(w.endTime).toLocaleString()}
+            </p>
+            <p className="text-xs text-muted-foreground mt-1">
+              Checks skipped · alerts {w.pauseAlerts ? 'paused' : 'active'}
             </p>
             {w.reason && <p className="text-sm text-muted-foreground mt-1">{w.reason}</p>}
           </div>
@@ -88,9 +160,11 @@ function TimelineView({ windows }: { windows: MaintenanceWindow[] }) {
 }
 
 export default function MaintenancePage() {
+  const searchParams = useSearchParams();
   const { data: windows, isLoading } = useMaintenanceWindows();
   const { data: monitors } = useMonitors();
   const createMaintenance = useCreateMaintenance();
+  const cancelMaintenance = useCancelMaintenance();
 
   const [tab, setTab] = useState('all');
   const [showForm, setShowForm] = useState(false);
@@ -100,6 +174,17 @@ export default function MaintenancePage() {
   const [endTime, setEndTime] = useState('');
   const [reason, setReason] = useState('');
   const [pauseAlerts, setPauseAlerts] = useState(true);
+
+  useEffect(() => {
+    const prefill = searchParams.get('monitorId');
+    if (prefill) {
+      setMonitorId(prefill);
+      setShowForm(true);
+    }
+  }, [searchParams]);
+
+  const monitorList = monitors?.items ?? [];
+  const inMaintenanceCount = countMonitorsInMaintenance(monitorList, windows ?? []);
 
   const upcoming = windows?.filter((w) => w.status === 'UPCOMING') ?? [];
   const active = windows?.filter((w) => w.status === 'ACTIVE') ?? [];
@@ -139,22 +224,35 @@ export default function MaintenancePage() {
   ];
 
   const filtered =
-    tab === 'upcoming' ? upcoming :
-    tab === 'active' ? active :
-    tab === 'completed' ? completed :
-    windows ?? [];
+    tab === 'upcoming'
+      ? upcoming
+      : tab === 'active'
+        ? active
+        : tab === 'completed'
+          ? completed
+          : (windows ?? []);
 
   return (
     <div className="space-y-6">
       <PageHeader
         title="Maintenance"
-        description="Schedule maintenance windows and pause alerts"
+        description="Schedule windows to skip checks and optionally pause alerts"
         actionButton={
           <Button onClick={() => setShowForm(!showForm)}>
-            <Plus className="h-4 w-4 mr-2" />Schedule Maintenance
+            <Plus className="h-4 w-4 mr-2" />
+            Schedule Maintenance
           </Button>
         }
       />
+
+      {active.length > 0 && (
+        <Card className="border-amber-500/30 bg-amber-500/5">
+          <CardContent className="p-4 text-sm">
+            <strong>{inMaintenanceCount}</strong> monitor{inMaintenanceCount === 1 ? '' : 's'} currently
+            affected by maintenance. Cron checks are skipped; alerts follow each window&apos;s pause setting.
+          </CardContent>
+        </Card>
+      )}
 
       <div className="grid gap-4 sm:grid-cols-3">
         <Card>
@@ -188,7 +286,9 @@ export default function MaintenancePage() {
 
       {showForm && (
         <Card>
-          <CardHeader><CardTitle className="text-base">New Maintenance Window</CardTitle></CardHeader>
+          <CardHeader>
+            <CardTitle className="text-base">New Maintenance Window</CardTitle>
+          </CardHeader>
           <CardContent className="space-y-4 max-w-lg">
             <div className="space-y-2">
               <Label>Title</Label>
@@ -198,7 +298,11 @@ export default function MaintenancePage() {
               <Label>Monitor (optional)</Label>
               <Select value={monitorId} onChange={(e) => setMonitorId(e.target.value)}>
                 <option value="">All monitors</option>
-                {monitors?.items.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
+                {monitors?.items.map((m) => (
+                  <option key={m.id} value={m.id}>
+                    {m.name}
+                  </option>
+                ))}
               </Select>
             </div>
             <div className="grid grid-cols-2 gap-4">
@@ -219,7 +323,13 @@ export default function MaintenancePage() {
               <input type="checkbox" checked={pauseAlerts} onChange={(e) => setPauseAlerts(e.target.checked)} />
               Pause alerts during maintenance
             </label>
-            <Button onClick={handleSubmit} disabled={createMaintenance.isPending || !title || !startTime || !endTime}>
+            <p className="text-xs text-muted-foreground">
+              While active, monitoring checks are always skipped for affected monitors.
+            </p>
+            <Button
+              onClick={handleSubmit}
+              disabled={createMaintenance.isPending || !title || !startTime || !endTime}
+            >
               Create Window
             </Button>
           </CardContent>
@@ -234,7 +344,12 @@ export default function MaintenancePage() {
           {tab === 'timeline' ? (
             <TimelineView windows={windows ?? []} />
           ) : (
-            <MaintenanceTable windows={filtered} />
+            <MaintenanceTable
+              windows={filtered}
+              monitorCount={monitorList.length}
+              onCancel={(id) => cancelMaintenance.mutate(id)}
+              cancelling={cancelMaintenance.isPending}
+            />
           )}
         </CardContent>
       </Card>

@@ -6,6 +6,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { AuthLayout } from '@/components/auth/auth-layout';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { PasswordInput } from '@/components/ui/password-input';
 import { Label } from '@/components/ui/label';
 import { useAuth } from '@/hooks/use-auth';
 import { registerSchema, type RegisterFormData } from '@/lib/validations/auth';
@@ -27,15 +28,15 @@ export default function RegisterPage() {
 
   return (
     <AuthLayout
-      title="Create your account"
-      description="Start monitoring your infrastructure in minutes"
+      title="Create owner account"
+      description="First-time setup for your company's NetWatch instance"
     >
       <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
         <div className="space-y-2">
-          <Label htmlFor="organizationName">Organization Name</Label>
+          <Label htmlFor="organizationName">Company Name</Label>
           <Input
             id="organizationName"
-            placeholder="Acme Corp"
+            placeholder="Your Company"
             {...register('organizationName')}
           />
           {errors.organizationName && (
@@ -77,7 +78,7 @@ export default function RegisterPage() {
 
         <div className="space-y-2">
           <Label htmlFor="password">Password</Label>
-          <Input id="password" type="password" {...register('password')} />
+          <PasswordInput id="password" {...register('password')} />
           {errors.password && (
             <p className="text-sm text-destructive">{errors.password.message}</p>
           )}
@@ -91,8 +92,12 @@ export default function RegisterPage() {
           </p>
         )}
 
+        <p className="text-sm text-muted-foreground">
+          This form is for first-time company setup only. Additional users are added by invitation.
+        </p>
+
         <Button type="submit" className="w-full" disabled={registerUser.isPending}>
-          {registerUser.isPending ? 'Creating account...' : 'Create account'}
+          {registerUser.isPending ? 'Creating account...' : 'Create owner account'}
         </Button>
 
         <p className="text-center text-sm text-muted-foreground">

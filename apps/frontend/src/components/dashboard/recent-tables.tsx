@@ -29,7 +29,13 @@ export function RecentAlertsTable() {
               </tr>
             </thead>
             <tbody>
-              {recentAlerts.map((row) => (
+              {recentAlerts.length === 0 ? (
+                <tr>
+                  <td colSpan={5} className="px-6 py-8 text-center text-muted-foreground">
+                    No recent alerts.
+                  </td>
+                </tr>
+              ) : recentAlerts.map((row) => (
                 <tr key={row.id} className="border-b last:border-0 hover:bg-muted/50">
                   <td className="px-6 py-3 font-medium">{row.monitor}</td>
                   <td className="px-6 py-3">{row.type}</td>
@@ -68,7 +74,13 @@ export function RecentIncidentsTable() {
               </tr>
             </thead>
             <tbody>
-              {recentIncidents.map((row) => (
+              {recentIncidents.length === 0 ? (
+                <tr>
+                  <td colSpan={4} className="px-6 py-8 text-center text-muted-foreground">
+                    No recent incidents.
+                  </td>
+                </tr>
+              ) : recentIncidents.map((row) => (
                 <tr key={row.id} className="border-b last:border-0 hover:bg-muted/50">
                   <td className="px-6 py-3 font-medium">{row.monitor}</td>
                   <td className="px-6 py-3">
@@ -106,7 +118,13 @@ export function RecentChecksTable() {
               </tr>
             </thead>
             <tbody>
-              {recentChecks.map((row) => (
+              {recentChecks.length === 0 ? (
+                <tr>
+                  <td colSpan={4} className="px-6 py-8 text-center text-muted-foreground">
+                    No monitor checks yet. Cron will populate activity after the first run.
+                  </td>
+                </tr>
+              ) : recentChecks.map((row) => (
                 <tr key={row.id} className="border-b last:border-0 hover:bg-muted/50">
                   <td className="px-6 py-3 font-medium">{row.monitor}</td>
                   <td className="px-6 py-3">

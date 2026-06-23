@@ -1,5 +1,6 @@
 import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/common';
 import { UserRole } from '@netwatch/shared';
+import { UserRole as PrismaUserRole } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { UpdateOrganizationDto } from './dto/update-organization.dto';
 
@@ -104,7 +105,7 @@ export class OrganizationsService {
 
     const updated = await this.prisma.user.update({
       where: { id: memberId },
-      data: dto,
+      data: dto as { role?: PrismaUserRole; isActive?: boolean },
       select: {
         id: true,
         email: true,

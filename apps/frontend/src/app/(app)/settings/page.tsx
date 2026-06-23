@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { useTheme } from 'next-themes';
 import { PageHeader } from '@/components/shared/page-header';
@@ -15,7 +15,12 @@ import { Badge } from '@/components/ui/badge';
 import { useSettings, useUpdateSettings } from '@/hooks/use-settings';
 import { useAuthStore } from '@/stores/auth-store';
 import { DEMO_MODE } from '@/lib/demo-mode';
+import { canEditCompanySettings } from '@/lib/roles';
 import type { DemoSettings } from '@/stores/demo-store';
+
+function EnforcedNote({ children }: { children: string }) {
+  return <p className="text-xs text-muted-foreground">{children}</p>;
+}
 
 export default function SettingsPage() {
   const { theme, setTheme } = useTheme();
@@ -24,13 +29,9 @@ export default function SettingsPage() {
   const updateSettings = useUpdateSettings();
   const [tab, setTab] = useState('general');
 
-  const { register, handleSubmit, reset, watch } = useForm<DemoSettings>();
-
-  useEffect(() => {
-    if (data?.settings) {
-      reset(data.settings as DemoSettings);
-    }
-  }, [data, reset]);
+  const { register, handleSubmit, watch } = useForm<DemoSettings>({
+    values: data?.settings,
+  });
 
   const onSubmit = (formData: DemoSettings) => {
     updateSettings.mutate(formData);
@@ -38,8 +39,9 @@ export default function SettingsPage() {
 
   if (isLoading) return <LoadingState variant="skeleton" />;
 
-  const isOwner = DEMO_MODE || user?.role === 'OWNER';
+  const isOwner = DEMO_MODE || canEditCompanySettings(user?.role);
   const requireMfa = watch('requireMfa');
+  const statusSlug = data?.organization?.slug ?? data?.settings.statusPageSlug;
 
   const tabs = [
     { id: 'general', label: 'General' },
@@ -59,7 +61,15 @@ export default function SettingsPage() {
 
   return (
     <div className="space-y-6 max-w-3xl">
-      <PageHeader title="Settings" description="Organization and platform configuration" />
+      <PageHeader title="Settings" description="Company and monitoring configuration" />
+
+      {!isOwner && (
+        <Card className="border-muted">
+          <CardContent className="p-4 text-sm text-muted-foreground">
+            Only company owners can change settings. You have read-only access.
+          </CardContent>
+        </Card>
+      )}
 
       <Tabs tabs={tabs} active={tab} onChange={setTab} />
 
@@ -67,10 +77,10 @@ export default function SettingsPage() {
         {tab === 'general' && (
           <>
             <Card>
-              <CardHeader><CardTitle className="text-base">Organization Profile</CardTitle></CardHeader>
+              <CardHeader><CardTitle className="text-base">Company Profile</CardTitle></CardHeader>
               <CardContent className="space-y-3">
                 <div>
-                  <Label className="text-muted-foreground">Organization</Label>
+                  <Label className="text-muted-foreground">Company</Label>
                   <p className="font-medium">{data?.organization?.name}</p>
                 </div>
                 <div>
@@ -85,11 +95,17 @@ export default function SettingsPage() {
                   <input type="checkbox" {...register('enablePublicStatusPage')} disabled={!isOwner} />
                   Enable public status page
                 </label>
-                {watch('enablePublicStatusPage') && (
-                  <a href="/status" target="_blank" rel="noopener noreferrer" className="text-sm text-primary hover:underline block">
-                    View /status
+                {watch('enablePublicStatusPage') && statusSlug && (
+                  <a
+                    href={`/status?slug=${encodeURIComponent(statusSlug)}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-sm text-primary hover:underline block"
+                  >
+                    View public status page
                   </a>
                 )}
+                <EnforcedNote>Controls visibility of the public status page API.</EnforcedNote>
               </CardContent>
             </Card>
 
@@ -129,18 +145,22 @@ export default function SettingsPage() {
               <div className="space-y-2">
                 <Label>High Latency Threshold (ms)</Label>
                 <Input type="number" {...register('latencyThresholdMs', { valueAsNumber: true })} disabled={!isOwner} />
+                <EnforcedNote>Used by the monitoring engine to mark checks as DEGRADED.</EnforcedNote>
               </div>
               <div className="space-y-2">
                 <Label>Default Check Interval (seconds)</Label>
                 <Input type="number" {...register('defaultCheckInterval', { valueAsNumber: true })} disabled={!isOwner} />
+                <EnforcedNote>Applied to new monitors when not specified.</EnforcedNote>
               </div>
               <div className="space-y-2">
                 <Label>Default Timeout (seconds)</Label>
                 <Input type="number" {...register('defaultTimeout', { valueAsNumber: true })} disabled={!isOwner} />
+                <EnforcedNote>Applied to new monitors when not specified.</EnforcedNote>
               </div>
               <div className="space-y-2">
                 <Label>Data Retention (days)</Label>
                 <Input type="number" {...register('retentionDays', { valueAsNumber: true })} disabled={!isOwner} />
+                <EnforcedNote>Old monitor checks are purged on each cron run.</EnforcedNote>
               </div>
               <SaveButton />
             </CardContent>
@@ -154,10 +174,12 @@ export default function SettingsPage() {
               <div className="space-y-2">
                 <Label>Default Notification Email</Label>
                 <Input type="email" {...register('notificationEmail')} disabled={!isOwner} />
+                <EnforcedNote>Fallback recipient when an email alert channel has no address.</EnforcedNote>
               </div>
               <div className="space-y-2">
                 <Label>Slack Webhook</Label>
                 <Input {...register('slackWebhook')} disabled={!isOwner} />
+                <EnforcedNote>Stored for future default Slack integration.</EnforcedNote>
               </div>
               <SaveButton />
             </CardContent>
@@ -181,13 +203,16 @@ export default function SettingsPage() {
                 <input type="checkbox" {...register('requireMfa')} disabled={!isOwner} />
                 Enable MFA requirement
               </label>
+              <EnforcedNote>Policy is stored; MFA enrollment enforcement is planned.</EnforcedNote>
               <div className="space-y-2">
                 <Label>Session Timeout (minutes)</Label>
                 <Input type="number" {...register('sessionTimeoutMinutes', { valueAsNumber: true })} disabled={!isOwner} />
+                <EnforcedNote>Controls access-token and refresh-token lifetime on login.</EnforcedNote>
               </div>
               <div className="space-y-2">
                 <Label>IP Allowlist</Label>
                 <Input placeholder="Leave empty to allow all" {...register('ipAllowlist')} disabled={!isOwner} />
+                <EnforcedNote>Comma-separated IPs; enforced on every authenticated API request.</EnforcedNote>
               </div>
               <SaveButton />
             </CardContent>
@@ -209,6 +234,7 @@ export default function SettingsPage() {
                 <Label>Logo URL</Label>
                 <Input placeholder="https://..." {...register('brandLogoUrl')} disabled={!isOwner} />
               </div>
+              <EnforcedNote>Shown on the public status page when set.</EnforcedNote>
               <SaveButton />
             </CardContent>
           </Card>
