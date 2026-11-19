@@ -1,24 +1,42 @@
 'use client';
 
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Sidebar } from './sidebar';
 import { DashboardHeader } from './header';
 import { useAuthStore } from '@/stores/auth-store';
 import { useAuth } from '@/hooks/use-auth';
 
+/**
+ * During React hydration, zustand returns the store's initial (logged-out)
+ * state, not the value persisted in localStorage. Wait until after hydration
+ * before deciding to redirect, or every hard load of an app page bounces to /login.
+ */
+function useAuthHydrated() {
+  const [hydrated, setHydrated] = useState(false);
+
+  useEffect(() => {
+    const persist = useAuthStore.persist;
+    if (persist.hasHydrated()) setHydrated(true);
+    return persist.onFinishHydration(() => setHydrated(true));
+  }, []);
+
+  return hydrated;
+}
+
 export function DashboardShell({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const { isAuthenticated } = useAuthStore();
+  const hydrated = useAuthHydrated();
   useAuth(); // sync profile from server
 
   useEffect(() => {
-    if (!isAuthenticated) {
+    if (hydrated && !isAuthenticated) {
       router.push('/login');
     }
-  }, [isAuthenticated, router]);
+  }, [hydrated, isAuthenticated, router]);
 
-  if (!isAuthenticated) {
+  if (!hydrated || !isAuthenticated) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
