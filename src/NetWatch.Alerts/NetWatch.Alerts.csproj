@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>NetWatch.Alerts</RootNamespace>
+    <Description>Alert rule evaluation, alert lifecycle (Active → Acknowledged → Resolved → Closed) and notification.</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\NetWatch.Core\NetWatch.Core.csproj" />
+    <ProjectReference Include="..\NetWatch.Data\NetWatch.Data.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="NetWatch.Tests" />
+  </ItemGroup>
+
+</Project>

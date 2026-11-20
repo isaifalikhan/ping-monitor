@@ -1,0 +1,30 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+    <RootNamespace>NetWatch.Tests</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="xunit" />
+    <PackageReference Include="xunit.runner.visualstudio">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\NetWatch.Core\NetWatch.Core.csproj" />
+    <ProjectReference Include="..\..\src\NetWatch.Data\NetWatch.Data.csproj" />
+    <ProjectReference Include="..\..\src\NetWatch.Collectors\NetWatch.Collectors.csproj" />
+    <ProjectReference Include="..\..\src\NetWatch.Alerts\NetWatch.Alerts.csproj" />
+    <ProjectReference Include="..\..\src\NetWatch.Web\NetWatch.Web.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Using Include="Xunit" />
+  </ItemGroup>
+
+</Project>

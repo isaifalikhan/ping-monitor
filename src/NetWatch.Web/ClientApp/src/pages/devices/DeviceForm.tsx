@@ -1,0 +1,173 @@
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useState } from 'react';
+import { api } from '../../api/client';
+import type { Credential, DeviceDetail, DeviceInput, DeviceListItem, Group } from '../../api/types';
+import { DEVICE_TYPES, OS_KINDS } from '../../api/types';
+import { ErrorBox, Modal } from '../../components/Modal';
+import { typeLabel } from '../../util/format';
+import { groupOptions } from '../settings/GroupsTab';
+
+/** Add/edit device dialog (Admin). */
+export function DeviceForm({ device, onClose, onSaved }: { device?: DeviceDetail; onClose: () => void; onSaved?: (id: number) => void }) {
+  const qc = useQueryClient();
+  const groups = useQuery({ queryKey: ['groups'], queryFn: () => api.get<Group[]>('/api/groups') });
+  const creds = useQuery({ queryKey: ['credentials'], queryFn: () => api.get<Credential[]>('/api/credentials') });
+  const devices = useQuery({ queryKey: ['devices', 'all'], queryFn: () => api.get<DeviceListItem[]>('/api/devices') });
+
+  const [form, setForm] = useState<DeviceInput>(() => ({
+    name: device?.name ?? '',
+    ipAddress: device?.ipAddress ?? '',
+    hostname: device?.hostname ?? '',
+    type: device?.type ?? 'Switch',
+    os: device?.os ?? 'NetworkOs',
+    location: device?.location ?? '',
+    groupId: device?.groupId ?? null,
+    pollIntervalSec: device?.pollIntervalSec ?? 60,
+    isEnabled: device?.isEnabled ?? true,
+    parentDeviceId: device?.parentDeviceId ?? null,
+    snmpCredentialId: device?.credentials.find((c) => c.purpose === 'Snmp')?.credentialProfileId ?? null,
+    notes: device?.notes ?? '',
+    tags: device?.tags ?? [],
+  }));
+  const [tagText, setTagText] = useState((device?.tags ?? []).join(', '));
+  const [error, setError] = useState<unknown>(null);
+  const [busy, setBusy] = useState(false);
+
+  const set = <K extends keyof DeviceInput>(k: K, v: DeviceInput[K]) => setForm((f) => ({ ...f, [k]: v }));
+
+  const save = async () => {
+    setBusy(true);
+    setError(null);
+    const body: DeviceInput = {
+      ...form,
+      tags: tagText
+        .split(/[,;]/)
+        .map((t) => t.trim())
+        .filter(Boolean),
+    };
+    try {
+      let id = device?.id;
+      if (device) await api.put(`/api/devices/${device.id}`, body);
+      else id = (await api.post<{ id: number }>('/api/devices', body)).id;
+      await qc.invalidateQueries({ queryKey: ['devices'] });
+      await qc.invalidateQueries({ queryKey: ['device'] });
+      onSaved?.(id!);
+      onClose();
+    } catch (e) {
+      setError(e);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const snmpCreds = (creds.data ?? []).filter((c) => c.kind === 'SnmpV2c' || c.kind === 'SnmpV3');
+
+  return (
+    <Modal
+      title={device ? `Edit ${device.name}` : 'Add device'}
+      onClose={onClose}
+      wide
+      footer={
+        <>
+          <button onClick={onClose}>Cancel</button>
+          <button className="primary" onClick={() => void save()} disabled={busy}>
+            {device ? 'Save' : 'Add device'}
+          </button>
+        </>
+      }
+    >
+      <ErrorBox error={error} />
+      <div className="form-grid">
+        <label className="field">
+          <span>Name *</span>
+          <input value={form.name} onChange={(e) => set('name', e.target.value)} maxLength={200} />
+        </label>
+        <label className="field">
+          <span>IP address *</span>
+          <input className="mono" value={form.ipAddress} onChange={(e) => set('ipAddress', e.target.value)} placeholder="10.0.0.1" />
+        </label>
+        <label className="field">
+          <span>Host name</span>
+          <input value={form.hostname ?? ''} onChange={(e) => set('hostname', e.target.value)} />
+        </label>
+        <label className="field">
+          <span>Type</span>
+          <select value={form.type} onChange={(e) => set('type', e.target.value as DeviceInput['type'])}>
+            {DEVICE_TYPES.map((t) => (
+              <option key={t} value={t}>
+                {typeLabel(t)}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="field">
+          <span>Operating system</span>
+          <select value={form.os} onChange={(e) => set('os', e.target.value as DeviceInput['os'])}>
+            {OS_KINDS.map((t) => (
+              <option key={t} value={t}>
+                {typeLabel(t)}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="field">
+          <span>Group / site</span>
+          <select value={form.groupId ?? ''} onChange={(e) => set('groupId', e.target.value ? Number(e.target.value) : null)}>
+            <option value="">— none —</option>
+            {groupOptions(groups.data ?? []).map((g) => (
+              <option key={g.id} value={g.id}>
+                {g.label}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="field">
+          <span>Location / rack</span>
+          <input value={form.location ?? ''} onChange={(e) => set('location', e.target.value)} />
+        </label>
+        <label className="field">
+          <span>SNMP credential</span>
+          <select value={form.snmpCredentialId ?? ''} onChange={(e) => set('snmpCredentialId', e.target.value ? Number(e.target.value) : null)}>
+            <option value="">— none (ping only) —</option>
+            {snmpCreds.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.name} ({c.kind === 'SnmpV3' ? 'v3' : 'v2c'})
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="field">
+          <span>Polling interval (seconds)</span>
+          <input type="number" min={15} max={3600} value={form.pollIntervalSec ?? 60} onChange={(e) => set('pollIntervalSec', Number(e.target.value))} />
+        </label>
+        <label className="field">
+          <span>Upstream device (dependency)</span>
+          <select value={form.parentDeviceId ?? ''} onChange={(e) => set('parentDeviceId', e.target.value ? Number(e.target.value) : null)}>
+            <option value="">— none —</option>
+            {(devices.data ?? [])
+              .filter((d) => d.id !== device?.id && ['Switch', 'Router', 'Firewall'].includes(d.type))
+              .map((d) => (
+                <option key={d.id} value={d.id}>
+                  {d.name} ({d.ipAddress})
+                </option>
+              ))}
+          </select>
+          <span className="hint">The switch this device connects through (dependency map).</span>
+        </label>
+        <label className="field">
+          <span>Tags</span>
+          <input value={tagText} onChange={(e) => setTagText(e.target.value)} placeholder="core, cisco" />
+          <span className="hint">Comma separated.</span>
+        </label>
+        <label className="check" style={{ alignSelf: 'end' }}>
+          <input type="checkbox" checked={form.isEnabled} onChange={(e) => set('isEnabled', e.target.checked)} />
+          Monitoring enabled
+        </label>
+        <label className="field wide">
+          <span>Notes</span>
+          <textarea rows={2} value={form.notes ?? ''} onChange={(e) => set('notes', e.target.value)} />
+        </label>
+      </div>
+    </Modal>
+  );
+}

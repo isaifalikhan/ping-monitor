@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>NetWatch.Collectors</RootNamespace>
+    <Description>Poll scheduler and protocol collectors (ICMP, SNMP), discovery, poll-result processing and the hardware simulator.</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Lextm.SharpSnmpLib" />
+    <PackageReference Include="Microsoft.Extensions.Hosting.Abstractions" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\NetWatch.Core\NetWatch.Core.csproj" />
+    <ProjectReference Include="..\NetWatch.Data\NetWatch.Data.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="NetWatch.Tests" />
+  </ItemGroup>
+
+</Project>

@@ -1,0 +1,46 @@
+﻿<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <RootNamespace>NetWatch.Service</RootNamespace>
+    <AssemblyName>NetWatch.Service</AssemblyName>
+    <Description>NetWatch Windows service host: collectors, alert engine, storage and the HTTPS web console in one process.</Description>
+    <ApplicationIcon />
+    <ServerGarbageCollection>true</ServerGarbageCollection>
+    <ConcurrentGarbageCollection>true</ConcurrentGarbageCollection>
+
+    <!-- Self-contained single-file publish (build.ps1 passes these explicitly; defaults keep F5 debugging simple). -->
+    <RuntimeIdentifier Condition="'$(RuntimeIdentifier)' == '' and '$(Configuration)' == 'Release'">win-x64</RuntimeIdentifier>
+    <SelfContained Condition="'$(Configuration)' == 'Release'">true</SelfContained>
+    <PublishSingleFile>true</PublishSingleFile>
+    <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
+    <EnableCompressionInSingleFile>true</EnableCompressionInSingleFile>
+    <PublishTrimmed>false</PublishTrimmed>
+    <DebugType>embedded</DebugType>
+    <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
+    <InvariantGlobalization>false</InvariantGlobalization>
+    <AutoreleasePoolSupport>false</AutoreleasePoolSupport>
+    <UseAppHost>true</UseAppHost>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.Hosting.WindowsServices" />
+    <PackageReference Include="Serilog.AspNetCore" />
+    <PackageReference Include="Serilog.Sinks.File" />
+    <PackageReference Include="Serilog.Settings.Configuration" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\NetWatch.Core\NetWatch.Core.csproj" />
+    <ProjectReference Include="..\NetWatch.Data\NetWatch.Data.csproj" />
+    <ProjectReference Include="..\NetWatch.Collectors\NetWatch.Collectors.csproj" />
+    <ProjectReference Include="..\NetWatch.Alerts\NetWatch.Alerts.csproj" />
+    <ProjectReference Include="..\NetWatch.Web\NetWatch.Web.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Content Update="appsettings*.json" CopyToPublishDirectory="Never" />
+    <EmbeddedResource Include="appsettings.default.json" LogicalName="appsettings.default.json" />
+  </ItemGroup>
+
+</Project>

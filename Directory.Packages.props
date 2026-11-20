@@ -1,0 +1,39 @@
+﻿<Project>
+  <!--
+    All third-party packages and their versions. Every package here is MIT, Apache-2.0, BSD or MS-PL licensed
+    and makes no network calls at run time. Packages are only restored at build time (online, or from the
+    offline cache created by "build.ps1 -PrepareOffline").
+  -->
+  <PropertyGroup>
+    <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
+    <CentralPackageTransitivePinningEnabled>false</CentralPackageTransitivePinningEnabled>
+  </PropertyGroup>
+  <ItemGroup>
+    <!-- Microsoft (MIT) -->
+    <PackageVersion Include="Microsoft.EntityFrameworkCore.Sqlite" Version="10.0.15" />
+    <PackageVersion Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.15" />
+    <PackageVersion Include="Microsoft.Extensions.Hosting.Abstractions" Version="10.0.15" />
+    <PackageVersion Include="Microsoft.Extensions.Hosting.WindowsServices" Version="10.0.15" />
+    <PackageVersion Include="Microsoft.Extensions.FileProviders.Embedded" Version="10.0.15" />
+    <PackageVersion Include="System.Security.Cryptography.ProtectedData" Version="10.0.15" />
+
+    <!-- SNMP v1/v2c/v3 (MIT) -->
+    <PackageVersion Include="Lextm.SharpSnmpLib" Version="12.5.7" />
+
+    <!-- Logging (Apache-2.0) -->
+    <PackageVersion Include="Serilog.AspNetCore" Version="10.0.0" />
+    <PackageVersion Include="Serilog.Sinks.File" Version="7.0.0" />
+    <PackageVersion Include="Serilog.Settings.Configuration" Version="10.0.1" />
+
+    <!-- Cron expressions (MIT) -->
+    <PackageVersion Include="Cronos" Version="0.9.0" />
+
+    <!-- CSV import/export (MS-PL / Apache-2.0) -->
+    <PackageVersion Include="CsvHelper" Version="33.1.0" />
+
+    <!-- Tests (Apache-2.0 / MIT) -->
+    <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="17.12.0" />
+    <PackageVersion Include="xunit" Version="2.9.3" />
+    <PackageVersion Include="xunit.runner.visualstudio" Version="3.1.5" />
+  </ItemGroup>
+</Project>

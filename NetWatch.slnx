@@ -1,0 +1,23 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/NetWatch.Core/NetWatch.Core.csproj" />
+    <Project Path="src/NetWatch.Data/NetWatch.Data.csproj" />
+    <Project Path="src/NetWatch.Collectors/NetWatch.Collectors.csproj" />
+    <Project Path="src/NetWatch.Alerts/NetWatch.Alerts.csproj" />
+    <Project Path="src/NetWatch.Web/NetWatch.Web.csproj" />
+    <Project Path="src/NetWatch.Service/NetWatch.Service.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/NetWatch.Tests/NetWatch.Tests.csproj" />
+  </Folder>
+  <Folder Name="/installer/">
+    <File Path="installer/NetWatch.Installer/netwatch.iss" />
+  </Folder>
+  <Folder Name="/Solution Items/">
+    <File Path="Directory.Build.props" />
+    <File Path="Directory.Packages.props" />
+    <File Path="build.ps1" />
+    <File Path="global.json" />
+    <File Path="nuget.config" />
+  </Folder>
+</Solution>

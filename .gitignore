@@ -1,92 +1,38 @@
-# ============================================================
-# NetWatch monorepo — dependencies & package managers
-# ============================================================
-node_modules/
-.pnpm-store/
-.pnp
-.pnp.js
+# NetWatch (offline) — build outputs and local data
 
-# ============================================================
-# Build outputs
-# ============================================================
-dist/
-.next/
-out/
-build/
+# .NET
+bin/
+obj/
+*.user
+*.suo
+.vs/
+TestResults/
+
+# Build artefacts and the offline build kit (NuGet/npm caches are large and re-creatable)
+artifacts/
+offline/
+
+# Web UI
+src/NetWatch.Web/ClientApp/node_modules/
+src/NetWatch.Web/ClientApp/dist/
 *.tsbuildinfo
-.turbo/
 
-# ============================================================
-# Environment & secrets (never commit)
-# ============================================================
-.env
-.env.*
-!.env.example
-apps/backend/.env
-apps/frontend/.env
-apps/frontend/.env.local
-apps/frontend/.env.*.local
-
-# ============================================================
-# Local databases & dev data
-# ============================================================
-.pglite/
-.pgdata/
-postgres_data/
-redis_data/
+# Local run data (databases, certificates, logs, initial password file)
+.data/
 *.db
-*.sqlite
-
-# ============================================================
-# Logs & debug
-# ============================================================
-logs/
+*.db-wal
+*.db-shm
+*.pfx
+*.key
 *.log
-npm-debug.log*
-pnpm-debug.log*
-yarn-debug.log*
-yarn-error.log*
 
-# ============================================================
-# Test & coverage
-# ============================================================
-coverage/
-.nyc_output/
-.jest/
-test-results/
-playwright-report/
-playwright/.cache/
+# Leftover legacy folders (the cloud app lives at tag legacy-cloud-netwatch)
+apps/
+node_modules/
 
-# ============================================================
-# Prisma (keep migrations; ignore local lock noise if any)
-# ============================================================
-apps/backend/prisma/migrations/**/migration_lock.toml
-
-# ============================================================
-# IDE & editors
-# ============================================================
+# IDE / OS
 .idea/
-.vscode/*
-!.vscode/extensions.json
-!.vscode/settings.json.example
-*.swp
-*.swo
-*~
-
-# ============================================================
-# OS
-# ============================================================
-.DS_Store
-.DS_Store?
+.vscode/
 Thumbs.db
-ehthumbs.db
 Desktop.ini
-
-# ============================================================
-# Misc
-# ============================================================
-*.pem
-.cache/
-tmp/
-temp/
-.vercel
+.DS_Store

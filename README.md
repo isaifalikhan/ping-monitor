@@ -1,79 +1,55 @@
-# NetWatch
+# NetWatch (offline edition)
 
-Internal infrastructure monitoring for a single company — ERP systems, servers, network devices, APIs, SSL, and critical services.
+Agentless infrastructure monitoring for an air-gapped network: one Windows service, one installer, no internet
+access at run time (no CDN, no telemetry, no update checks).
 
-## Stack (production)
+**Phase 1 (this release):** Windows service with its own HTTPS web console, login with roles (Admin / Operator /
+Viewer), device inventory (manual, CSV import, subnet discovery), ICMP ping and SNMP v2c/v3 polling of switches
+(Cisco, HP/Aruba, Juniper, plus standard-MIB fallbacks), interface traffic graphs, CPU/memory/temperature/sensor
+health, threshold and state alerts with on-screen pop-ups and sound, and a Windows installer.
 
-| Layer | Technology |
-|-------|------------|
-| App | Next.js 15 (App Router) on Vercel |
-| Database | Supabase PostgreSQL |
-| Monitoring | Vercel Cron → `/api/cron/check-monitors` |
-| Auth | Custom JWT + httpOnly cookies |
+The earlier cloud version (Next.js + Supabase) is preserved at git tag `legacy-cloud-netwatch`.
 
-The legacy `apps/backend` NestJS service is **not used** in production.
+## Documentation
 
-## Quick start (local)
+| Document | For |
+|---|---|
+| [docs/installation-guide.md](docs/installation-guide.md) | Installing, upgrading and uninstalling on the monitoring server; certificate; firewall |
+| [docs/admin-guide.md](docs/admin-guide.md) | Daily administration: devices, credentials, alerts, users, retention, backup/restore, troubleshooting |
+| [docs/netwatch-offline-design.md](docs/netwatch-offline-design.md) | Architecture, database schema, technology choices, phase plan |
 
-```bash
-pnpm install
-cp apps/frontend/.env.example apps/frontend/.env.local
-# Add Supabase URL + SUPABASE_SERVICE_ROLE_KEY + JWT_SECRET + CRON_SECRET
-pnpm dev
-```
-
-Open http://localhost:3001
-
-Optional seed data:
-
-```bash
-pnpm db:seed
-# Login: demo@netwatch.io / Demo1234!
-```
-
-## Production deployment
-
-See **[apps/frontend/DEPLOYMENT.md](apps/frontend/DEPLOYMENT.md)** for the full guide:
-
-- Supabase setup and migrations
-- Vercel configuration and cron
-- Environment variables
-- Post-deploy verification checklist
-- Security and operations
-
-## Project structure
+## Repository layout
 
 ```
-apps/frontend/          # Next.js app (deploy this to Vercel)
-  src/app/api/          # API routes
-  src/lib/monitoring/   # Check executor + cron
-  src/lib/services/     # Business logic
-  supabase/             # schema.sql + migrations
-packages/shared/        # Shared types and enums
-apps/backend/           # Legacy — not deployed
+src/
+  NetWatch.Core        domain model, settings, metric math (no dependencies)
+  NetWatch.Data        SQLite: EF Core config + events DBs, sharded metric store, rollups, retention
+  NetWatch.Alerts      alert evaluator (threshold / state / event), alert manager, built-in rules
+  NetWatch.Collectors  poll scheduler, ICMP, SNMP client and vendor collectors, simulator
+  NetWatch.Web         REST API, authentication, SignalR live hub, embedded React UI (ClientApp/)
+  NetWatch.Service     Windows-service host (Kestrel HTTPS, Serilog, certificate, first-start seeding)
+tests/NetWatch.Tests   xUnit tests
+installer/             Inno Setup 6 script
+build.ps1              one-command build: UI, tests, single-file exe, installer
 ```
 
-## Key environment variables
+## Building
 
-| Variable | Required |
-|----------|----------|
-| `NEXT_PUBLIC_SUPABASE_URL` | Yes |
-| `SUPABASE_SERVICE_ROLE_KEY` | Yes |
-| `JWT_SECRET` (32+ chars) | Yes |
-| `CRON_SECRET` | Yes (production) |
-| `NEXT_PUBLIC_DEMO_MODE=false` | Yes (production) |
-| `APP_URL` | Yes (production) |
-| `SMTP_*` | Optional (email alerts) |
+Requirements on the build PC: .NET 10 SDK, Node.js 20+, Inno Setup 6.
 
-## Roles
+```powershell
+.\build.ps1                 # online build -> artifacts\NetWatch-Setup-1.0.0.exe
+.\build.ps1 -PrepareOffline # fill offline\ with every NuGet/npm package (internet-connected PC)
+.\build.ps1 -Offline        # build inside the air-gapped network from offline\
+```
 
-| Role | Access |
-|------|--------|
-| Owner | Full access + company settings |
-| Admin | Monitors, alerts, maintenance, team, audit logs |
-| Engineer | Incidents, view monitors & reports |
-| Viewer | Read-only |
+## Running locally without hardware
 
-## License
+```powershell
+dotnet build NetWatch.slnx
+dotnet run --project src\NetWatch.Service -- --console --simulate --data-dir .data
+```
 
-Proprietary — All rights reserved.
+Open https://localhost:8443/, sign in as `admin` with the one-time password from
+`.data\initial-admin-password.txt`, and choose a new password. `--simulate` adds 120 switches, 20 servers and
+40 VMs with realistic traffic, faults and reboots, so every screen and alert can be exercised.

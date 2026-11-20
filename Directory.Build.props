@@ -1,0 +1,25 @@
+<Project>
+  <!-- Settings shared by every NetWatch project. -->
+  <PropertyGroup>
+    <!-- Plain "-windows" (no Windows SDK projection needed). The minimum OS (Windows Server 2019 / Windows 10 1809)
+         is enforced by the installer (MinVersion=10.0.17763). -->
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <AnalysisLevel>latest</AnalysisLevel>
+    <EnforceCodeStyleInBuild>false</EnforceCodeStyleInBuild>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+
+    <Version>1.0.0</Version>
+    <Company>NetWatch</Company>
+    <Product>NetWatch</Product>
+    <Copyright>NetWatch</Copyright>
+
+    <!-- Central package management: every package version lives in Directory.Packages.props. -->
+    <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
+
+    <!-- No telemetry or update checks from the build tooling either. -->
+    <DOTNET_CLI_TELEMETRY_OPTOUT>1</DOTNET_CLI_TELEMETRY_OPTOUT>
+  </PropertyGroup>
+</Project>
