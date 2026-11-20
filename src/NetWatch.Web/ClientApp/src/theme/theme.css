@@ -339,6 +339,18 @@ h3 {
   grid-template-columns: repeat(auto-fill, minmax(460px, 1fr));
 }
 
+.grid.cols-3 {
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+}
+
+.stat.clickable {
+  cursor: pointer;
+}
+
+.stat.clickable:hover .value {
+  text-decoration: underline;
+}
+
 .card {
   background: var(--bg-elev);
   border: 1px solid var(--border);

@@ -80,6 +80,8 @@ public sealed class RuleScope
 
 /// <summary>Device attributes the alert engine needs for scope matching and suppression.</summary>
 /// <param name="GroupAncestry">The device's group id and all ancestor group ids.</param>
+/// <param name="InMaintenance">Maintenance mode or an active maintenance window.</param>
+/// <param name="IsEnabled">Monitoring enabled (absence rules ignore disabled devices).</param>
 public sealed record DeviceContext(
     int Id,
     string Name,
@@ -87,7 +89,8 @@ public sealed record DeviceContext(
     DeviceType Type,
     IReadOnlySet<int> GroupAncestry,
     IReadOnlySet<string> Tags,
-    bool InMaintenance);
+    bool InMaintenance,
+    bool IsEnabled = true);
 
 public interface IDeviceContextProvider
 {

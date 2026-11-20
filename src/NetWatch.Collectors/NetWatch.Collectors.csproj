@@ -2,12 +2,15 @@
 
   <PropertyGroup>
     <RootNamespace>NetWatch.Collectors</RootNamespace>
-    <Description>Poll scheduler and protocol collectors (ICMP, SNMP), discovery, poll-result processing and the hardware simulator.</Description>
+    <Description>Poll scheduler and protocol collectors (ICMP, SNMP, WinRM/WMI, event logs, SSH), syslog and SNMP trap receivers, poll-result processing and the hardware simulator.</Description>
   </PropertyGroup>
 
   <ItemGroup>
     <PackageReference Include="Lextm.SharpSnmpLib" />
     <PackageReference Include="Microsoft.Extensions.Hosting.Abstractions" />
+    <PackageReference Include="System.Management" />
+    <PackageReference Include="System.Diagnostics.EventLog" />
+    <PackageReference Include="SSH.NET" />
   </ItemGroup>
 
   <ItemGroup>

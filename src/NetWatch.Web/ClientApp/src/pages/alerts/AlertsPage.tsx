@@ -61,6 +61,24 @@ function AckDialog({ ids, action, onClose }: { ids: number[]; action: 'ack' | 'c
   );
 }
 
+/** Escalated / flapping markers. */
+export function AlertFlags({ alert }: { alert: Alert }) {
+  return (
+    <>
+      {alert.escalatedUtc && alert.state === 'Active' && (
+        <span className="badge sev-critical" title={`Escalated ${fmtDateTime(alert.escalatedUtc)}: not acknowledged in time`}>
+          escalated
+        </span>
+      )}{' '}
+      {alert.isFlapping && (
+        <span className="badge s-warning" title={`${alert.flapCount} state changes — stays open until the condition is stable`}>
+          flapping
+        </span>
+      )}
+    </>
+  );
+}
+
 /** Alert detail with history and comments; used here and from the device page. */
 export function AlertDetailDialog({ alertId, onClose }: { alertId: number; onClose: () => void }) {
   const qc = useQueryClient();
@@ -114,7 +132,9 @@ export function AlertDetailDialog({ alertId, onClose }: { alertId: number; onClo
               <SeverityBadge severity={a.severity} />
             </dd>
             <dt>State</dt>
-            <dd>{a.state}</dd>
+            <dd>
+              {a.state} <AlertFlags alert={a} />
+            </dd>
             <dt>Device</dt>
             <dd>{a.deviceId ? <Link to={`/devices/${a.deviceId}`} onClick={onClose}>{a.deviceName ?? `#${a.deviceId}`}</Link> : '—'}</dd>
             <dt>Message</dt>
@@ -212,7 +232,9 @@ export function AlertsPage() {
       header: 'Alert',
       render: (a) => (
         <div>
-          <div>{a.title}</div>
+          <div>
+            {a.title} <AlertFlags alert={a} />
+          </div>
           <div className="muted" style={{ fontSize: 12.5 }}>
             {a.message}
           </div>

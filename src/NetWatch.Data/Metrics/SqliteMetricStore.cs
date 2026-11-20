@@ -28,7 +28,12 @@ public sealed class SqliteMetricStore : IMetricStore
     private readonly ILogger<SqliteMetricStore> _logger;
     private readonly Channel<InterfaceSample> _interfaceQueue;
     private readonly Channel<DeviceSample> _deviceQueue;
+    private readonly Channel<GenericSample> _genericQueue;
     private readonly ConcurrentDictionary<string, byte> _knownTables = new(StringComparer.Ordinal);
+
+    // Generic series registry: (device, key, instance) → id. Loaded at start, extended on demand.
+    private readonly ConcurrentDictionary<(int DeviceId, string Key, string Instance), int> _seriesIds = new();
+    private readonly object _seriesLock = new();
     private int _pending;
     private long _dropped;
     private volatile bool _initialised;
@@ -50,6 +55,7 @@ public sealed class SqliteMetricStore : IMetricStore
         };
         _interfaceQueue = Channel.CreateBounded<InterfaceSample>(options, _ => OnDropped());
         _deviceQueue = Channel.CreateBounded<DeviceSample>(options, _ => OnDropped());
+        _genericQueue = Channel.CreateBounded<GenericSample>(options, _ => OnDropped());
     }
 
     public int PendingWrites => Volatile.Read(ref _pending);
@@ -69,9 +75,94 @@ public sealed class SqliteMetricStore : IMetricStore
                 InErrors INTEGER, OutErrors INTEGER,
                 InDiscards INTEGER, OutDiscards INTEGER,
                 Hc INTEGER NOT NULL);
+            CREATE TABLE IF NOT EXISTS Series (
+                Id INTEGER PRIMARY KEY AUTOINCREMENT,
+                DeviceId INTEGER NOT NULL,
+                Key TEXT NOT NULL,
+                Instance TEXT NOT NULL DEFAULT '',
+                UNIQUE (DeviceId, Key, Instance));
             """);
         RefreshKnownTables(connection);
+        LoadSeries(connection);
         _initialised = true;
+    }
+
+    private void LoadSeries(SqliteConnection connection)
+    {
+        using var cmd = connection.CreateCommand();
+        cmd.CommandText = "SELECT Id, DeviceId, Key, Instance FROM Series";
+        using var r = cmd.ExecuteReader();
+        while (r.Read())
+        {
+            _seriesIds[(r.GetInt32(1), r.GetString(2), r.GetString(3))] = r.GetInt32(0);
+        }
+    }
+
+    public void Enqueue(in GenericSample sample)
+    {
+        if (_genericQueue.Writer.TryWrite(sample))
+        {
+            Interlocked.Increment(ref _pending);
+        }
+    }
+
+    public int GetOrCreateSeries(int deviceId, string key, string? instance)
+    {
+        EnsureInitialised();
+        var id = (deviceId, key, instance ?? string.Empty);
+        if (_seriesIds.TryGetValue(id, out var existing))
+        {
+            return existing;
+        }
+
+        lock (_seriesLock)
+        {
+            if (_seriesIds.TryGetValue(id, out existing))
+            {
+                return existing;
+            }
+
+            using var connection = Open();
+            using var cmd = connection.CreateCommand();
+            cmd.CommandText = """
+                INSERT INTO Series (DeviceId, Key, Instance) VALUES ($d, $k, $i)
+                ON CONFLICT (DeviceId, Key, Instance) DO UPDATE SET Key = excluded.Key
+                RETURNING Id
+                """;
+            cmd.Parameters.AddWithValue("$d", deviceId);
+            cmd.Parameters.AddWithValue("$k", key);
+            cmd.Parameters.AddWithValue("$i", id.Item3);
+            var newId = Convert.ToInt32(cmd.ExecuteScalar(), System.Globalization.CultureInfo.InvariantCulture);
+            _seriesIds[id] = newId;
+            return newId;
+        }
+    }
+
+    public IReadOnlyList<SeriesInfo> ListSeries(int deviceId) =>
+        _seriesIds.Where(kv => kv.Key.DeviceId == deviceId)
+            .Select(kv => new SeriesInfo(kv.Value, kv.Key.DeviceId, kv.Key.Key, kv.Key.Instance))
+            .OrderBy(s => s.Key, StringComparer.Ordinal)
+            .ThenBy(s => s.Instance, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+    public Task<SeriesData> QuerySeriesAsync(int seriesId, DateTime fromUtc, DateTime toUtc, CancellationToken ct) =>
+        QueryAsync(TableSpecs.Generic, seriesId, fromUtc, toUtc, ct);
+
+    public void ForgetDevice(int deviceId)
+    {
+        EnsureInitialised();
+        lock (_seriesLock)
+        {
+            using var connection = Open();
+            using var cmd = connection.CreateCommand();
+            cmd.CommandText = "DELETE FROM Series WHERE DeviceId = $d";
+            cmd.Parameters.AddWithValue("$d", deviceId);
+            cmd.ExecuteNonQuery();
+            foreach (var key in _seriesIds.Keys.Where(k => k.DeviceId == deviceId).ToList())
+            {
+                _seriesIds.TryRemove(key, out _);
+            }
+        }
     }
 
     public void Enqueue(in InterfaceSample sample)
@@ -127,13 +218,14 @@ public sealed class SqliteMetricStore : IMetricStore
         {
             var interfaces = Drain(_interfaceQueue.Reader);
             var devices = Drain(_deviceQueue.Reader);
-            if (interfaces.Count == 0 && devices.Count == 0)
+            var generic = Drain(_genericQueue.Reader);
+            if (interfaces.Count == 0 && devices.Count == 0 && generic.Count == 0)
             {
                 return;
             }
 
-            WriteBatch(interfaces, devices);
-            Interlocked.Add(ref _pending, -(interfaces.Count + devices.Count));
+            WriteBatch(interfaces, devices, generic);
+            Interlocked.Add(ref _pending, -(interfaces.Count + devices.Count + generic.Count));
         }
     }
 
@@ -172,7 +264,7 @@ public sealed class SqliteMetricStore : IMetricStore
         return list;
     }
 
-    private void WriteBatch(List<InterfaceSample> interfaces, List<DeviceSample> devices)
+    private void WriteBatch(List<InterfaceSample> interfaces, List<DeviceSample> devices, List<GenericSample> generic)
     {
         using var connection = Open();
         using var tx = connection.BeginTransaction();
@@ -191,6 +283,13 @@ public sealed class SqliteMetricStore : IMetricStore
             {
                 var cmd = GetInsert(connection, tx, commands, TableSpecs.Device, s.TsMs);
                 Bind(cmd, s.DeviceId, s.TsMs, s.Up ? 1.0 : 0.0, s.RttMs, s.LossPct, s.CpuPct, s.MemPct, s.TempC);
+                cmd.ExecuteNonQuery();
+            }
+
+            foreach (var s in generic)
+            {
+                var cmd = GetInsert(connection, tx, commands, TableSpecs.Generic, s.TsMs);
+                Bind(cmd, s.SeriesId, s.TsMs, s.Value);
                 cmd.ExecuteNonQuery();
             }
 

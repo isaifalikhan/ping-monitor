@@ -1,4 +1,5 @@
 using System.Collections.Frozen;
+using System.Net;
 using System.Threading.Channels;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
@@ -7,11 +8,13 @@ using Microsoft.Extensions.Logging;
 using NetWatch.Core;
 using NetWatch.Core.Abstractions;
 using NetWatch.Core.Alerts;
+using NetWatch.Core.Entities;
 using NetWatch.Data.Config;
 
 namespace NetWatch.Collectors.Inventory;
 
-/// <summary>Immutable view of a device for the scheduler, pollers and alert engine.</summary>
+/// <summary>Immutable view of a device for the scheduler, pollers, receivers and alert engine.</summary>
+/// <param name="MaintenanceReason">"Maintenance mode" or the name of the active maintenance window; null when not in maintenance.</param>
 public sealed record DeviceSnapshot(
     int Id,
     string Name,
@@ -24,20 +27,31 @@ public sealed record DeviceSnapshot(
     int? GroupId,
     IReadOnlySet<string> Tags,
     IReadOnlySet<int> ImportantInterfaceIds,
-    DeviceContext Context)
+    DeviceContext Context,
+    OsKind Os = OsKind.Unknown,
+    int? ManagementCredentialId = null,
+    int? ParentDeviceId = null,
+    IReadOnlyList<string>? WatchedServices = null,
+    string? SshHostKeyFingerprint = null,
+    string? MaintenanceReason = null,
+    DateTime? MaintenanceUntilUtc = null)
 {
     public const string SimulatedTag = "simulated";
 
     public bool IsSimulated => Tags.Contains(SimulatedTag);
+
+    /// <summary>Servers, VMs, DCs and hypervisors get server collection (disks, services ...).</summary>
+    public bool IsServerType => Type is DeviceType.Server or DeviceType.VM or DeviceType.DomainController or DeviceType.Hypervisor;
 }
 
 /// <summary>
-/// In-memory copy of the inventory (devices, tags, groups, credentials, important ports). Reloaded every
-/// minute and immediately after the API reports a change. Implements the device lookup used by the alert engine.
+/// In-memory copy of the inventory (devices, tags, groups, credentials, important ports, watched services,
+/// maintenance windows). Reloaded every 30 seconds (so maintenance windows start and end on time) and immediately
+/// after the API reports a change. Implements the device lookup used by the alert engine.
 /// </summary>
 public sealed class InventoryCache : BackgroundService, IDeviceContextProvider, IInventoryChangeNotifier
 {
-    private static readonly TimeSpan RefreshInterval = TimeSpan.FromSeconds(60);
+    private static readonly TimeSpan RefreshInterval = TimeSpan.FromSeconds(30);
 
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly TimeProvider _time;
@@ -45,6 +59,8 @@ public sealed class InventoryCache : BackgroundService, IDeviceContextProvider, 
     private readonly Channel<bool> _changes = Channel.CreateBounded<bool>(new BoundedChannelOptions(1) { FullMode = BoundedChannelFullMode.DropWrite });
     private readonly TaskCompletionSource _ready = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private volatile FrozenDictionary<int, DeviceSnapshot> _devices = FrozenDictionary<int, DeviceSnapshot>.Empty;
+    private volatile FrozenDictionary<string, DeviceSnapshot> _byIp = FrozenDictionary<string, DeviceSnapshot>.Empty;
+    private volatile IReadOnlyList<MaintenanceWindow> _windows = Array.Empty<MaintenanceWindow>();
 
     public InventoryCache(IServiceScopeFactory scopeFactory, TimeProvider time, ILogger<InventoryCache> logger)
     {
@@ -61,9 +77,19 @@ public sealed class InventoryCache : BackgroundService, IDeviceContextProvider, 
 
     public IReadOnlyCollection<DeviceSnapshot> All => _devices.Values;
 
+    /// <summary>Maintenance windows as of the last reload.</summary>
+    public IReadOnlyList<MaintenanceWindow> MaintenanceWindows => _windows;
+
     public DeviceSnapshot? GetSnapshot(int deviceId) => _devices.GetValueOrDefault(deviceId);
 
     public DeviceContext? Get(int deviceId) => _devices.GetValueOrDefault(deviceId)?.Context;
+
+    /// <summary>Device with this management IP (used to map syslog/trap sources), or null.</summary>
+    public DeviceSnapshot? FindByIp(IPAddress address)
+    {
+        var ip = address.IsIPv4MappedToIPv6 ? address.MapToIPv4() : address;
+        return _byIp.GetValueOrDefault(ip.ToString());
+    }
 
     public void NotifyInventoryChanged() => _changes.Writer.TryWrite(true);
 
@@ -116,20 +142,45 @@ public sealed class InventoryCache : BackgroundService, IDeviceContextProvider, 
         var devices = await db.Devices.AsNoTracking()
             .Include(d => d.Tags)
             .Include(d => d.Credentials)
+            .Include(d => d.WatchedServices)
             .ToListAsync(ct);
         var important = await db.Interfaces.AsNoTracking()
             .Where(i => i.IsImportant)
             .Select(i => new { i.DeviceId, i.Id })
             .ToListAsync(ct);
         var importantByDevice = important.GroupBy(i => i.DeviceId).ToDictionary(g => g.Key, g => (IReadOnlySet<int>)g.Select(i => i.Id).ToFrozenSet());
+        var windows = await db.MaintenanceWindows.AsNoTracking().Where(w => w.IsEnabled).ToListAsync(ct);
+        var activeWindows = windows
+            .Select(w => (Window: w, End: MaintenanceSchedule.CurrentEnd(w, now), Scope: RuleScope.Parse(w.ScopeJson)))
+            .Where(x => x.End is not null)
+            .ToList();
 
         var result = new Dictionary<int, DeviceSnapshot>(devices.Count);
         foreach (var d in devices)
         {
             var tags = d.Tags.Select(t => t.Tag).ToFrozenSet(StringComparer.OrdinalIgnoreCase);
             var ancestry = Ancestry(d.GroupId, groups);
-            var inMaintenance = d.MaintenanceMode && (d.MaintenanceUntilUtc is null || d.MaintenanceUntilUtc > now);
-            var context = new DeviceContext(d.Id, d.Name, d.IpAddress, d.Type, ancestry, tags, inMaintenance);
+
+            string? reason = null;
+            DateTime? until = null;
+            if (d.MaintenanceMode && (d.MaintenanceUntilUtc is null || d.MaintenanceUntilUtc > now))
+            {
+                reason = "Maintenance mode";
+                until = d.MaintenanceUntilUtc;
+            }
+            else
+            {
+                var probe = new DeviceContext(d.Id, d.Name, d.IpAddress, d.Type, ancestry, tags, false);
+                var match = activeWindows.FirstOrDefault(x => x.Scope.Matches(probe, interfaceIsImportant: false, isInterfaceSignal: false));
+                if (match.Window is not null)
+                {
+                    reason = $"Maintenance window \"{match.Window.Name}\"";
+                    until = match.End;
+                }
+            }
+
+            var inMaintenance = reason is not null;
+            var context = new DeviceContext(d.Id, d.Name, d.IpAddress, d.Type, ancestry, tags, inMaintenance, d.IsEnabled);
             result[d.Id] = new DeviceSnapshot(
                 d.Id,
                 d.Name,
@@ -142,10 +193,21 @@ public sealed class InventoryCache : BackgroundService, IDeviceContextProvider, 
                 d.GroupId,
                 tags,
                 importantByDevice.GetValueOrDefault(d.Id) ?? FrozenSet<int>.Empty,
-                context);
+                context,
+                d.Os,
+                d.Credentials.FirstOrDefault(c => c.Purpose == CredentialPurpose.Management)?.CredentialProfileId,
+                d.ParentDeviceId,
+                d.WatchedServices.Select(s => s.ServiceName).OrderBy(s => s, StringComparer.OrdinalIgnoreCase).ToList(),
+                d.SshHostKeyFingerprint,
+                reason,
+                until);
         }
 
         _devices = result.ToFrozenDictionary();
+        _byIp = result.Values
+            .GroupBy(d => d.IpAddress, StringComparer.OrdinalIgnoreCase)
+            .ToFrozenDictionary(g => g.Key, g => g.First(), StringComparer.OrdinalIgnoreCase);
+        _windows = windows;
         Reloaded?.Invoke();
     }
 

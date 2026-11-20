@@ -149,7 +149,7 @@ public sealed class PollScheduler : BackgroundService
                 var request = await _processor.PrepareAsync(device, timeout.Token);
                 var result = await _poller.PollAsync(request, timeout.Token);
                 result.Duration = _time.GetElapsedTime(started);
-                failed = !result.PingOk && result.SnmpOk != true;
+                failed = !result.PingOk && result.SnmpOk != true && result.Server?.Ok != true;
                 await _processor.ProcessAsync(request, result, ct);
             }
             catch (OperationCanceledException) when (ct.IsCancellationRequested)

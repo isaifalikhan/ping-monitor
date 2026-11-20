@@ -15,6 +15,7 @@ import { useLive } from '../../live/LiveContext';
 import { fmtAgo, fmtBps, fmtDateTime, fmtDuration, fmtMs, fmtNum, fmtPct, fmtSpeed, ifStatusText, typeLabel } from '../../util/format';
 import { AlertDetailDialog } from '../alerts/AlertsPage';
 import { DeviceForm } from './DeviceForm';
+import { ServerPanel } from './ServerPanel';
 
 interface LiveMetrics {
   deviceId: number;
@@ -28,7 +29,9 @@ interface LiveMetrics {
   interfaces: { id: number; operStatus: number; inBps?: number | null; outBps?: number | null; inUtilPct?: number | null; outUtilPct?: number | null }[];
 }
 
-type Tab = 'overview' | 'interfaces' | 'sensors' | 'events' | 'alerts';
+type Tab = 'overview' | 'server' | 'interfaces' | 'sensors' | 'events' | 'alerts';
+
+const SERVER_TYPES = ['Server', 'VM', 'DomainController', 'Hypervisor'];
 
 function useRangeKey(range: TimeRangeValue) {
   // Refresh "relative" ranges every minute so graphs keep moving.
@@ -235,6 +238,7 @@ export function DeviceDetailPage() {
   const d = device.data;
   if (device.isError) return <ErrorBox error={device.error} />;
   if (!d) return <div className="empty">Loading…</div>;
+  const isServer = SERVER_TYPES.includes(d.type) || d.os === 'Windows' || d.os === 'Linux';
 
   const status = d.status;
   const ifColumns: Column<NetInterface>[] = [
@@ -304,12 +308,12 @@ export function DeviceDetailPage() {
               <button
                 onClick={() =>
                   void run(async () => {
-                    await api.post('/api/devices/maintenance', { deviceIds: [deviceId], enabled: !d.maintenanceMode, untilUtc: null });
+                    await api.post('/api/devices/maintenance', { deviceIds: [deviceId], enabled: d.maintenanceReason !== 'Maintenance mode', untilUtc: null });
                     await device.refetch();
                   })
                 }
               >
-                <Wrench size={16} /> {d.maintenanceMode ? 'End maintenance' : 'Maintenance'}
+                <Wrench size={16} /> {d.maintenanceReason === 'Maintenance mode' ? 'End maintenance' : 'Maintenance'}
               </button>
               <button onClick={() => setEditing(true)}>
                 <Pencil size={16} /> Edit
@@ -322,6 +326,21 @@ export function DeviceDetailPage() {
         </div>
       </div>
       <ErrorBox error={error} />
+      {(d.maintenanceReason || d.unreachableVia) && (
+        <div className="card card-body" style={{ marginBottom: 12, borderLeft: `3px solid ${d.unreachableVia ? 'var(--crit)' : 'var(--maint)'}` }}>
+          {d.maintenanceReason && (
+            <div>
+              <Wrench size={14} /> {d.maintenanceReason}
+              {d.maintenanceUntilUtc ? ` until ${fmtDateTime(d.maintenanceUntilUtc)}` : ''} — no new alerts are raised for this device.
+            </div>
+          )}
+          {d.unreachableVia && (
+            <div>
+              Upstream device <strong>{d.unreachableVia}</strong> is unreachable: alerts for this device are suppressed because it is probably a consequence.
+            </div>
+          )}
+        </div>
+      )}
 
       <div className="grid cols-4" style={{ marginBottom: 16 }}>
         <div className="card stat">
@@ -353,7 +372,7 @@ export function DeviceDetailPage() {
       </div>
 
       <div className="tabs">
-        {(['overview', 'interfaces', 'sensors', 'events', 'alerts'] as Tab[]).map((t) => (
+        {(['overview', ...(isServer ? ['server'] : []), 'interfaces', 'sensors', 'events', 'alerts'] as Tab[]).map((t) => (
           <button key={t} className={tab === t ? 'active' : ''} onClick={() => setTab(t)}>
             {t[0].toUpperCase() + t.slice(1)}
             {t === 'interfaces' && interfaces.data ? ` (${interfaces.data.length})` : ''}
@@ -362,7 +381,7 @@ export function DeviceDetailPage() {
         ))}
       </div>
 
-      {(tab === 'overview' || tab === 'interfaces') && (
+      {(tab === 'overview' || tab === 'interfaces' || tab === 'server') && (
         <div className="toolbar" style={{ marginBottom: 12 }}>
           <TimeRange value={range} onChange={setRange} />
         </div>
@@ -420,10 +439,18 @@ export function DeviceDetailPage() {
                 <dd>{d.parentDeviceId ? <Link to={`/devices/${d.parentDeviceId}`}>{d.parentDeviceName}</Link> : '—'}</dd>
                 <dt>SNMP credential</dt>
                 <dd>{d.credentials.find((c) => c.purpose === 'Snmp')?.profileName ?? 'none (ping only)'}</dd>
+                <dt>Windows/SSH credential</dt>
+                <dd>{d.credentials.find((c) => c.purpose === 'Management')?.profileName ?? '—'}</dd>
+                {d.watchedServices.length > 0 && (
+                  <>
+                    <dt>Watched services</dt>
+                    <dd>{d.watchedServices.join(', ')}</dd>
+                  </>
+                )}
                 <dt>Tags</dt>
                 <dd>{d.tags.length ? d.tags.map((t) => <span key={t} className="tag">{t}</span>) : '—'}</dd>
                 <dt>Maintenance</dt>
-                <dd>{d.maintenanceMode ? `yes${d.maintenanceUntilUtc ? ` until ${fmtDateTime(d.maintenanceUntilUtc)}` : ''}` : 'no'}</dd>
+                <dd>{d.maintenanceMode ? `${d.maintenanceReason ?? 'yes'}${d.maintenanceUntilUtc ? ` until ${fmtDateTime(d.maintenanceUntilUtc)}` : ''}` : 'no'}</dd>
                 <dt>Notes</dt>
                 <dd style={{ whiteSpace: 'pre-wrap' }}>{d.notes ?? '—'}</dd>
               </dl>
@@ -431,6 +458,8 @@ export function DeviceDetailPage() {
           </div>
         </div>
       )}
+
+      {tab === 'server' && <ServerPanel device={d} range={range} />}
 
       {tab === 'interfaces' && (
         <div className="grid" style={{ gap: 16 }}>
@@ -483,6 +512,14 @@ export function DeviceDetailPage() {
         </div>
       )}
 
+      {tab === 'events' && (
+        <div className="toolbar" style={{ marginBottom: 10 }}>
+          <span className="muted">Status, port, service and inventory changes. Also:</span>
+          <Link to={`/events?tab=syslog&deviceId=${deviceId}`}>Syslog</Link>
+          <Link to={`/events?tab=traps&deviceId=${deviceId}`}>SNMP traps</Link>
+          {d.os === 'Windows' && <Link to={`/events?tab=windows&deviceId=${deviceId}`}>Windows event logs</Link>}
+        </div>
+      )}
       {tab === 'events' && (
         <div className="card table-wrap" style={{ maxHeight: '70vh' }}>
           <table className="data">

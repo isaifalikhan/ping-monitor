@@ -24,12 +24,15 @@ public sealed record AlertDto(
     string? AckComment,
     DateTime? ResolvedUtc,
     DateTime? ClosedUtc,
-    string? ClosedByUsername)
+    string? ClosedByUsername,
+    bool IsFlapping,
+    int FlapCount,
+    DateTime? EscalatedUtc)
 {
     public static AlertDto From(Alert a, string? deviceName) => new(
         a.Id, a.RuleId, a.DeviceId, deviceName, a.InterfaceId, a.Severity, a.State, a.Title, a.Message, a.CurrentValue,
         a.AutoResolve, a.FirstSeenUtc, a.LastSeenUtc, a.OccurrenceCount, a.AckByUsername, a.AckUtc, a.AckComment,
-        a.ResolvedUtc, a.ClosedUtc, a.ClosedByUsername);
+        a.ResolvedUtc, a.ClosedUtc, a.ClosedByUsername, a.IsFlapping, a.FlapCount, a.EscalatedUtc);
 }
 
 public sealed record AlertHistoryDto(DateTime TimestampUtc, string Action, string? Username, string? Comment);
@@ -40,4 +43,5 @@ public static class AlertEvents
     public const string Raised = "alertRaised";
     public const string Updated = "alertUpdated";
     public const string Resolved = "alertResolved";
+    public const string Escalated = "alertEscalated";
 }

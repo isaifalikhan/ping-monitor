@@ -122,6 +122,80 @@ public static class SimulatorSeeder
 
         await db.SaveChangesAsync(ct);
         logger.LogInformation("Simulator seeded {Count} simulated devices", devices.Count);
+        await UpgradeAsync(db, protector, logger, ct);
         return devices.Count;
+    }
+
+    /// <summary>Windows services watched on simulated Windows servers / VMs.</summary>
+    public static readonly string[] WindowsServices = ["W3SVC", "Spooler", "WinRM", "EventLog"];
+
+    /// <summary>systemd units watched on simulated Linux servers.</summary>
+    public static readonly string[] LinuxServices = ["sshd", "crond", "nginx"];
+
+    /// <summary>
+    /// Phase 2 additions for an existing simulated inventory: Windows/SSH credentials, server operating systems
+    /// and watched services. Idempotent.
+    /// </summary>
+    public static async Task UpgradeAsync(NetWatchDbContext db, ISecretProtector protector, ILogger logger, CancellationToken ct)
+    {
+        var servers = await db.Devices
+            .Include(d => d.Credentials)
+            .Include(d => d.WatchedServices)
+            .Where(d => d.Tags.Any(t => t.Tag == DeviceSnapshot.SimulatedTag) && (d.Type == DeviceType.Server || d.Type == DeviceType.VM))
+            .OrderBy(d => d.Name)
+            .ToListAsync(ct);
+        if (servers.Count == 0 || servers.All(s => s.Credentials.Any(c => c.Purpose == CredentialPurpose.Management)))
+        {
+            return;
+        }
+
+        var now = DateTime.UtcNow;
+        CredentialProfile Profile(string name, CredentialKind kind, CredentialSecret secret)
+        {
+            var existing = db.CredentialProfiles.Local.FirstOrDefault(p => p.Name == name) ?? db.CredentialProfiles.FirstOrDefault(p => p.Name == name);
+            if (existing is not null)
+            {
+                return existing;
+            }
+
+            var p = new CredentialProfile
+            {
+                Name = name,
+                Kind = kind,
+                DisplayHint = secret.BuildDisplayHint(kind),
+                SecretBlob = protector.Protect(secret.ToJson()),
+                CreatedUtc = now,
+                UpdatedUtc = now,
+            };
+            db.CredentialProfiles.Add(p);
+            return p;
+        }
+
+        // The simulator never connects anywhere; these secrets are placeholders.
+        var windows = Profile("Simulator Windows", CredentialKind.Windows, new CredentialSecret { Username = "svc-netwatch", Domain = "SIM", Password = "simulated-only" });
+        var ssh = Profile("Simulator SSH", CredentialKind.Ssh, new CredentialSecret { Username = "netwatch", Password = "simulated-only" });
+        await db.SaveChangesAsync(ct);
+
+        var physical = servers.Where(s => s.Type == DeviceType.Server).ToList();
+        foreach (var d in servers)
+        {
+            // The last five physical servers run Linux.
+            var linux = d.Type == DeviceType.Server && physical.IndexOf(d) >= physical.Count - 5;
+            d.Os = linux ? OsKind.Linux : OsKind.Windows;
+            d.Credentials.RemoveAll(c => c.Purpose == CredentialPurpose.Management);
+            d.Credentials.Add(new DeviceCredential { Purpose = CredentialPurpose.Management, CredentialProfileId = linux ? ssh.Id : windows.Id });
+            if (d.WatchedServices.Count == 0)
+            {
+                foreach (var name in linux ? LinuxServices : WindowsServices)
+                {
+                    d.WatchedServices.Add(new WatchedService { ServiceName = name, LastState = ServiceState.Unknown });
+                }
+            }
+
+            d.UpdatedUtc = now;
+        }
+
+        await db.SaveChangesAsync(ct);
+        logger.LogInformation("Simulator: added server monitoring (WinRM/SSH, watched services) to {Count} simulated servers and VMs", servers.Count);
     }
 }

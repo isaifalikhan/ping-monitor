@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.EntityFrameworkCore;
+using NetWatch.Collectors.Inventory;
 using NetWatch.Collectors.Live;
 using NetWatch.Collectors.Scheduling;
 using NetWatch.Core;
@@ -51,6 +52,8 @@ public static class DeviceEndpoints
         NetWatchDbContext db,
         LiveStateCache live,
         IActiveAlertIndex alerts,
+        InventoryCache inventory,
+        IDependencyStatus dependencies,
         string? search,
         DeviceType? type,
         DeviceStatus? status,
@@ -87,7 +90,7 @@ public static class DeviceEndpoints
         }
 
         var now = DateTime.UtcNow;
-        var items = devices.Select(d => ToListItem(d, paths, live, alerts, now)).ToList();
+        var items = devices.Select(d => ToListItem(d, paths, live, alerts, inventory, dependencies, now)).ToList();
         if (status is { } s)
         {
             items = items.Where(i => i.Status == s).ToList();
@@ -96,19 +99,23 @@ public static class DeviceEndpoints
         return Results.Ok(items);
     }
 
-    internal static DeviceListItem ToListItem(Device d, IReadOnlyDictionary<int, string> paths, LiveStateCache live, IActiveAlertIndex alerts, DateTime now)
+    internal static DeviceListItem ToListItem(Device d, IReadOnlyDictionary<int, string> paths, LiveStateCache live, IActiveAlertIndex alerts, InventoryCache inventory, IDependencyStatus dependencies, DateTime now)
     {
         var l = live.GetDevice(d.Id);
         var worst = alerts.GetWorstSeverity(d.Id);
-        var inMaintenance = DeviceStatusHelper.InMaintenance(d, now);
+        var snapshot = inventory.GetSnapshot(d.Id);
+        var maintenanceReason = snapshot?.MaintenanceReason ?? (DeviceStatusHelper.InMaintenance(d, now) ? "Maintenance mode" : null);
+        var inMaintenance = maintenanceReason is not null;
         var raw = l?.Status ?? d.Status;
+        var unreachableVia = raw is DeviceStatus.Down or DeviceStatus.Warning && d.ParentDeviceId is not null ? dependencies.FindUnreachableUpstream(d.Id) : null;
         return new DeviceListItem(
             d.Id, d.Name, d.IpAddress, d.Type, d.Vendor, d.Model, d.GroupId,
             d.GroupId is { } g ? paths.GetValueOrDefault(g) : null,
             DeviceStatusHelper.Effective(raw, d.IsEnabled, inMaintenance, worst), raw, worst,
             inMaintenance, d.IsEnabled, l?.LastPollUtc ?? d.LastPollUtc, d.StatusSinceUtc,
             l?.RttMs, l?.LossPct, l?.CpuPct, l?.MemPct,
-            d.Tags.Select(t => t.Tag).OrderBy(t => t).ToList());
+            d.Tags.Select(t => t.Tag).OrderBy(t => t).ToList(),
+            d.Os, maintenanceReason, unreachableVia);
     }
 
     internal static HashSet<int> Subtree(IReadOnlyCollection<DeviceGroup> groups, int rootId)
@@ -133,11 +140,12 @@ public static class DeviceEndpoints
     private static async Task<IResult> TagsAsync(NetWatchDbContext db, CancellationToken ct) =>
         Results.Ok(await db.DeviceTags.AsNoTracking().Select(t => t.Tag).Distinct().OrderBy(t => t).ToListAsync(ct));
 
-    private static async Task<IResult> GetAsync(int id, NetWatchDbContext db, LiveStateCache live, IActiveAlertIndex alerts, CancellationToken ct)
+    private static async Task<IResult> GetAsync(int id, NetWatchDbContext db, LiveStateCache live, IActiveAlertIndex alerts, InventoryCache inventory, IDependencyStatus dependencies, CancellationToken ct)
     {
         var d = await db.Devices.AsNoTracking()
             .Include(x => x.Tags)
             .Include(x => x.Credentials).ThenInclude(c => c.CredentialProfile)
+            .Include(x => x.WatchedServices)
             .FirstOrDefaultAsync(x => x.Id == id, ct);
         if (d is null)
         {
@@ -148,18 +156,23 @@ public static class DeviceEndpoints
         var parentName = d.ParentDeviceId is { } pid ? await db.Devices.Where(x => x.Id == pid).Select(x => x.Name).FirstOrDefaultAsync(ct) : null;
         var l = live.GetDevice(d.Id);
         var worst = alerts.GetWorstSeverity(d.Id);
-        var inMaintenance = DeviceStatusHelper.InMaintenance(d, DateTime.UtcNow);
+        var snapshot = inventory.GetSnapshot(d.Id);
+        var maintenanceReason = snapshot?.MaintenanceReason ?? (DeviceStatusHelper.InMaintenance(d, DateTime.UtcNow) ? "Maintenance mode" : null);
+        var inMaintenance = maintenanceReason is not null;
         var raw = l?.Status ?? d.Status;
+        var unreachableVia = raw is DeviceStatus.Down or DeviceStatus.Warning ? dependencies.FindUnreachableUpstream(d.Id) : null;
 
         return Results.Ok(new DeviceDetailDto(
             d.Id, d.Name, d.IpAddress, d.Hostname, d.Type, d.Os, d.Vendor, d.Model, d.SerialNumber, d.Firmware, d.SysObjectId,
             d.SysName, d.SysDescription, d.Location, d.GroupId, d.GroupId is { } g ? paths.GetValueOrDefault(g) : null,
-            d.PollIntervalSec, d.IsEnabled, inMaintenance, d.MaintenanceUntilUtc, d.ParentDeviceId, parentName,
+            d.PollIntervalSec, d.IsEnabled, inMaintenance, snapshot?.MaintenanceUntilUtc ?? d.MaintenanceUntilUtc, d.ParentDeviceId, parentName,
             DeviceStatusHelper.Effective(raw, d.IsEnabled, inMaintenance, worst), raw, worst, d.StatusSinceUtc,
             l?.LastPollUtc ?? d.LastPollUtc, l?.UptimeSec ?? d.LastUptimeSec, l?.RttMs, l?.LossPct, l?.CpuPct, l?.MemPct, l?.TempC,
             d.Notes, d.Tags.Select(t => t.Tag).OrderBy(t => t).ToList(),
             d.Credentials.Select(c => new DeviceCredentialDto(c.Purpose, c.CredentialProfileId, c.CredentialProfile?.Name)).ToList(),
-            d.CreatedUtc, d.UpdatedUtc));
+            d.CreatedUtc, d.UpdatedUtc,
+            d.WatchedServices.Select(s => s.ServiceName).OrderBy(s => s, StringComparer.OrdinalIgnoreCase).ToList(),
+            d.SshHostKeyFingerprint, maintenanceReason, unreachableVia));
     }
 
     private static async Task<IResult> InterfacesAsync(int id, NetWatchDbContext db, LiveStateCache live, CancellationToken ct)
@@ -186,14 +199,36 @@ public static class DeviceEndpoints
         return Results.Ok(rows.Select(e => new DeviceEventDto(e.Id, e.TimestampUtc, e.DeviceId, null, e.Kind, e.Severity, e.Message)));
     }
 
-    private static async Task<IResult> RecentEventsAsync(EventsDbContext events, NetWatchDbContext db, int? limit, Severity? minSeverity, CancellationToken ct)
+    private static async Task<IResult> RecentEventsAsync(EventsDbContext events, NetWatchDbContext db, int? limit, Severity? minSeverity, int? deviceId, string? search, DateTime? from, DateTime? to, CancellationToken ct)
     {
-        var take = Math.Clamp(limit ?? 50, 1, 1000);
+        var take = Math.Clamp(limit ?? 50, 1, 5000);
         var query = events.DeviceEvents.AsNoTracking();
         if (minSeverity is { } min)
         {
             var allowed = Enum.GetValues<Severity>().Where(s => s >= min).ToList();
             query = query.Where(e => allowed.Contains(e.Severity));
+        }
+
+        if (deviceId is { } did)
+        {
+            query = query.Where(e => e.DeviceId == did);
+        }
+
+        if (!string.IsNullOrWhiteSpace(search))
+        {
+            query = query.Where(e => EF.Functions.Like(e.Message, $"%{search.Trim()}%"));
+        }
+
+        if (from is { } f)
+        {
+            var fu = f.ToUniversalTime();
+            query = query.Where(e => e.TimestampUtc >= fu);
+        }
+
+        if (to is { } t)
+        {
+            var tu = t.ToUniversalTime();
+            query = query.Where(e => e.TimestampUtc < tu);
         }
 
         var rows = await query.OrderByDescending(e => e.TimestampUtc).Take(take).ToListAsync(ct);
@@ -255,7 +290,7 @@ public static class DeviceEndpoints
 
     private static async Task<IResult> UpdateAsync(int id, DeviceInput input, HttpContext http, NetWatchDbContext db, IInventoryChangeNotifier notifier, AuditWriter audit, CancellationToken ct)
     {
-        var device = await db.Devices.Include(d => d.Tags).Include(d => d.Credentials).FirstOrDefaultAsync(d => d.Id == id, ct);
+        var device = await db.Devices.Include(d => d.Tags).Include(d => d.Credentials).Include(d => d.WatchedServices).FirstOrDefaultAsync(d => d.Id == id, ct);
         if (device is null)
         {
             return Results.NotFound();
@@ -308,6 +343,33 @@ public static class DeviceEndpoints
             return "Selected SNMP credential does not exist.";
         }
 
+        if (input.ManagementCredentialId is { } mid &&
+            !await db.CredentialProfiles.AnyAsync(c => c.Id == mid && (c.Kind == CredentialKind.Windows || c.Kind == CredentialKind.Ssh), ct))
+        {
+            return "Selected Windows/SSH credential does not exist.";
+        }
+
+        var services = (input.WatchedServices ?? Array.Empty<string>())
+            .Select(s => s.Trim())
+            .Where(s => s.Length > 0)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        if (services.Count > 50)
+        {
+            return "At most 50 watched services per device.";
+        }
+
+        if (services.FirstOrDefault(s => !WatchedServiceNames.IsValid(s)) is { } badService)
+        {
+            return $"\"{badService}\" is not a valid service name (letters, digits, space and . _ - @ $ : only).";
+        }
+
+        if (device.IpAddress != ipText)
+        {
+            // A different address may be a different machine: re-learn its SSH host key.
+            device.SshHostKeyFingerprint = null;
+        }
+
         device.Name = name;
         device.IpAddress = ipText;
         device.Hostname = string.IsNullOrWhiteSpace(input.Hostname) ? null : input.Hostname.Trim();
@@ -336,6 +398,21 @@ public static class DeviceEndpoints
         if (input.SnmpCredentialId is { } snmpId && !device.Credentials.Any(c => c.Purpose == CredentialPurpose.Snmp))
         {
             device.Credentials.Add(new DeviceCredential { Purpose = CredentialPurpose.Snmp, CredentialProfileId = snmpId });
+        }
+
+        device.Credentials.RemoveAll(c => c.Purpose == CredentialPurpose.Management && c.CredentialProfileId != input.ManagementCredentialId);
+        if (input.ManagementCredentialId is { } managementId && !device.Credentials.Any(c => c.Purpose == CredentialPurpose.Management))
+        {
+            device.Credentials.Add(new DeviceCredential { Purpose = CredentialPurpose.Management, CredentialProfileId = managementId });
+        }
+
+        if (input.WatchedServices is not null)
+        {
+            device.WatchedServices.RemoveAll(w => !services.Contains(w.ServiceName, StringComparer.OrdinalIgnoreCase));
+            foreach (var name2 in services.Where(s => !device.WatchedServices.Any(w => string.Equals(w.ServiceName, s, StringComparison.OrdinalIgnoreCase))))
+            {
+                device.WatchedServices.Add(new WatchedService { ServiceName = name2 });
+            }
         }
 
         return null;

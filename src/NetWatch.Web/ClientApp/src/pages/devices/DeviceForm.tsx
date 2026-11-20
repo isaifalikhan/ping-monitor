@@ -26,10 +26,12 @@ export function DeviceForm({ device, onClose, onSaved }: { device?: DeviceDetail
     isEnabled: device?.isEnabled ?? true,
     parentDeviceId: device?.parentDeviceId ?? null,
     snmpCredentialId: device?.credentials.find((c) => c.purpose === 'Snmp')?.credentialProfileId ?? null,
+    managementCredentialId: device?.credentials.find((c) => c.purpose === 'Management')?.credentialProfileId ?? null,
     notes: device?.notes ?? '',
     tags: device?.tags ?? [],
   }));
   const [tagText, setTagText] = useState((device?.tags ?? []).join(', '));
+  const [servicesText, setServicesText] = useState((device?.watchedServices ?? []).join(', '));
   const [error, setError] = useState<unknown>(null);
   const [busy, setBusy] = useState(false);
 
@@ -42,6 +44,10 @@ export function DeviceForm({ device, onClose, onSaved }: { device?: DeviceDetail
       ...form,
       tags: tagText
         .split(/[,;]/)
+        .map((t) => t.trim())
+        .filter(Boolean),
+      watchedServices: servicesText
+        .split(/[,;\n]/)
         .map((t) => t.trim())
         .filter(Boolean),
     };
@@ -61,6 +67,8 @@ export function DeviceForm({ device, onClose, onSaved }: { device?: DeviceDetail
   };
 
   const snmpCreds = (creds.data ?? []).filter((c) => c.kind === 'SnmpV2c' || c.kind === 'SnmpV3');
+  const managementCreds = (creds.data ?? []).filter((c) => c.kind === 'Windows' || c.kind === 'Ssh');
+  const serverType = ['Server', 'VM', 'DomainController', 'Hypervisor'].includes(form.type);
 
   return (
     <Modal
@@ -136,6 +144,27 @@ export function DeviceForm({ device, onClose, onSaved }: { device?: DeviceDetail
             ))}
           </select>
         </label>
+        {(serverType || form.managementCredentialId) && (
+          <label className="field">
+            <span>Windows / SSH credential</span>
+            <select value={form.managementCredentialId ?? ''} onChange={(e) => set('managementCredentialId', e.target.value ? Number(e.target.value) : null)}>
+              <option value="">— none (ping/SNMP only) —</option>
+              {managementCreds.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name} ({c.kind === 'Ssh' ? 'SSH' : 'Windows'})
+                </option>
+              ))}
+            </select>
+            <span className="hint">Disks, services, patches, event logs (WinRM/WMI) or Linux stats (SSH).</span>
+          </label>
+        )}
+        {(serverType || servicesText) && (
+          <label className="field">
+            <span>Watched services</span>
+            <input value={servicesText} onChange={(e) => setServicesText(e.target.value)} placeholder="W3SVC, MSSQLSERVER  or  sshd, nginx" />
+            <span className="hint">Comma separated service names (Windows) or systemd units (Linux).</span>
+          </label>
+        )}
         <label className="field">
           <span>Polling interval (seconds)</span>
           <input type="number" min={15} max={3600} value={form.pollIntervalSec ?? 60} onChange={(e) => set('pollIntervalSec', Number(e.target.value))} />

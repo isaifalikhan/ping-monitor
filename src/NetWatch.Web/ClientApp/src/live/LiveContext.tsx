@@ -8,7 +8,7 @@ import { enableSound, playSeverity, soundReady } from './sound';
 export interface Toast {
   key: string;
   alert: Alert;
-  kind: 'raised' | 'resolved';
+  kind: 'raised' | 'resolved' | 'escalated';
   at: number;
 }
 
@@ -69,7 +69,7 @@ export function LiveProvider({ children }: { children: ReactNode }) {
   const pushToast = useCallback((alert: Alert, kind: Toast['kind']) => {
     const toast: Toast = { key: `${alert.id}-${kind}-${Date.now()}`, alert, kind, at: Date.now() };
     setToasts((list) => [toast, ...list].slice(0, 6));
-    const ttl = kind === 'resolved' ? 8000 : alert.severity === 'Critical' ? 60000 : 20000;
+    const ttl = kind === 'resolved' ? 8000 : kind === 'escalated' || alert.severity === 'Critical' ? 60000 : 20000;
     window.setTimeout(() => setToasts((list) => list.filter((t) => t.key !== toast.key)), ttl);
   }, []);
 
@@ -105,6 +105,12 @@ export function LiveProvider({ children }: { children: ReactNode }) {
     connection.on('alertUpdated', (alert: Alert) => {
       emit('alertUpdated', alert);
       scheduleInvalidate();
+    });
+    connection.on('alertEscalated', (alert: Alert) => {
+      emit('alertEscalated', alert);
+      scheduleInvalidate();
+      pushToast(alert, 'escalated');
+      if (soundReady()) playSeverity('Critical');
     });
     connection.on('alertResolved', (alert: Alert) => {
       emit('alertResolved', alert);

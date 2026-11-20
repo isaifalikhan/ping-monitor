@@ -41,8 +41,15 @@ public sealed class LiveStateCache
 {
     private readonly ConcurrentDictionary<int, DeviceLive> _devices = new();
     private readonly ConcurrentDictionary<int, InterfaceLive> _interfaces = new();
+    private readonly ConcurrentDictionary<int, bool> _reachable = new();
 
     public void Set(DeviceLive device) => _devices[device.DeviceId] = device;
+
+    /// <summary>Records whether the last poll reached the device (ping or SNMP), independent of the Down threshold.</summary>
+    public void SetReachable(int deviceId, bool reachable) => _reachable[deviceId] = reachable;
+
+    /// <summary>Result of the last poll, or null if the device has not been polled since start.</summary>
+    public bool? IsReachable(int deviceId) => _reachable.TryGetValue(deviceId, out var r) ? r : null;
 
     public void Set(InterfaceLive iface) => _interfaces[iface.InterfaceId] = iface;
 
@@ -65,6 +72,7 @@ public sealed class LiveStateCache
     public void RemoveDevice(int deviceId)
     {
         _devices.TryRemove(deviceId, out _);
+        _reachable.TryRemove(deviceId, out _);
         foreach (var key in _interfaces.Where(kv => kv.Value.DeviceId == deviceId).Select(kv => kv.Key).ToList())
         {
             _interfaces.TryRemove(key, out _);

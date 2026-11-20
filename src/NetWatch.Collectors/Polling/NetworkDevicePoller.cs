@@ -1,21 +1,26 @@
 using System.Net;
 using Microsoft.Extensions.Logging;
 using NetWatch.Collectors.Icmp;
+using NetWatch.Collectors.Servers;
 using NetWatch.Collectors.Snmp;
+using NetWatch.Core;
 
 namespace NetWatch.Collectors.Polling;
 
 /// <summary>
-/// Polls a real device: ICMP availability in parallel with SNMP (uptime, interfaces, health, inventory).
-/// Each SNMP section fails independently, so a missing vendor MIB never hides interface data.
+/// Polls a real device: ICMP availability in parallel with SNMP (uptime, interfaces, health, inventory) and,
+/// for servers, WinRM/WMI or SSH collection. Each section fails independently, so a missing vendor MIB or a
+/// blocked WinRM port never hides the other data.
 /// </summary>
 public sealed class NetworkDevicePoller : IDevicePoller
 {
+    private readonly IServerCollector _servers;
     private readonly TimeProvider _time;
     private readonly ILogger<NetworkDevicePoller> _logger;
 
-    public NetworkDevicePoller(TimeProvider time, ILogger<NetworkDevicePoller> logger)
+    public NetworkDevicePoller(IServerCollector servers, TimeProvider time, ILogger<NetworkDevicePoller> logger)
     {
+        _servers = servers;
         _time = time;
         _logger = logger;
     }
@@ -31,13 +36,32 @@ public sealed class NetworkDevicePoller : IDevicePoller
 
         var ping = PingProbe.ProbeAsync(ip, request.PingCount, request.PingTimeoutMs, ct);
         var snmp = request.Snmp is null ? Task.CompletedTask : PollSnmpAsync(ip, request, result, ct);
-        await Task.WhenAll(ping, snmp);
+        var server = request.Server is null ? Task.FromResult<ServerPollData?>(null) : CollectServerAsync(request.Server, ct);
+        await Task.WhenAll(ping, snmp, server);
 
         var p = await ping;
         result.PingOk = p.Reachable;
         result.RttMs = p.AvgRttMs;
         result.LossPct = p.LossPct;
+        if (await server is { } s)
+        {
+            result.Server = s;
+        }
+
         return result;
+    }
+
+    private async Task<ServerPollData?> CollectServerAsync(ServerPollRequest request, CancellationToken ct)
+    {
+        try
+        {
+            return await _servers.CollectAsync(request, ct);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException || !ct.IsCancellationRequested)
+        {
+            _logger.LogDebug(ex, "Server collection failed for {Host}", request.Host);
+            return new ServerPollData { Error = ex.Message };
+        }
     }
 
     private async Task PollSnmpAsync(IPAddress ip, PollRequest request, DevicePollResult result, CancellationToken ct)
@@ -81,6 +105,16 @@ public sealed class NetworkDevicePoller : IDevicePoller
             result.MemPct = health.MemPct;
             result.Sensors.AddRange(health.Sensors);
         });
+
+        if (request.SnmpStorage)
+        {
+            await Section("storage", async () =>
+            {
+                var server = new ServerPollData { Method = ServerCollectionMethod.Snmp, Ok = true };
+                server.Volumes.AddRange(await SnmpStorageCollector.ReadAsync(client, ct));
+                result.Server = server;
+            });
+        }
 
         async Task Section(string name, Func<Task> action)
         {

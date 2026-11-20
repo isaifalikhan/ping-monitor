@@ -10,6 +10,8 @@ public sealed record SnmpCredential(CredentialKind Kind, CredentialSecret Secret
 /// <summary>What to poll on a device in this cycle.</summary>
 /// <param name="RefreshInterfaces">Re-read the interface table (names, speeds, aliases).</param>
 /// <param name="RefreshInventory">Re-read vendor/model/serial/firmware.</param>
+/// <param name="Server">Server collection (WinRM/WMI or SSH) for this cycle, or null.</param>
+/// <param name="SnmpStorage">Read disk volumes from HOST-RESOURCES-MIB (servers monitored by SNMP only).</param>
 public sealed record PollRequest(
     DeviceSnapshot Device,
     SnmpCredential? Snmp,
@@ -18,7 +20,9 @@ public sealed record PollRequest(
     int PingCount,
     int PingTimeoutMs,
     int SnmpTimeoutMs,
-    int SnmpRetries);
+    int SnmpRetries,
+    Servers.ServerPollRequest? Server = null,
+    bool SnmpStorage = false);
 
 /// <summary>Raw interface counters and status from one poll.</summary>
 public sealed record InterfaceCounters(
@@ -80,6 +84,9 @@ public sealed class DevicePollResult
 
     /// <summary>Set only when inventory was refreshed this cycle.</summary>
     public DeviceInventoryInfo? Inventory { get; set; }
+
+    /// <summary>Server facts (WinRM/WMI, SSH or SNMP storage), or null for network devices.</summary>
+    public Servers.ServerPollData? Server { get; set; }
     public TimeSpan Duration { get; set; }
 }
 

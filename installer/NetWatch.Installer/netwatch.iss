@@ -1,16 +1,17 @@
-; NetWatch installer (Inno Setup 6).
+﻿; NetWatch installer (Inno Setup 6).
 ; Built by build.ps1:  ISCC /DAppVersion=1.0.0 /DSourceDir=..\..\artifacts\publish /DDocsDir=..\..\docs netwatch.iss
 ;
 ; Install:    copies NetWatch.Service.exe, creates the "NetWatch" Windows service (delayed auto-start, restart on
-;             failure), an inbound firewall rule for the web console (TCP 8443), C:\ProgramData\NetWatch with restricted ACL,
-;             and a Start-menu shortcut to the dashboard.
+;             failure), inbound firewall rules for the web console (TCP 8443), SNMP traps (UDP 162) and syslog
+;             (UDP/TCP 514), the "NetWatch" event-log source, C:\ProgramData\NetWatch with restricted ACL, and a
+;             Start-menu shortcut to the dashboard.
 ; Upgrade:    run a newer installer; the service is stopped, the exe replaced and the service restarted.
 ;             Databases, settings, certificates and logs in C:\ProgramData\NetWatch are kept.
 ; Uninstall:  removes the service, firewall rules and program files. Data is kept unless the administrator
 ;             chooses to delete it.
 
 #ifndef AppVersion
-  #define AppVersion "1.0.0"
+  #define AppVersion "1.1.0"
 #endif
 #ifndef SourceDir
   #define SourceDir "..\..\artifacts\publish"
@@ -66,6 +67,11 @@ Name: "{group}\NetWatch Dashboard"; Filename: "{app}\NetWatch Dashboard.url"
 Name: "{group}\NetWatch documentation"; Filename: "{app}\docs"
 Name: "{group}\NetWatch data folder"; Filename: "{commonappdata}\NetWatch"
 Name: "{group}\Uninstall NetWatch"; Filename: "{uninstallexe}"
+
+[Registry]
+; Event-log source for the optional "Windows Event Log" notification channel (message file of the .NET Framework,
+; present on every supported Windows version).
+Root: HKLM; Subkey: "SYSTEM\CurrentControlSet\Services\EventLog\Application\NetWatch"; ValueType: expandsz; ValueName: "EventMessageFile"; ValueData: "%SystemRoot%\Microsoft.NET\Framework64\v4.0.30319\EventLogMessages.dll"; Flags: uninsdeletekey
 
 [UninstallDelete]
 Type: files; Name: "{app}\NetWatch Dashboard.url"
@@ -125,9 +131,11 @@ var
 begin
   ExePath := ExpandConstant('{app}\NetWatch.Service.exe');
   RemoveFirewallRules();
-  // Only the web console is opened. The SNMP-trap (UDP 162) and syslog (514) receivers arrive in Phase 2 and
-  // will add their rules then; RemoveFirewallRules already cleans those names up.
+  // Web console, SNMP trap receiver and syslog receiver; all bound to the NetWatch executable only.
   Netsh('advfirewall firewall add rule name="NetWatch HTTPS" dir=in action=allow protocol=TCP localport={#HttpsPort} program="' + ExePath + '" profile=any');
+  Netsh('advfirewall firewall add rule name="NetWatch SNMP traps" dir=in action=allow protocol=UDP localport=162 program="' + ExePath + '" profile=any');
+  Netsh('advfirewall firewall add rule name="NetWatch syslog UDP" dir=in action=allow protocol=UDP localport=514 program="' + ExePath + '" profile=any');
+  Netsh('advfirewall firewall add rule name="NetWatch syslog TCP" dir=in action=allow protocol=TCP localport=514 program="' + ExePath + '" profile=any');
 end;
 
 procedure SecureDataFolder();

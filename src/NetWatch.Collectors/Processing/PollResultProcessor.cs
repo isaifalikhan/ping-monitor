@@ -59,6 +59,7 @@ public sealed class PollResultProcessor
     private readonly LiveStateCache _liveCache;
     private readonly SettingsService _settings;
     private readonly CredentialResolver _credentials;
+    private readonly ServerResultProcessor _servers;
     private readonly TimeProvider _time;
     private readonly ILogger<PollResultProcessor> _logger;
     private readonly ConcurrentDictionary<int, DeviceRuntime> _runtime = new();
@@ -72,6 +73,7 @@ public sealed class PollResultProcessor
         LiveStateCache liveCache,
         SettingsService settings,
         CredentialResolver credentials,
+        ServerResultProcessor servers,
         TimeProvider time,
         ILogger<PollResultProcessor> logger)
     {
@@ -82,6 +84,7 @@ public sealed class PollResultProcessor
         _liveCache = liveCache;
         _settings = settings;
         _credentials = credentials;
+        _servers = servers;
         _time = time;
         _logger = logger;
     }
@@ -141,6 +144,15 @@ public sealed class PollResultProcessor
         }
 
         _liveCache.RemoveDevice(deviceId);
+        _servers.Forget(deviceId);
+        try
+        {
+            _metrics.ForgetDevice(deviceId);
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException)
+        {
+            _logger.LogDebug(ex, "Could not remove metric series of device {DeviceId}", deviceId);
+        }
     }
 
     public async Task<PollRequest> PrepareAsync(DeviceSnapshot device, CancellationToken ct)
@@ -153,8 +165,10 @@ public sealed class PollResultProcessor
         var refreshInterfaces = hasSnmp &&
             (rt.ForceInterfaceRefresh || now - rt.LastInterfaceRefreshUtc >= TimeSpan.FromMinutes(settings.InterfaceMetadataRefreshMin));
         var refreshInventory = hasSnmp && now - rt.LastInventoryRefreshUtc >= TimeSpan.FromHours(settings.InventoryRefreshHours);
+        var server = await _servers.PrepareAsync(device, ct);
 
-        return new PollRequest(device, snmp, refreshInterfaces, refreshInventory, settings.PingCount, settings.PingTimeoutMs, settings.SnmpTimeoutMs, settings.SnmpRetries);
+        return new PollRequest(device, snmp, refreshInterfaces, refreshInventory, settings.PingCount, settings.PingTimeoutMs, settings.SnmpTimeoutMs, settings.SnmpRetries,
+            server, hasSnmp && server is null && ServerResultProcessor.WantsSnmpStorage(device));
     }
 
     public async Task ProcessAsync(PollRequest request, DevicePollResult result, CancellationToken ct)
@@ -167,12 +181,17 @@ public sealed class PollResultProcessor
         var deviceEvents = new List<DeviceEvent>();
 
         // ---- availability -------------------------------------------------------------
-        var reachable = result.PingOk || result.SnmpOk == true;
+        // A server that blocks ICMP but answers WinRM/SSH is reachable too.
+        var pingOrSnmp = result.PingOk || result.SnmpOk == true;
+        var reachable = pingOrSnmp || result.Server is { Ok: true, Method: not ServerCollectionMethod.Snmp };
+        _liveCache.SetReachable(device.Id, reachable);
         DeviceStatus newStatus;
         if (reachable)
         {
             rt.Failures = 0;
-            newStatus = result.SnmpOk == false || (result.LossPct ?? 0) >= 20 ? DeviceStatus.Warning : DeviceStatus.Up;
+            newStatus = result.SnmpOk == false || (result.LossPct ?? 0) >= 20 || (result.Server is { Ok: false } && pingOrSnmp)
+                ? DeviceStatus.Warning
+                : DeviceStatus.Up;
         }
         else
         {
@@ -199,6 +218,23 @@ public sealed class PollResultProcessor
             rt.StatusSinceUtc = now;
         }
 
+        using var scope = _scopeFactory.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<NetWatchDbContext>();
+        var eventsDb = scope.ServiceProvider.GetRequiredService<EventsDbContext>();
+
+        // ---- servers (before device metrics: fills CPU/memory/uptime when SNMP does not) --
+        if (result.Server is not null)
+        {
+            try
+            {
+                await _servers.ProcessAsync(device, result, pingOrSnmp, db, eventsDb, deviceEvents, ct);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                _logger.LogWarning(ex, "Processing server data of {Device} failed", device.Name);
+            }
+        }
+
         // ---- reboot detection ---------------------------------------------------------
         var rebooted = false;
         if (result.UptimeSec is { } uptime)
@@ -213,9 +249,6 @@ public sealed class PollResultProcessor
 
             rt.LastUptimeSec = uptime;
         }
-
-        using var scope = _scopeFactory.CreateScope();
-        var db = scope.ServiceProvider.GetRequiredService<NetWatchDbContext>();
 
         // ---- inventory / interface table ----------------------------------------------
         if (result.InterfaceMetadata is { } metadata)
@@ -367,9 +400,8 @@ public sealed class PollResultProcessor
 
         if (deviceEvents.Count > 0)
         {
-            var events = scope.ServiceProvider.GetRequiredService<EventsDbContext>();
-            events.DeviceEvents.AddRange(deviceEvents);
-            await events.SaveChangesAsync(ct);
+            eventsDb.DeviceEvents.AddRange(deviceEvents);
+            await eventsDb.SaveChangesAsync(ct);
         }
 
         // ---- live updates -------------------------------------------------------------

@@ -26,6 +26,7 @@ public static class WebServiceCollectionExtensions
 
         services.AddSingleton<PasswordService>();
         services.AddSingleton<SessionService>();
+        services.AddSingleton<LdapAuthenticator>();
         services.AddSingleton<DiscoveryService>();
         services.AddSingleton<ILiveUpdatePublisher, SignalRLivePublisher>();
         services.AddHostedService<SummaryBroadcaster>();
@@ -71,6 +72,9 @@ public static class WebServiceCollectionExtensions
         app.MapAdminEndpoints();
         app.MapOverviewEndpoints();
         app.MapDiscoveryEndpoints();
+        app.MapServerEndpoints();
+        app.MapEventEndpoints();
+        app.MapMaintenanceEndpoints();
         app.MapHub<LiveHub>("/hubs/live");
 
         app.UseEmbeddedUi();

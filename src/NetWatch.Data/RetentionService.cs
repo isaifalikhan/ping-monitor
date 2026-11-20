@@ -64,6 +64,11 @@ public sealed class RetentionService : BackgroundService
             var eventCutoff = now.AddDays(-retention.EventDays);
             var purgedEvents = await events.DeviceEvents.Where(e => e.TimestampUtc < eventCutoff).ExecuteDeleteAsync(ct);
 
+            // High-volume tables are purged in batches so the event writer is never blocked for long.
+            purgedEvents += await PurgeInBatchesAsync(() => events.SyslogMessages.Where(e => e.ReceivedUtc < eventCutoff).OrderBy(e => e.Id).Take(50_000).ExecuteDeleteAsync(ct));
+            purgedEvents += await PurgeInBatchesAsync(() => events.SnmpTraps.Where(e => e.ReceivedUtc < eventCutoff).OrderBy(e => e.Id).Take(50_000).ExecuteDeleteAsync(ct));
+            purgedEvents += await PurgeInBatchesAsync(() => events.WindowsEvents.Where(e => e.TimestampUtc < eventCutoff).OrderBy(e => e.Id).Take(50_000).ExecuteDeleteAsync(ct));
+
             var db = scope.ServiceProvider.GetRequiredService<NetWatchDbContext>();
             var auditCutoff = now.AddDays(-retention.AuditDays);
             var purgedAudit = await db.AuditLog.Where(a => a.TimestampUtc < auditCutoff).ExecuteDeleteAsync(ct);
@@ -85,6 +90,25 @@ public sealed class RetentionService : BackgroundService
         {
             _logger.LogError(ex, "Retention run failed");
         }
+    }
+
+    private static async Task<int> PurgeInBatchesAsync(Func<Task<int>> deleteBatch)
+    {
+        var total = 0;
+        int deleted;
+        do
+        {
+            deleted = await deleteBatch();
+            total += deleted;
+            if (deleted > 0)
+            {
+                // Let the event writer get a turn between batches.
+                await Task.Delay(50);
+            }
+        }
+        while (deleted >= 50_000);
+
+        return total;
     }
 
     private static async Task SafeDelay(TimeSpan delay, CancellationToken ct)

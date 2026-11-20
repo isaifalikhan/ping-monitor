@@ -60,6 +60,11 @@ public static class Seeder
             (MonitoringSettings.Key, new MonitoringSettings()),
             (SecuritySettings.Key, new SecuritySettings()),
             (RetentionSettings.Key, new RetentionSettings()),
+            (AlertingSettings.Key, new AlertingSettings()),
+            (ReceiverSettings.Key, new ReceiverSettings()),
+            (ServerMonitoringSettings.Key, new ServerMonitoringSettings()),
+            (NotificationSettings.Key, new NotificationSettings()),
+            (LdapSettings.Key, new LdapSettings()),
         })
         {
             if (!await db.Settings.AnyAsync(s => s.Key == key, ct))
@@ -70,7 +75,11 @@ public static class Seeder
 
         if (simulate)
         {
-            await SimulatorSeeder.SeedAsync(db, scope.ServiceProvider.GetRequiredService<ISecretProtector>(), logger, ct);
+            var protector = scope.ServiceProvider.GetRequiredService<ISecretProtector>();
+            await SimulatorSeeder.SeedAsync(db, protector, logger, ct);
+
+            // Inventories seeded by an earlier version get the server-monitoring additions.
+            await SimulatorSeeder.UpgradeAsync(db, protector, logger, ct);
         }
     }
 

@@ -36,8 +36,18 @@ Interfaces you mark as not monitored are not stored. You can shorten retention u
 | Direction | Protocol / port | From → to | Purpose |
 |---|---|---|---|
 | Inbound | TCP 8443 | operator PCs → NetWatch server | Web console (HTTPS). The installer creates this firewall rule |
+| Inbound | UDP 162 | devices → NetWatch server | SNMP traps and informs. Firewall rule created by the installer |
+| Inbound | UDP 514, TCP 514 | devices → NetWatch server | Syslog. Firewall rules created by the installer |
 | Outbound | ICMP echo | NetWatch server → devices | Availability and latency |
 | Outbound | UDP 161 | NetWatch server → switches, routers, servers | SNMP polling |
+| Outbound | TCP 5985 (or 5986) | NetWatch server → Windows servers | WinRM (WMI over WS-Management). 5985 traffic is encrypted by Kerberos/NTLM |
+| Outbound | TCP 135 + dynamic RPC | NetWatch server → Windows servers | Remote event logs; WMI over DCOM if WinRM is unavailable |
+| Outbound | TCP 22 | NetWatch server → Linux servers | SSH |
+| Outbound | TCP 636 (or 389) | NetWatch server → domain controllers | Optional: sign-in with AD accounts (LDAPS) |
+| Outbound | as configured | NetWatch server → SMTP relay / SIEM | Optional notification channels |
+
+The receiver ports can be changed under *Settings → General → Syslog and SNMP trap receivers* (service restart
+needed); adjust the firewall rules "NetWatch SNMP traps" and "NetWatch syslog UDP/TCP" accordingly.
 
 On the network devices, allow SNMP from the NetWatch server's IP address only. Use an SNMP ACL or view on
 Cisco, `snmp-server host`/community restrictions on HP/Aruba, and `snmp client-list` on Juniper. Configure a
@@ -95,12 +105,22 @@ the console stays reachable.
 To use another port, change `Https:Port` in `appsettings.json`, restart the service, and adjust the firewall
 rule "NetWatch HTTPS".
 
-## 5. Service account
+## 5. Service account and least-privilege monitoring accounts
 
-The service runs as **LocalSystem**. Phase 1 needs no domain account and no rights on the monitored devices
-beyond the SNMP credentials you enter. The data folder `C:\ProgramData\NetWatch` is restricted by the installer
+The service runs as **LocalSystem**. It needs no domain account itself: the accounts used to read the monitored
+devices are entered as credential profiles. The data folder `C:\ProgramData\NetWatch` is restricted by the installer
 to SYSTEM and local Administrators, because it holds the databases, the encrypted credentials, the TLS key and
 the logs.
+
+Use dedicated, read-only accounts for monitoring:
+
+| Target | Account and minimal rights |
+|---|---|
+| Switches, routers | SNMP v2c read-only community, or (recommended) an SNMPv3 user with authPriv (SHA-256 + AES) and a read-only view. Restrict SNMP to the NetWatch server's address. Send traps (v2c or v3) and syslog to the NetWatch server |
+| Windows servers | A domain user (e.g. `svc-netwatch`), **not** a domain admin. On each server (or by GPO): member of **Event Log Readers** and **Distributed COM Users**; WMI namespace `root\cimv2` and `root\default` (for pending-reboot checks): *Enable Account* + *Remote Enable* (wmimgmt.msc → WMI Control → Security). For WinRM add the account to **Remote Management Users** and enable WinRM (`winrm quickconfig` or GPO). Windows firewall rules: *Windows Remote Management (HTTP-In)*, *Remote Event Log Management*, and for the DCOM fallback *Windows Management Instrumentation (WMI-In)* |
+| Linux servers | An unprivileged user (e.g. `netwatch`) with SSH access; password or key. No sudo is needed: NetWatch only reads `/proc`, runs `df` and `systemctl show`. The host key is recorded on first contact and verified afterwards |
+| Active Directory sign-in | None stored: users bind with their own account. Use LDAPS (636) with the DC certificate trusted on the NetWatch server |
+| SMTP relay | Optional; an authenticated relay account if the relay requires it |
 
 Device credentials are encrypted with Windows DPAPI (machine scope). They can only be decrypted on this server:
 when you move NetWatch to another server, the credentials must be re-entered (see the admin guide, *Backup and

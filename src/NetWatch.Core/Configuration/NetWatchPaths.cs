@@ -25,6 +25,9 @@ public sealed class NetWatchPaths
     public string BackupsDir => Path.Combine(Root, "backups");
     public string ReportsDir => Path.Combine(Root, "reports");
 
+    /// <summary>Notification scripts. Only scripts in this folder can be run on alerts.</summary>
+    public string ScriptsDir => Path.Combine(Root, "scripts");
+
     public string ConfigDb => Path.Combine(DataDir, "netwatch.db");
     public string MetricsDb => Path.Combine(DataDir, "metrics.db");
     public string EventsDb => Path.Combine(DataDir, "events.db");
@@ -33,7 +36,7 @@ public sealed class NetWatchPaths
 
     public void EnsureCreated()
     {
-        foreach (var dir in new[] { Root, DataDir, LogsDir, CertsDir, BackupsDir, ReportsDir })
+        foreach (var dir in new[] { Root, DataDir, LogsDir, CertsDir, BackupsDir, ReportsDir, ScriptsDir })
         {
             Directory.CreateDirectory(dir);
         }

@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { api } from '../../api/client';
+import type { ChannelStatus } from '../../api/types';
 import { ErrorBox } from '../../components/Modal';
 import { fmtAgo, fmtBytes, fmtNum } from '../../util/format';
 
@@ -10,7 +11,9 @@ interface SystemStatus {
   interfacesLive: number;
   polling: { totalPolls: number; failedPolls: number; overruns: number; inFlight: number; queued: number; avgDurationMs: number; maxDurationMs: number };
   metrics: { pendingWrites: number; droppedSamples: number };
-  alertEngine: { queued: number; processed: number; dropped: number };
+  alertEngine: { queued: number; processed: number; dropped: number; suppressed: number; suppressedByMaintenance: number };
+  receivers: { syslogReceived: number; trapsReceived: number; stored: number; dropped: number; unknownSource: number; parseErrors: number; queued: number; listeners: Record<string, string> };
+  notifications: ChannelStatus[];
   storage: { configDbBytes: number; metricsDbBytes: number; eventsDbBytes: number; diskFreeBytes: number; diskTotalBytes: number; dataPath: string };
 }
 
@@ -72,6 +75,54 @@ export function SystemTab() {
           <dd>{s.alertEngine.processed.toLocaleString()}</dd>
           <dt>Alert signals dropped</dt>
           <dd style={{ color: s.alertEngine.dropped > 0 ? 'var(--crit)' : undefined }}>{s.alertEngine.dropped.toLocaleString()}</dd>
+          <dt>Suppressed conditions</dt>
+          <dd>
+            {s.alertEngine.suppressed} <span className="muted">({s.alertEngine.suppressedByMaintenance} maintenance, {s.alertEngine.suppressed - s.alertEngine.suppressedByMaintenance} upstream device unreachable)</span>
+          </dd>
+        </dl>
+      </div>
+      <div className="card card-body">
+        <h2 style={{ marginBottom: 10 }}>Syslog &amp; trap receivers</h2>
+        <dl className="kv">
+          {Object.entries(s.receivers.listeners).map(([name, state]) => (
+            <span key={name} style={{ display: 'contents' }}>
+              <dt className="mono">{name}</dt>
+              <dd style={{ color: state === 'listening' ? 'var(--ok)' : state === 'disabled' ? undefined : 'var(--crit)' }}>{state}</dd>
+            </span>
+          ))}
+          <dt>Syslog messages received</dt>
+          <dd>{s.receivers.syslogReceived.toLocaleString()}</dd>
+          <dt>Traps received</dt>
+          <dd>{s.receivers.trapsReceived.toLocaleString()}</dd>
+          <dt>Stored / waiting</dt>
+          <dd>
+            {s.receivers.stored.toLocaleString()} / {s.receivers.queued.toLocaleString()}
+          </dd>
+          <dt>From unknown sources</dt>
+          <dd>{s.receivers.unknownSource.toLocaleString()}</dd>
+          <dt>Dropped (rate limit)</dt>
+          <dd style={{ color: s.receivers.dropped > 0 ? 'var(--warn)' : undefined }}>{s.receivers.dropped.toLocaleString()}</dd>
+          <dt>Undecodable</dt>
+          <dd>{s.receivers.parseErrors.toLocaleString()}</dd>
+        </dl>
+      </div>
+      <div className="card card-body">
+        <h2 style={{ marginBottom: 10 }}>Notification channels</h2>
+        <dl className="kv">
+          {s.notifications.map((n) => (
+            <span key={n.channel} style={{ display: 'contents' }}>
+              <dt>{n.channel}</dt>
+              <dd>
+                {n.sent} sent
+                {n.failed > 0 && (
+                  <span style={{ color: 'var(--crit)' }}>
+                    {' '}
+                    · {n.failed} failed {n.lastErrorUtc ? fmtAgo(n.lastErrorUtc) : ''}: {n.lastError}
+                  </span>
+                )}
+              </dd>
+            </span>
+          ))}
         </dl>
       </div>
       <div className="card card-body">

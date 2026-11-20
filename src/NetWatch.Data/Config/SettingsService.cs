@@ -26,6 +26,16 @@ public sealed class SettingsService
 
     public RetentionSettings Retention => Get<RetentionSettings>(RetentionSettings.Key, s => s.Normalise());
 
+    public AlertingSettings Alerting => Get<AlertingSettings>(AlertingSettings.Key, s => s.Normalise());
+
+    public ReceiverSettings Receivers => Get<ReceiverSettings>(ReceiverSettings.Key, s => s.Normalise());
+
+    public ServerMonitoringSettings Servers => Get<ServerMonitoringSettings>(ServerMonitoringSettings.Key, s => s.Normalise());
+
+    public NotificationSettings Notifications => Get<NotificationSettings>(NotificationSettings.Key, s => s.Normalise());
+
+    public LdapSettings Ldap => Get<LdapSettings>(LdapSettings.Key, s => s.Normalise());
+
     public T Get<T>(string key, Action<T>? normalise = null)
         where T : class, new()
     {

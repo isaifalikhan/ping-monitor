@@ -48,7 +48,7 @@ function MaintenanceDialog({ ids, onClose }: { ids: number[]; onClose: () => voi
       }
     >
       <ErrorBox error={error} />
-      <div className="muted">Devices in maintenance are still polled, but raise no new alerts.</div>
+      <div className="muted">Devices in maintenance are still polled, but raise no new alerts. For recurring maintenance use Settings → Maintenance windows.</div>
       <label className="field" style={{ maxWidth: 240 }}>
         <span>Duration (hours, 0 = until ended manually)</span>
         <input type="number" min={0} max={720} value={hours} onChange={(e) => setHours(Number(e.target.value))} />
@@ -110,8 +110,28 @@ export function DevicesPage() {
   };
 
   const columns: Column<DeviceListItem>[] = [
-    { key: 'status', header: 'Status', render: (d) => <StatusBadge status={d.status} />, sort: (d) => ['Down', 'Warning', 'Unknown', 'Maintenance', 'Up'].indexOf(d.status), width: 120 },
-    { key: 'name', header: 'Name', render: (d) => <strong>{d.name}</strong>, sort: (d) => d.name },
+    {
+      key: 'status',
+      header: 'Status',
+      render: (d) => (
+        <span title={d.maintenanceReason ?? (d.unreachableVia ? `Upstream ${d.unreachableVia} unreachable — alerts suppressed` : undefined)}>
+          <StatusBadge status={d.status} />
+        </span>
+      ),
+      sort: (d) => ['Down', 'Warning', 'Unknown', 'Maintenance', 'Up'].indexOf(d.status),
+      width: 120,
+    },
+    {
+      key: 'name',
+      header: 'Name',
+      render: (d) => (
+        <span className="nowrap">
+          <strong>{d.name}</strong>
+          {d.unreachableVia && <span className="faint" style={{ fontSize: 12 }}> · behind {d.unreachableVia}</span>}
+        </span>
+      ),
+      sort: (d) => d.name,
+    },
     { key: 'ip', header: 'IP address', render: (d) => <span className="mono">{d.ipAddress}</span>, sort: (d) => d.ipAddress.split('.').map((p) => p.padStart(3, '0')).join('.') },
     { key: 'type', header: 'Type', render: (d) => typeLabel(d.type), sort: (d) => d.type },
     { key: 'vendor', header: 'Vendor / model', render: (d) => <span className="muted">{[d.vendor, d.model].filter(Boolean).join(' ') || '—'}</span>, sort: (d) => d.vendor ?? '' },

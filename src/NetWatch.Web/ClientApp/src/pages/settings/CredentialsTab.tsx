@@ -212,7 +212,7 @@ function TestDialog({ credential, onClose }: { credential: Credential; onClose: 
       {result &&
         (result.success ? (
           <div className="ok-box">
-            SNMP OK — {result.sysName} {result.vendor && `(${result.vendor} ${result.model ?? ''})`}
+            {credential.kind === 'Windows' || credential.kind === 'Ssh' ? 'Connected' : 'SNMP OK'} — {result.sysName} {result.vendor && `(${result.vendor} ${result.model ?? ''})`}
             <div className="muted" style={{ marginTop: 4 }}>
               {result.sysDescription}
             </div>
@@ -235,7 +235,7 @@ export function CredentialsTab() {
   return (
     <>
       <div className="toolbar" style={{ marginBottom: 12 }}>
-        <span className="muted">Use read-only accounts: SNMP read-only community / v3 user, WMI read, Event Log Readers, vCenter read-only role.</span>
+        <span className="muted">Use read-only accounts: SNMP read-only community / v3 user, WMI read + Event Log Readers (Windows), an unprivileged SSH user (Linux), vCenter read-only role.</span>
         <span style={{ flex: 1 }} />
         <button className="primary" onClick={() => setEdit('new')}>
           <Plus size={16} /> Add profile
@@ -265,7 +265,7 @@ export function CredentialsTab() {
                 <td className="num">{c.usedBy}</td>
                 <td className="muted">{fmtDateTime(c.updatedUtc)}</td>
                 <td className="nowrap" style={{ textAlign: 'right' }}>
-                  {(c.kind === 'SnmpV2c' || c.kind === 'SnmpV3') && (
+                  {c.kind !== 'VCenter' && (
                     <button className="small" onClick={() => setTest(c)}>
                       Test
                     </button>

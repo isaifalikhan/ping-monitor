@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { Bell, BellOff, Cable, LayoutDashboard, LogOut, Moon, Network, Server, Settings, Siren, Sun, Wifi, WifiOff } from 'lucide-react';
+import { Bell, BellOff, Cable, HardDrive, LayoutDashboard, LogOut, Moon, Network, ScrollText, Server, Settings, Siren, Sun, Wifi, WifiOff } from 'lucide-react';
 import { useEffect, useState, type ReactNode } from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
 import { api } from '../api/client';
@@ -8,6 +8,7 @@ import { useAuth } from '../auth/AuthContext';
 import { useLive } from '../live/LiveContext';
 import { useTheme } from '../theme/useTheme';
 import { fmtTime, TIME_ZONE } from '../util/format';
+import { playSeverity, soundReady } from '../live/sound';
 import { SeverityBadge } from './Badges';
 
 const dateFmt = new Intl.DateTimeFormat('en-GB', { timeZone: TIME_ZONE, weekday: 'short', day: '2-digit', month: 'short' });
@@ -34,6 +35,7 @@ function Toasts() {
         <div key={t.key} className={`toast sev-${t.alert.severity}${t.kind === 'resolved' ? ' resolved' : ''}`}>
           <div className="t-head">
             {t.kind === 'resolved' ? <span className="badge s-up">Resolved</span> : <SeverityBadge severity={t.alert.severity} />}
+            {t.kind === 'escalated' && <span className="badge sev-critical">Escalated — not acknowledged</span>}
             <span className="faint" style={{ marginLeft: 'auto', fontSize: 12 }}>
               {fmtTime(t.at)}
             </span>
@@ -60,17 +62,32 @@ function Toasts() {
   );
 }
 
-/** Banner shown while any unacknowledged Critical/Major alert exists (refreshed by live events and every 30 s). */
+/**
+ * Banner shown while any unacknowledged Critical/Major alert exists (refreshed by live events and every 30 s).
+ * While escalated alerts stay unacknowledged, the alarm sound repeats at the configured interval.
+ */
 function AlertBanner() {
   const active = useQuery({
     queryKey: ['alerts', 'banner'],
     queryFn: () => api.get<Paged<Alert>>('/api/alerts?state=Active&minSeverity=Major&pageSize=50'),
     refetchInterval: 30000,
   });
+  const info = useQuery({ queryKey: ['system', 'info'], queryFn: () => api.get<{ repeatSoundEveryMin: number }>('/api/system/info'), staleTime: 300000 });
   const navigate = useNavigate();
   const items = active.data?.items ?? [];
   const critical = items.filter((a) => a.severity === 'Critical').length;
   const major = items.length - critical;
+  const escalated = items.filter((a) => a.escalatedUtc).length;
+  const repeatMin = info.data?.repeatSoundEveryMin ?? 0;
+
+  useEffect(() => {
+    if (escalated === 0 || repeatMin <= 0) return;
+    const t = window.setInterval(() => {
+      if (soundReady()) playSeverity('Critical');
+    }, repeatMin * 60000);
+    return () => window.clearInterval(t);
+  }, [escalated, repeatMin]);
+
   if (items.length === 0) return null;
   return (
     <div className={`banner ${critical > 0 ? 'crit' : 'major'}`} role="alert">
@@ -79,6 +96,7 @@ function AlertBanner() {
         {critical > 0 && `${critical} critical`}
         {critical > 0 && major > 0 && ', '}
         {major > 0 && `${major} major`} alert{items.length === 1 ? '' : 's'} not acknowledged
+        {escalated > 0 && ` — ${escalated} escalated`}
       </span>
       <span className="muted" style={{ fontWeight: 400, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
         {items[0]?.title}
@@ -116,6 +134,14 @@ export function Layout({ children }: { children: ReactNode }) {
           <NavLink to="/switches">
             <Cable size={18} />
             <span>Switches</span>
+          </NavLink>
+          <NavLink to="/servers">
+            <HardDrive size={18} />
+            <span>Servers</span>
+          </NavLink>
+          <NavLink to="/events">
+            <ScrollText size={18} />
+            <span>Events &amp; logs</span>
           </NavLink>
           <NavLink to="/alerts">
             <Siren size={18} />

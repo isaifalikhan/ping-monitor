@@ -2,7 +2,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Plus } from 'lucide-react';
 import { useState } from 'react';
 import { api } from '../../api/client';
-import type { DeviceType, Group, Operator, Rule, RuleKey, RuleScope, RuleType, Severity } from '../../api/types';
+import type { DeviceType, EventFilter, Group, Operator, Rule, RuleKey, RuleScope, RuleType, Severity } from '../../api/types';
 import { DEVICE_TYPES, SEVERITIES } from '../../api/types';
 import { SeverityBadge } from '../../components/Badges';
 import { Confirm, ErrorBox, Modal } from '../../components/Modal';
@@ -20,18 +20,46 @@ const OPERATORS: { value: Operator; label: string }[] = [
 
 const emptyScope: RuleScope = { deviceIds: [], groupIds: [], deviceTypes: [], tags: [], importantInterfacesOnly: false };
 
-function describe(rule: Rule, keys: RuleKey[]): string {
-  const name = keys.find((k) => k.key === rule.key)?.displayName ?? rule.key;
-  const dur = rule.durationSec > 0 ? ` for ${rule.durationSec >= 60 ? `${Math.round(rule.durationSec / 60)} min` : `${rule.durationSec} s`}` : '';
-  if (rule.ruleType === 'Threshold') {
-    const op = OPERATORS.find((o) => o.value === rule.operator)?.label ?? '?';
-    return `${name} ${op} ${rule.threshold}${dur}${rule.clearThreshold != null ? ` (clears at ${rule.clearThreshold})` : ''}`;
-  }
-  if (rule.ruleType === 'StateChange') return `${name}${dur}`;
-  return `${name} occurs`;
+const RULE_TYPES: { value: RuleType; label: string }[] = [
+  { value: 'Threshold', label: 'Threshold (metric above/below a value)' },
+  { value: 'StateChange', label: 'State change (down, not running…)' },
+  { value: 'EventMatch', label: 'Event (syslog, trap, Windows event, reboot)' },
+  { value: 'CountInWindow', label: 'Count in window (N events in M minutes)' },
+  { value: 'Absence', label: 'Absence (no data for N minutes)' },
+];
+
+const span = (sec: number) => (sec >= 60 ? `${+(sec / 60).toFixed(1)} min` : `${sec} s`);
+
+function filterText(f: EventFilter): string {
+  const parts: string[] = [];
+  if (f.minSeverity) parts.push(`severity ≥ ${f.minSeverity}`);
+  if (f.pattern) parts.push(`matches /${f.pattern}/`);
+  if (f.source) parts.push(`source contains “${f.source}”`);
+  if (f.eventIds?.length) parts.push(`event ID ${f.eventIds.join(', ')}`);
+  if (f.oid) parts.push(`OID ${f.oid}`);
+  return parts.length ? ` where ${parts.join(', ')}` : '';
 }
 
-function scopeText(s: RuleScope, groups: Group[]): string {
+function describe(rule: Rule, keys: RuleKey[]): string {
+  const name = keys.find((k) => k.key === rule.key)?.displayName ?? rule.key;
+  const dur = rule.durationSec > 0 ? ` for ${span(rule.durationSec)}` : '';
+  switch (rule.ruleType) {
+    case 'Threshold': {
+      const op = OPERATORS.find((o) => o.value === rule.operator)?.label ?? '?';
+      return `${name} ${op} ${rule.threshold}${dur}${rule.clearThreshold != null ? ` (clears at ${rule.clearThreshold})` : ''}`;
+    }
+    case 'StateChange':
+      return `${name}${dur}`;
+    case 'CountInWindow':
+      return `≥ ${rule.countThreshold} × ${name} in ${span(rule.windowSec)}${filterText(rule.filter)}`;
+    case 'Absence':
+      return `no ${name} data for ${span(rule.durationSec)}`;
+    default:
+      return `${name}${filterText(rule.filter)}`;
+  }
+}
+
+export function scopeText(s: RuleScope, groups: Group[]): string {
   const parts: string[] = [];
   if (s.deviceTypes.length) parts.push(s.deviceTypes.map(typeLabel).join(', '));
   if (s.groupIds.length) parts.push(`groups: ${s.groupIds.map((id) => groups.find((g) => g.id === id)?.name ?? id).join(', ')}`);
@@ -55,7 +83,12 @@ function RuleDialog({ rule, keys, groups, onClose }: { rule?: Rule; keys: RuleKe
     clearThreshold: rule?.clearThreshold ?? null,
     durationSec: rule?.durationSec ?? 300,
     scope: rule?.scope ?? emptyScope,
+    windowSec: rule?.windowSec || 300,
+    countThreshold: rule?.countThreshold || 10,
+    escalateAfterMin: rule?.escalateAfterMin ?? null,
   });
+  const [filter, setFilter] = useState<EventFilter>(rule?.filter ?? { eventIds: [] });
+  const [eventIds, setEventIds] = useState((rule?.filter?.eventIds ?? []).join(', '));
   const [tags, setTags] = useState((rule?.scope.tags ?? []).join(', '));
   const [error, setError] = useState<unknown>(null);
   const builtIn = !!rule?.isBuiltIn;
@@ -65,7 +98,20 @@ function RuleDialog({ rule, keys, groups, onClose }: { rule?: Rule; keys: RuleKe
 
   const save = async () => {
     try {
-      const body = { ...r, scope: { ...r.scope, tags: tags.split(',').map((t) => t.trim()).filter(Boolean) } };
+      const isEvent = r.ruleType === 'EventMatch' || r.ruleType === 'CountInWindow' || r.ruleType === 'Absence';
+      const body = {
+        ...r,
+        scope: { ...r.scope, tags: tags.split(',').map((t) => t.trim()).filter(Boolean) },
+        filter: isEvent
+          ? {
+              ...filter,
+              pattern: filter.pattern?.trim() || null,
+              source: filter.source?.trim() || null,
+              oid: filter.oid?.trim() || null,
+              eventIds: eventIds.split(/[,\s]+/).map(Number).filter((n) => Number.isInteger(n) && n > 0),
+            }
+          : null,
+      };
       if (rule) await api.put(`/api/rules/${rule.id}`, body);
       else await api.post('/api/rules', body);
       await qc.invalidateQueries({ queryKey: ['rules'] });
@@ -105,13 +151,15 @@ function RuleDialog({ rule, keys, groups, onClose }: { rule?: Rule; keys: RuleKe
               setR((s) => ({ ...s, ruleType: t, key: keys.find((k) => k.ruleType === t)?.key ?? '' }));
             }}
           >
-            <option value="Threshold">Threshold (metric)</option>
-            <option value="StateChange">State change (up/down)</option>
-            <option value="EventMatch">Event</option>
+            {RULE_TYPES.map((t) => (
+              <option key={t.value} value={t.value}>
+                {t.label}
+              </option>
+            ))}
           </select>
         </label>
         <label className="field">
-          <span>{r.ruleType === 'Threshold' ? 'Metric' : r.ruleType === 'StateChange' ? 'State' : 'Event'}</span>
+          <span>{r.ruleType === 'Threshold' ? 'Metric' : r.ruleType === 'StateChange' ? 'State' : r.ruleType === 'Absence' ? 'Data source' : 'Event'}</span>
           <select value={r.key} disabled={builtIn} onChange={(e) => set('key', e.target.value)}>
             {keys
               .filter((k) => k.ruleType === r.ruleType)
@@ -151,11 +199,77 @@ function RuleDialog({ rule, keys, groups, onClose }: { rule?: Rule; keys: RuleKe
             </label>
           </>
         )}
-        {r.ruleType !== 'EventMatch' && (
+        {(r.ruleType === 'Threshold' || r.ruleType === 'StateChange') && (
           <label className="field">
             <span>Must persist for (seconds)</span>
             <input type="number" min={0} max={86400} value={r.durationSec} onChange={(e) => set('durationSec', Number(e.target.value))} />
           </label>
+        )}
+        {r.ruleType === 'Absence' && (
+          <label className="field">
+            <span>Alert after no data for (seconds)</span>
+            <input type="number" min={60} max={86400} value={r.durationSec} onChange={(e) => set('durationSec', Number(e.target.value))} />
+            <span className="hint">Only sources that delivered data since the service started are watched.</span>
+          </label>
+        )}
+        {r.ruleType === 'CountInWindow' && (
+          <>
+            <label className="field">
+              <span>At least (events)</span>
+              <input type="number" min={2} max={100000} value={r.countThreshold} onChange={(e) => set('countThreshold', Number(e.target.value))} />
+            </label>
+            <label className="field">
+              <span>Within (seconds)</span>
+              <input type="number" min={10} max={86400} value={r.windowSec} onChange={(e) => set('windowSec', Number(e.target.value))} />
+              <span className="hint">Resolves when no matching event occurred for one window.</span>
+            </label>
+          </>
+        )}
+        <label className="field">
+          <span>Escalate after (minutes, empty = global)</span>
+          <input
+            type="number"
+            min={0}
+            max={1440}
+            value={r.escalateAfterMin ?? ''}
+            onChange={(e) => set('escalateAfterMin', e.target.value === '' ? null : Number(e.target.value))}
+          />
+        </label>
+        {(r.ruleType === 'EventMatch' || r.ruleType === 'CountInWindow' || (r.ruleType === 'Absence' && (r.key === 'syslog.message' || r.key === 'snmp.trap'))) && (
+          <>
+            <label className="field wide">
+              <span>Message pattern (regular expression, optional)</span>
+              <input className="mono" value={filter.pattern ?? ''} onChange={(e) => setFilter({ ...filter, pattern: e.target.value })} placeholder="authentication fail|%SYS-5-CONFIG" />
+            </label>
+            <label className="field">
+              <span>Minimum event severity</span>
+              <select value={filter.minSeverity ?? ''} onChange={(e) => setFilter({ ...filter, minSeverity: (e.target.value || null) as Severity | null })}>
+                <option value="">any</option>
+                {SEVERITIES.map((s) => (
+                  <option key={s} value={s}>
+                    {s} and above
+                  </option>
+                ))}
+              </select>
+              <span className="hint">Syslog 0–2 = Critical, 3 = Major, 4 = Warning; Windows Critical/Error/Warning.</span>
+            </label>
+            <label className="field">
+              <span>Source contains (app, provider, trap name)</span>
+              <input value={filter.source ?? ''} onChange={(e) => setFilter({ ...filter, source: e.target.value })} />
+            </label>
+            {(r.key === 'windows.event' || eventIds) && (
+              <label className="field">
+                <span>Windows event IDs</span>
+                <input value={eventIds} onChange={(e) => setEventIds(e.target.value)} placeholder="7031, 7034" />
+              </label>
+            )}
+            {(r.key === 'snmp.trap' || filter.oid) && (
+              <label className="field">
+                <span>Trap OID (prefix)</span>
+                <input className="mono" value={filter.oid ?? ''} onChange={(e) => setFilter({ ...filter, oid: e.target.value })} placeholder="1.3.6.1.6.3.1.1.5.3" />
+              </label>
+            )}
+          </>
         )}
         <label className="check" style={{ alignSelf: 'end' }}>
           <input type="checkbox" checked={r.isEnabled} onChange={(e) => set('isEnabled', e.target.checked)} /> Enabled

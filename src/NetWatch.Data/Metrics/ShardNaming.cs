@@ -18,7 +18,10 @@ internal static class TableSpecs
         "DeviceId",
         ["Up", "RttMs", "LossPct", "CpuPct", "MemPct", "TempC"]);
 
-    public static readonly TableSpec[] All = [Interface, Device];
+    /// <summary>Generic single-value series (disk usage per volume, load, server throughput ...), keyed by Series.Id.</summary>
+    public static readonly TableSpec Generic = new("gen", "SeriesId", ["Value"]);
+
+    public static readonly TableSpec[] All = [Interface, Device, Generic];
 
     public static TableSpec? ByPrefix(string prefix) => All.FirstOrDefault(s => s.Prefix == prefix);
 }

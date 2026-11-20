@@ -5,7 +5,7 @@ import type { Overview, Severity, StatusCounts } from '../api/types';
 import { SEVERITIES } from '../api/types';
 import { SeverityBadge, StatusBadge, UtilBar } from '../components/Badges';
 import { ErrorBox } from '../components/Modal';
-import { fmtAgo, fmtBps, fmtDateTime, typeLabel } from '../util/format';
+import { fmtAgo, fmtBps, fmtBytes, fmtDateTime, typeLabel } from '../util/format';
 
 function Breakdown({ c }: { c: StatusCounts }) {
   return (
@@ -161,6 +161,59 @@ export function OverviewPage() {
                   </tbody>
                 </table>
                 {o.topCpu.length === 0 && <div className="empty">No CPU data yet.</div>}
+              </div>
+            </div>
+
+            <div className="card">
+              <div className="card-head">
+                <h2>Fullest disks</h2>
+              </div>
+              <div className="card-body flush">
+                <table className="data">
+                  <tbody>
+                    {o.topDisks.map((d) => (
+                      <tr key={`${d.deviceId}-${d.volume}`} className="clickable" onClick={() => navigate(`/devices/${d.deviceId}?tab=server`)}>
+                        <td>
+                          {d.deviceName} <span className="muted">{d.volume}</span>
+                        </td>
+                        <td className="num muted">{fmtBytes(d.freeBytes)} free</td>
+                        <td style={{ width: 170 }}>
+                          <UtilBar value={d.usedPct} />
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                {o.topDisks.length === 0 && <div className="empty">No disk data yet (servers need a Windows/SSH credential or SNMP).</div>}
+              </div>
+            </div>
+
+            <div className="card">
+              <div className="card-head">
+                <h2>Received in the last hour</h2>
+              </div>
+              <div className="card-body">
+                <div className="grid cols-3">
+                  <div className="stat clickable" onClick={() => navigate('/events?tab=syslog')}>
+                    <div className="label">Syslog messages</div>
+                    <div className="value" style={{ fontSize: 22 }}>{o.received.syslogLastHour.toLocaleString()}</div>
+                  </div>
+                  <div className="stat clickable" onClick={() => navigate('/events?tab=syslog')}>
+                    <div className="label">Syslog errors (0–3)</div>
+                    <div className="value" style={{ fontSize: 22, color: o.received.syslogErrorsLastHour > 0 ? 'var(--major)' : undefined }}>
+                      {o.received.syslogErrorsLastHour.toLocaleString()}
+                    </div>
+                  </div>
+                  <div className="stat clickable" onClick={() => navigate('/events?tab=traps')}>
+                    <div className="label">SNMP traps</div>
+                    <div className="value" style={{ fontSize: 22 }}>{o.received.trapsLastHour.toLocaleString()}</div>
+                  </div>
+                </div>
+                {o.inMaintenance > 0 && (
+                  <div className="muted" style={{ marginTop: 10 }}>
+                    {o.inMaintenance} device(s) in maintenance — no new alerts for them.
+                  </div>
+                )}
               </div>
             </div>
 

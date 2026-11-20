@@ -23,7 +23,10 @@ public sealed record DeviceListItem(
     double? LossPct,
     double? CpuPct,
     double? MemPct,
-    IReadOnlyList<string> Tags);
+    IReadOnlyList<string> Tags,
+    OsKind Os,
+    string? MaintenanceReason,
+    string? UnreachableVia);
 
 public sealed record DeviceCredentialDto(CredentialPurpose Purpose, int CredentialProfileId, string? ProfileName);
 
@@ -65,7 +68,11 @@ public sealed record DeviceDetailDto(
     IReadOnlyList<string> Tags,
     IReadOnlyList<DeviceCredentialDto> Credentials,
     DateTime CreatedUtc,
-    DateTime UpdatedUtc);
+    DateTime UpdatedUtc,
+    IReadOnlyList<string> WatchedServices,
+    string? SshHostKeyFingerprint,
+    string? MaintenanceReason,
+    string? UnreachableVia);
 
 public sealed record DeviceInput(
     string? Name,
@@ -80,7 +87,9 @@ public sealed record DeviceInput(
     int? ParentDeviceId,
     int? SnmpCredentialId,
     string? Notes,
-    IReadOnlyList<string>? Tags);
+    IReadOnlyList<string>? Tags,
+    int? ManagementCredentialId = null,
+    IReadOnlyList<string>? WatchedServices = null);
 
 public sealed record MaintenanceRequest(IReadOnlyList<int> DeviceIds, bool Enabled, DateTime? UntilUtc);
 
@@ -184,7 +193,11 @@ public sealed record RuleDto(
     double? Threshold,
     double? ClearThreshold,
     int DurationSec,
-    DateTime UpdatedUtc);
+    DateTime UpdatedUtc,
+    Core.Alerts.EventFilter Filter,
+    int WindowSec,
+    int CountThreshold,
+    int? EscalateAfterMin);
 
 public sealed record RuleInput(
     string? Name,
@@ -197,7 +210,11 @@ public sealed record RuleInput(
     ComparisonOperator? Operator,
     double? Threshold,
     double? ClearThreshold,
-    int DurationSec);
+    int DurationSec,
+    Core.Alerts.EventFilter? Filter = null,
+    int WindowSec = 0,
+    int CountThreshold = 0,
+    int? EscalateAfterMin = null);
 
 public sealed record RuleKeyDto(AlertRuleType RuleType, string Key, string DisplayName);
 

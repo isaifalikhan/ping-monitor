@@ -96,8 +96,48 @@ public enum AlertRuleType
     Threshold,
     /// <summary>A problem state (device down, port down, sensor failed) held for a duration.</summary>
     StateChange,
-    /// <summary>A discrete event (e.g. device reboot) that raises an alert which needs acknowledgement.</summary>
-    EventMatch
+    /// <summary>A discrete event (e.g. device reboot, syslog message, trap) that raises an alert which needs acknowledgement.</summary>
+    EventMatch,
+    /// <summary>At least N matching events within a time window (e.g. repeated authentication failures).</summary>
+    CountInWindow,
+    /// <summary>No data received for a metric or event source for longer than the configured duration.</summary>
+    Absence
+}
+
+/// <summary>How server health is collected (agentless).</summary>
+public enum ServerCollectionMethod
+{
+    None,
+    WinRm,
+    Dcom,
+    Ssh,
+    Snmp
+}
+
+/// <summary>Windows service / systemd unit state as seen by the server collector.</summary>
+public enum ServiceState
+{
+    Unknown,
+    Running,
+    Stopped,
+    StartPending,
+    StopPending,
+    Paused,
+    Failed,
+    NotFound
+}
+
+/// <summary>Recurrence of a maintenance window.</summary>
+public enum MaintenanceRecurrence
+{
+    /// <summary>One-off window between a start and an end time.</summary>
+    Once,
+    /// <summary>Every day at a local (PKT) time for a duration.</summary>
+    Daily,
+    /// <summary>On selected weekdays at a local (PKT) time for a duration.</summary>
+    Weekly,
+    /// <summary>Advanced: a cron expression (local time) and a duration.</summary>
+    Cron
 }
 
 public enum ComparisonOperator
@@ -134,7 +174,9 @@ public enum DeviceEventKind
     InterfaceChange,
     Discovery,
     Inventory,
-    Sensor
+    Sensor,
+    Service,
+    Server
 }
 
 public enum SnmpAuthProtocol

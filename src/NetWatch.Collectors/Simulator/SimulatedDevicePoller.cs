@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using NetWatch.Collectors.Polling;
+using NetWatch.Collectors.Servers;
 using NetWatch.Core;
 
 namespace NetWatch.Collectors.Simulator;
@@ -40,6 +41,29 @@ public sealed class SimulatedDevicePoller : IDevicePoller
         public int CpuSpikePolls;
         public int FanFailPolls;
         public DateTime LastPollUtc;
+        public SimServer? Server;
+    }
+
+    private sealed class SimVolume
+    {
+        public required string Name;
+        public required string? Label;
+        public required string FileSystem;
+        public required long Total;
+        public double UsedFraction;
+        public double GrowthPerPoll;
+    }
+
+    private sealed class SimServer
+    {
+        public required bool Linux;
+        public required List<SimVolume> Volumes;
+        public readonly Dictionary<string, int> ServiceDownPolls = new(StringComparer.OrdinalIgnoreCase);
+        public long NextRecordId = 100_000;
+        public bool PendingReboot;
+        public DateTime LastPatchUtc;
+        public ulong RxBytes;
+        public ulong TxBytes;
     }
 
     private sealed class SimPort
@@ -191,8 +215,169 @@ public sealed class SimulatedDevicePoller : IDevicePoller
             result.Sensors.Add(new SensorReading(SensorKind.PowerSupply, "2", "Power supply 2", null, null, SensorState.Ok));
         }
 
+        if (request.Server is { } serverRequest && d.Type is DeviceType.Server or DeviceType.VM)
+        {
+            result.Server = SimulateServer(d, serverRequest, now, diurnal, elapsed, result);
+        }
+
         return result;
     }
+
+    internal double ServiceFailureProbability { get; set; } = 0.0004;
+    internal double WindowsErrorProbability { get; set; } = 0.01;
+
+    private static readonly (int Id, string Provider, int Level, string Message)[] WindowsEvents =
+    [
+        (7031, "Service Control Manager", 2, "The Print Spooler service terminated unexpectedly. It has done this 1 time(s)."),
+        (1000, "Application Error", 2, "Faulting application name: w3wp.exe, version: 10.0.20348.1, faulting module name: KERNELBASE.dll"),
+        (10016, "DistributedCOM", 2, "The application-specific permission settings do not grant Local Activation permission for the COM Server application."),
+        (36887, "Schannel", 2, "A fatal alert was received from the remote endpoint. The TLS protocol defined fatal alert code is 46."),
+        (2004, "Microsoft-Windows-Resource-Exhaustion-Detector", 3, "Windows successfully diagnosed a low virtual memory condition."),
+        (41, "Microsoft-Windows-Kernel-Power", 1, "The system has rebooted without cleanly shutting down first."),
+    ];
+
+    private static SimServer CreateServer(SimDevice d, bool linux)
+    {
+        var rng = d.Rng;
+        List<SimVolume> volumes = linux
+            ?
+            [
+                new SimVolume { Name = "/", Label = "/dev/mapper/vg0-root", FileSystem = "xfs", Total = 50L << 30, UsedFraction = 0.35 + (rng.NextDouble() * 0.3) },
+                new SimVolume { Name = "/var", Label = "/dev/mapper/vg0-var", FileSystem = "xfs", Total = 100L << 30, UsedFraction = 0.4 + (rng.NextDouble() * 0.45) },
+                new SimVolume { Name = "/data", Label = "/dev/sdb1", FileSystem = "ext4", Total = 1L << 40, UsedFraction = 0.2 + (rng.NextDouble() * 0.5) },
+            ]
+            :
+            [
+                new SimVolume { Name = "C:", Label = "System", FileSystem = "NTFS", Total = 120L << 30, UsedFraction = 0.4 + (rng.NextDouble() * 0.4) },
+                new SimVolume { Name = "D:", Label = "Data", FileSystem = "NTFS", Total = 500L << 30, UsedFraction = 0.3 + (rng.NextDouble() * 0.5) },
+            ];
+
+        // About one server in six fills a disk slowly, so disk warnings appear within hours.
+        if (rng.NextDouble() < 0.17)
+        {
+            var v = volumes[^1];
+            v.UsedFraction = 0.83 + (rng.NextDouble() * 0.02);
+            v.GrowthPerPoll = 0.00004;
+        }
+
+        return new SimServer
+        {
+            Linux = linux,
+            Volumes = volumes,
+            PendingReboot = rng.NextDouble() < 0.12,
+            LastPatchUtc = DateTime.UtcNow.Date.AddDays(-rng.Next(3, 75)),
+            RxBytes = (ulong)rng.NextInt64(1L << 30, 1L << 40),
+            TxBytes = (ulong)rng.NextInt64(1L << 30, 1L << 40),
+        };
+    }
+
+    private ServerPollData SimulateServer(SimDevice d, Servers.ServerPollRequest request, DateTime now, double diurnal, double elapsed, DevicePollResult result)
+    {
+        var linux = request.Credential?.Kind == CredentialKind.Ssh;
+        var s = d.Server ??= CreateServer(d, linux);
+        var data = new ServerPollData
+        {
+            Method = linux ? ServerCollectionMethod.Ssh : ServerCollectionMethod.WinRm,
+            Ok = true,
+            OsName = linux
+                ? (d.Rng.Next(2) == 0 ? "Ubuntu 22.04.4 LTS" : "Red Hat Enterprise Linux 9.4 (Plow)")
+                : d.Type == DeviceType.VM ? "Microsoft Windows Server 2019 Standard" : "Microsoft Windows Server 2022 Standard",
+            OsVersion = linux ? "5.15.0-105-generic" : d.Type == DeviceType.VM ? "10.0.17763" : "10.0.20348",
+            LastBootUtc = d.BootUtc,
+            PendingReboot = s.PendingReboot,
+            LastPatchUtc = s.LastPatchUtc,
+            LastPatchId = linux ? null : "KB5044281",
+            CpuPct = result.CpuPct,
+            MemPct = result.MemPct,
+            MemTotalBytes = d.Type == DeviceType.VM ? 16L << 30 : 128L << 30,
+            CpuCount = d.Type == DeviceType.VM ? 4 : 32,
+        };
+
+        foreach (var v in s.Volumes)
+        {
+            v.UsedFraction += v.GrowthPerPoll;
+            if (v.UsedFraction > 0.975)
+            {
+                v.UsedFraction = 0.6; // an administrator cleaned up
+            }
+
+            var free = (long)(v.Total * (1 - v.UsedFraction));
+            data.Volumes.Add(new VolumeReading(v.Name, v.Label, v.FileSystem, v.Total, free));
+        }
+
+        foreach (var name in request.WatchedServices)
+        {
+            s.ServiceDownPolls.TryGetValue(name, out var down);
+            if (down == 0 && d.Rng.NextDouble() < ServiceFailureProbability)
+            {
+                down = d.Rng.Next(2, 8);
+            }
+
+            if (down > 0)
+            {
+                down--;
+            }
+
+            s.ServiceDownPolls[name] = down;
+            var state = down > 0 ? (linux ? ServiceState.Failed : ServiceState.Stopped) : ServiceState.Running;
+            data.Services.Add(new ServiceReading(name, linux ? $"{name}.service" : DisplayName(name), state, linux ? null : "Auto"));
+        }
+
+        // Network throughput follows the server NIC traffic of the interface simulation.
+        var bps = 2e8 * (0.2 + diurnal) * (0.7 + (d.Rng.NextDouble() * 0.6));
+        if (linux)
+        {
+            s.RxBytes += (ulong)(bps * elapsed / 8);
+            s.TxBytes += (ulong)(bps * 0.6 * elapsed / 8);
+            data.NetRxBytes = s.RxBytes;
+            data.NetTxBytes = s.TxBytes;
+            var load = (result.CpuPct ?? 20) / 100.0 * data.CpuCount!.Value * (0.8 + (d.Rng.NextDouble() * 0.4));
+            data.Load1 = Math.Round(load * 1.1, 2);
+            data.Load5 = Math.Round(load, 2);
+            data.Load15 = Math.Round(load * 0.9, 2);
+        }
+        else
+        {
+            data.NetInBps = bps;
+            data.NetOutBps = bps * 0.6;
+            if (request.ReadEventLogs)
+            {
+                var bookmarks = new Dictionary<string, long>(StringComparer.OrdinalIgnoreCase);
+                foreach (var log in new[] { "System", "Application" })
+                {
+                    if (!request.EventBookmarks.TryGetValue(log, out var last))
+                    {
+                        bookmarks[log] = s.NextRecordId;
+                        continue;
+                    }
+
+                    if (d.Rng.NextDouble() < WindowsErrorProbability)
+                    {
+                        // Kernel-Power 41 (critical) is rare; the others are everyday errors.
+                        var e = d.Rng.NextDouble() < 0.08 ? WindowsEvents[^1] : WindowsEvents[d.Rng.Next(WindowsEvents.Length - 1)];
+                        s.NextRecordId = Math.Max(s.NextRecordId, last) + 1;
+                        data.Events.Add(new WindowsEventReading(log, s.NextRecordId, now, e.Level, e.Id, e.Provider, e.Message));
+                    }
+
+                    bookmarks[log] = Math.Max(last, s.NextRecordId);
+                }
+
+                data.NewBookmarks = bookmarks;
+            }
+        }
+
+        return data;
+    }
+
+    private static string DisplayName(string service) => service switch
+    {
+        "W3SVC" => "World Wide Web Publishing Service",
+        "Spooler" => "Print Spooler",
+        "WinRM" => "Windows Remote Management (WS-Management)",
+        "EventLog" => "Windows Event Log",
+        "MSSQLSERVER" => "SQL Server (MSSQLSERVER)",
+        _ => service,
+    };
 
     private static SimDevice Create(int id, DeviceType type)
     {

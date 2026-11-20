@@ -104,7 +104,11 @@ public static class AlertEndpoints
     // ---------------------------------------------------------------- rules
 
     private static RuleDto ToDto(AlertRule r) => new(r.Id, r.Name, r.Description, r.IsEnabled, r.IsBuiltIn, r.RuleType, r.Severity,
-        RuleScope.Parse(r.ScopeJson), r.Key, r.Operator, r.Threshold, r.ClearThreshold, r.DurationSec, r.UpdatedUtc);
+        RuleScope.Parse(r.ScopeJson), r.Key, r.Operator, r.Threshold, r.ClearThreshold, r.DurationSec, r.UpdatedUtc,
+        EventFilter.Parse(r.FilterJson), r.WindowSec, r.CountThreshold, r.EscalateAfterMin);
+
+    /// <summary>Keys an Absence rule can watch: any metric, or syslog/trap reception.</summary>
+    private static readonly string[] AbsenceEventKeys = [EventKeys.SyslogMessage, EventKeys.SnmpTrap];
 
     private static async Task<IResult> ListRulesAsync(NetWatchDbContext db, CancellationToken ct) =>
         Results.Ok((await db.AlertRules.AsNoTracking().OrderBy(r => r.Name).ToListAsync(ct)).Select(ToDto));
@@ -112,7 +116,10 @@ public static class AlertEndpoints
     private static IResult RuleKeys() => Results.Ok(
         MetricKeys.DisplayNames.Select(kv => new RuleKeyDto(AlertRuleType.Threshold, kv.Key, kv.Value))
             .Concat(StateKeys.DisplayNames.Select(kv => new RuleKeyDto(AlertRuleType.StateChange, kv.Key, kv.Value)))
-            .Concat(EventKeys.DisplayNames.Select(kv => new RuleKeyDto(AlertRuleType.EventMatch, kv.Key, kv.Value))));
+            .Concat(EventKeys.DisplayNames.Select(kv => new RuleKeyDto(AlertRuleType.EventMatch, kv.Key, kv.Value)))
+            .Concat(EventKeys.DisplayNames.Where(kv => kv.Key != EventKeys.DeviceReboot).Select(kv => new RuleKeyDto(AlertRuleType.CountInWindow, kv.Key, kv.Value)))
+            .Concat(MetricKeys.DisplayNames.Select(kv => new RuleKeyDto(AlertRuleType.Absence, kv.Key, kv.Value)))
+            .Concat(AbsenceEventKeys.Select(k => new RuleKeyDto(AlertRuleType.Absence, k, EventKeys.DisplayNames[k]))));
 
     private static string? Validate(RuleInput input)
     {
@@ -121,11 +128,14 @@ public static class AlertEndpoints
             return "Rule name is required (max 200 characters).";
         }
 
+        var key = input.Key ?? string.Empty;
         var known = input.RuleType switch
         {
-            AlertRuleType.Threshold => MetricKeys.DisplayNames.ContainsKey(input.Key ?? string.Empty),
-            AlertRuleType.StateChange => StateKeys.DisplayNames.ContainsKey(input.Key ?? string.Empty),
-            AlertRuleType.EventMatch => EventKeys.DisplayNames.ContainsKey(input.Key ?? string.Empty),
+            AlertRuleType.Threshold => MetricKeys.DisplayNames.ContainsKey(key),
+            AlertRuleType.StateChange => StateKeys.DisplayNames.ContainsKey(key),
+            AlertRuleType.EventMatch => EventKeys.DisplayNames.ContainsKey(key),
+            AlertRuleType.CountInWindow => EventKeys.DisplayNames.ContainsKey(key) && key != EventKeys.DeviceReboot,
+            AlertRuleType.Absence => MetricKeys.DisplayNames.ContainsKey(key) || AbsenceEventKeys.Contains(key),
             _ => false,
         };
         if (!known)
@@ -143,6 +153,27 @@ public static class AlertEndpoints
             return "Duration must be between 0 and 86400 seconds.";
         }
 
+        if (input.RuleType == AlertRuleType.Absence && input.DurationSec < 60)
+        {
+            return "Absence rules need a silence period of at least 60 seconds.";
+        }
+
+        if (input.RuleType == AlertRuleType.CountInWindow &&
+            (input.CountThreshold is < 2 or > 100_000 || input.WindowSec is < 10 or > 86_400))
+        {
+            return "Count rules need a count of 2–100000 events and a window of 10–86400 seconds.";
+        }
+
+        if (input.EscalateAfterMin is < 0 or > 1440)
+        {
+            return "Escalation must be between 0 and 1440 minutes (empty = global setting).";
+        }
+
+        if (input.Filter?.Validate() is { } filterError)
+        {
+            return filterError;
+        }
+
         return null;
     }
 
@@ -157,6 +188,10 @@ public static class AlertEndpoints
         rule.Threshold = input.Threshold;
         rule.ClearThreshold = input.ClearThreshold;
         rule.DurationSec = input.DurationSec;
+        rule.FilterJson = input.Filter?.ToJson();
+        rule.WindowSec = input.RuleType == AlertRuleType.CountInWindow ? input.WindowSec : 0;
+        rule.CountThreshold = input.RuleType == AlertRuleType.CountInWindow ? input.CountThreshold : 0;
+        rule.EscalateAfterMin = input.EscalateAfterMin;
         if (allowStructuralChange)
         {
             rule.RuleType = input.RuleType;

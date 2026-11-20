@@ -18,6 +18,20 @@ public interface IMetricStore
 
     Task<SeriesData> QueryDeviceAsync(int deviceId, DateTime fromUtc, DateTime toUtc, CancellationToken ct);
 
+    /// <summary>Queues a value of a generic series. Never blocks.</summary>
+    void Enqueue(in GenericSample sample);
+
+    /// <summary>Returns the id of the series (device, key, instance), registering it on first use.</summary>
+    int GetOrCreateSeries(int deviceId, string key, string? instance);
+
+    /// <summary>All generic series of a device.</summary>
+    IReadOnlyList<SeriesInfo> ListSeries(int deviceId);
+
+    Task<SeriesData> QuerySeriesAsync(int seriesId, DateTime fromUtc, DateTime toUtc, CancellationToken ct);
+
+    /// <summary>Removes the registry entries of a deleted device (its shard rows age out with retention).</summary>
+    void ForgetDevice(int deviceId);
+
     Task<IReadOnlyDictionary<int, CounterSnapshot>> LoadCounterStatesAsync(CancellationToken ct);
 
     Task SaveCounterStatesAsync(IReadOnlyCollection<KeyValuePair<int, CounterSnapshot>> states, CancellationToken ct);

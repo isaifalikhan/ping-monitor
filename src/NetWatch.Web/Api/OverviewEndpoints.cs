@@ -4,6 +4,8 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.EntityFrameworkCore;
 using NetWatch.Alerts.Engine;
+using NetWatch.Alerts.Notifications;
+using NetWatch.Collectors.Receivers;
 using NetWatch.Collectors.Inventory;
 using NetWatch.Collectors.Live;
 using NetWatch.Collectors.Scheduling;
@@ -27,6 +29,8 @@ public sealed record TopInterface(int InterfaceId, int DeviceId, string DeviceNa
 
 public sealed record TopDevice(int DeviceId, string Name, DeviceType Type, double Value);
 
+public sealed record TopDisk(int DeviceId, string DeviceName, string Volume, double UsedPct, long FreeBytes, long TotalBytes);
+
 /// <summary>Overview dashboard data and service self-monitoring.</summary>
 public static class OverviewEndpoints
 {
@@ -34,7 +38,7 @@ public static class OverviewEndpoints
     {
         app.MapGet("/api/overview", OverviewAsync).RequireAuthorization(Policies.Viewer);
         app.MapGet("/api/system/status", SystemStatusAsync).RequireAuthorization(Policies.Admin);
-        app.MapGet("/api/system/info", Info).RequireAuthorization(Policies.Viewer);
+        app.MapGet("/api/system/info", (SettingsService s) => Info(s)).RequireAuthorization(Policies.Viewer);
     }
 
     internal static StatusCounts Count(IEnumerable<DeviceStatus> statuses)
@@ -56,13 +60,13 @@ public static class OverviewEndpoints
         return new StatusCounts(total, up, warn, down, unknown, maint);
     }
 
-    private static async Task<IResult> OverviewAsync(NetWatchDbContext db, EventsDbContext events, LiveStateCache live, IActiveAlertIndex alerts, CancellationToken ct)
+    private static async Task<IResult> OverviewAsync(NetWatchDbContext db, EventsDbContext events, LiveStateCache live, IActiveAlertIndex alerts, InventoryCache inventory, IDependencyStatus dependencies, CancellationToken ct)
     {
         var devices = await db.Devices.AsNoTracking().Include(d => d.Tags).ToListAsync(ct);
         var groups = await db.Groups.AsNoTracking().ToListAsync(ct);
         var paths = DeviceStatusHelper.GroupPaths(groups);
         var now = DateTime.UtcNow;
-        var items = devices.Where(d => d.IsEnabled).Select(d => DeviceEndpoints.ToListItem(d, paths, live, alerts, now)).ToList();
+        var items = devices.Where(d => d.IsEnabled).Select(d => DeviceEndpoints.ToListItem(d, paths, live, alerts, inventory, dependencies, now)).ToList();
         var byId = items.ToDictionary(i => i.Id);
 
         var byType = items.GroupBy(i => i.Type).OrderBy(g => g.Key)
@@ -94,6 +98,19 @@ public static class OverviewEndpoints
         var recent = await events.DeviceEvents.AsNoTracking().OrderByDescending(e => e.TimestampUtc).Take(15).ToListAsync(ct);
         var alertCounts = alerts.CountBySeverity();
 
+        // Fullest disks across all servers.
+        var topDisks = (await db.Volumes.AsNoTracking().Where(v => v.TotalBytes > 0).ToListAsync(ct))
+            .Where(v => byId.ContainsKey(v.DeviceId))
+            .OrderByDescending(v => v.UsedPct)
+            .Take(10)
+            .Select(v => new TopDisk(v.DeviceId, byId[v.DeviceId].Name, v.Name, v.UsedPct, v.FreeBytes, v.TotalBytes))
+            .ToList();
+        var hourAgo = now.AddHours(-1);
+        var syslogLastHour = await events.SyslogMessages.AsNoTracking().CountAsync(m => m.ReceivedUtc >= hourAgo, ct);
+        var syslogErrorsLastHour = await events.SyslogMessages.AsNoTracking().CountAsync(m => m.ReceivedUtc >= hourAgo && m.SyslogSeverity <= 3, ct);
+        var trapsLastHour = await events.SnmpTraps.AsNoTracking().CountAsync(t => t.ReceivedUtc >= hourAgo, ct);
+        var maintenance = items.Count(i => i.MaintenanceMode);
+
         return Results.Ok(new
         {
             totals = Count(items.Select(i => i.Status)),
@@ -103,6 +120,9 @@ public static class OverviewEndpoints
             topInterfaces,
             topCpu,
             topMemory,
+            topDisks,
+            received = new { syslogLastHour, syslogErrorsLastHour, trapsLastHour },
+            inMaintenance = maintenance,
             problemDevices = items.Where(i => i.Status is DeviceStatus.Down or DeviceStatus.Warning)
                 .OrderByDescending(i => i.Status == DeviceStatus.Down).ThenByDescending(i => i.WorstAlert).Take(20).ToList(),
             recentEvents = recent.Select(e => new DeviceEventDto(e.Id, e.TimestampUtc, e.DeviceId, e.DeviceId is { } d ? names.GetValueOrDefault(d) : null, e.Kind, e.Severity, e.Message)),
@@ -115,7 +135,10 @@ public static class OverviewEndpoints
         AlertManager alerts,
         InventoryCache inventory,
         LiveStateCache live,
-        NetWatchPaths paths)
+        NetWatchPaths paths,
+        ReceiverStats receivers,
+        EventIngestService ingest,
+        NotificationDispatcher notifications)
     {
         long FileSize(string path)
         {
@@ -146,7 +169,26 @@ public static class OverviewEndpoints
                 maxDurationMs = Math.Round(stats.MaxDurationMs, 1),
             },
             metrics = new { pendingWrites = metrics.PendingWrites, droppedSamples = metrics.DroppedSamples },
-            alertEngine = new { queued = alerts.QueuedSignals, processed = alerts.ProcessedSignals, dropped = alerts.DroppedSignals },
+            alertEngine = new
+            {
+                queued = alerts.QueuedSignals,
+                processed = alerts.ProcessedSignals,
+                dropped = alerts.DroppedSignals,
+                suppressed = alerts.SuppressedConditions.Count,
+                suppressedByMaintenance = alerts.SuppressedConditions.Count(s => s.Reason == "maintenance"),
+            },
+            receivers = new
+            {
+                syslogReceived = receivers.SyslogReceived,
+                trapsReceived = receivers.TrapsReceived,
+                stored = receivers.Stored,
+                dropped = receivers.Dropped,
+                unknownSource = receivers.UnknownSource,
+                parseErrors = receivers.ParseErrors,
+                queued = ingest.Queued,
+                listeners = receivers.ListenerSnapshot(),
+            },
+            notifications = notifications.Status,
             storage = new
             {
                 configDbBytes = FileSize(paths.ConfigDb),
@@ -159,7 +201,8 @@ public static class OverviewEndpoints
         });
     }
 
-    private static IResult Info() => Results.Ok(new { product = "NetWatch", version = Version(), timeZone = "Asia/Karachi" });
+    private static IResult Info(SettingsService settings) =>
+        Results.Ok(new { product = "NetWatch", version = Version(), timeZone = "Asia/Karachi", repeatSoundEveryMin = settings.Alerting.RepeatSoundEveryMin });
 
     private static string Version() =>
         typeof(OverviewEndpoints).Assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion?.Split('+')[0] ?? "1.0.0";

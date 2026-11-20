@@ -69,9 +69,10 @@ public static class Program
                 o.BackgroundServiceExceptionBehavior = BackgroundServiceExceptionBehavior.Ignore;
             });
 
+            var simulate = cli.Simulate || builder.Configuration.GetValue("Simulator:Enabled", false);
             builder.Services.AddNetWatchData(paths);
             builder.Services.AddNetWatchAlerts();
-            builder.Services.AddNetWatchCollectors();
+            builder.Services.AddNetWatchCollectors(simulate && !cli.ResetAdmin);
             builder.Services.AddNetWatchWeb();
 
             var port = builder.Configuration.GetValue("Https:Port", 8443);
@@ -105,7 +106,6 @@ public static class Program
                 return 0;
             }
 
-            var simulate = cli.Simulate || builder.Configuration.GetValue("Simulator:Enabled", false);
             await Seeder.SeedAsync(app.Services, simulate, startupLogger, CancellationToken.None);
 
             app.UseNetWatchWeb();

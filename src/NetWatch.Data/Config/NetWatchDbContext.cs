@@ -25,6 +25,10 @@ public class NetWatchDbContext : DbContext
     public DbSet<AlertRule> AlertRules => Set<AlertRule>();
     public DbSet<Alert> Alerts => Set<Alert>();
     public DbSet<AlertHistoryEntry> AlertHistory => Set<AlertHistoryEntry>();
+    public DbSet<MaintenanceWindow> MaintenanceWindows => Set<MaintenanceWindow>();
+    public DbSet<ServerInfo> ServerInfos => Set<ServerInfo>();
+    public DbSet<Volume> Volumes => Set<Volume>();
+    public DbSet<WatchedService> WatchedServices => Set<WatchedService>();
 
     protected override void ConfigureConventions(ModelConfigurationBuilder configurationBuilder)
     {
@@ -96,6 +100,51 @@ public class NetWatchDbContext : DbContext
             e.HasMany(x => x.Tags).WithOne().HasForeignKey(x => x.DeviceId).OnDelete(DeleteBehavior.Cascade);
             e.HasMany(x => x.Credentials).WithOne().HasForeignKey(x => x.DeviceId).OnDelete(DeleteBehavior.Cascade);
             e.HasMany(x => x.Interfaces).WithOne().HasForeignKey(x => x.DeviceId).OnDelete(DeleteBehavior.Cascade);
+            e.HasMany(x => x.WatchedServices).WithOne().HasForeignKey(x => x.DeviceId).OnDelete(DeleteBehavior.Cascade);
+            e.Property(x => x.SshHostKeyFingerprint).HasMaxLength(128);
+        });
+
+        b.Entity<ServerInfo>(e =>
+        {
+            e.ToTable("ServerInfo");
+            e.HasKey(x => x.DeviceId);
+            e.HasOne<Device>().WithOne().HasForeignKey<ServerInfo>(x => x.DeviceId).OnDelete(DeleteBehavior.Cascade);
+            e.Property(x => x.OsName).HasMaxLength(200);
+            e.Property(x => x.OsVersion).HasMaxLength(100);
+            e.Property(x => x.LastPatchId).HasMaxLength(64);
+            e.Property(x => x.LastError).HasMaxLength(1000);
+            e.Property(x => x.EventLogError).HasMaxLength(1000);
+        });
+
+        b.Entity<Volume>(e =>
+        {
+            e.ToTable("Volumes");
+            e.HasOne<Device>().WithMany().HasForeignKey(x => x.DeviceId).OnDelete(DeleteBehavior.Cascade);
+            e.Property(x => x.Name).HasMaxLength(260);
+            e.Property(x => x.Label).HasMaxLength(200);
+            e.Property(x => x.FileSystem).HasMaxLength(32);
+            e.HasIndex(x => new { x.DeviceId, x.Name }).IsUnique();
+            e.Ignore(x => x.UsedPct);
+        });
+
+        b.Entity<WatchedService>(e =>
+        {
+            e.ToTable("WatchedServices");
+            e.Property(x => x.ServiceName).HasMaxLength(256).UseCollation("NOCASE");
+            e.Property(x => x.DisplayName).HasMaxLength(256);
+            e.Property(x => x.StartMode).HasMaxLength(32);
+            e.HasIndex(x => new { x.DeviceId, x.ServiceName }).IsUnique();
+        });
+
+        b.Entity<MaintenanceWindow>(e =>
+        {
+            e.ToTable("MaintenanceWindows");
+            e.Property(x => x.Name).HasMaxLength(200);
+            e.Property(x => x.StartTimeLocal).HasMaxLength(5);
+            e.Property(x => x.DaysOfWeek).HasMaxLength(40);
+            e.Property(x => x.CronExpression).HasMaxLength(100);
+            e.Property(x => x.Reason).HasMaxLength(1000);
+            e.Property(x => x.CreatedBy).HasMaxLength(128);
         });
 
         b.Entity<DeviceTag>(e =>
@@ -132,6 +181,7 @@ public class NetWatchDbContext : DbContext
             e.ToTable("AlertRules");
             e.Property(x => x.Name).HasMaxLength(200);
             e.Property(x => x.Key).HasMaxLength(64);
+            e.Property(x => x.FilterJson).HasMaxLength(2000);
         });
 
         b.Entity<Alert>(e =>

@@ -2,8 +2,13 @@
 
   <PropertyGroup>
     <RootNamespace>NetWatch.Alerts</RootNamespace>
-    <Description>Alert rule evaluation, alert lifecycle (Active → Acknowledged → Resolved → Closed) and notification.</Description>
+    <Description>Alert rule evaluation, alert lifecycle (Active → Acknowledged → Resolved → Closed), flapping protection, escalation and offline notification channels.</Description>
   </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="System.Diagnostics.EventLog" />
+    <PackageReference Include="MailKit" />
+  </ItemGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\NetWatch.Core\NetWatch.Core.csproj" />

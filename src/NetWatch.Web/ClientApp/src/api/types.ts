@@ -12,7 +12,7 @@ export type Role = 'Admin' | 'Operator' | 'Viewer';
 export type CredentialKind = 'SnmpV2c' | 'SnmpV3' | 'Windows' | 'Ssh' | 'VCenter';
 export type GroupKind = 'Site' | 'Building' | 'Floor' | 'Rack' | 'Logical';
 export const GROUP_KINDS: GroupKind[] = ['Site', 'Building', 'Floor', 'Rack', 'Logical'];
-export type RuleType = 'Threshold' | 'StateChange' | 'EventMatch';
+export type RuleType = 'Threshold' | 'StateChange' | 'EventMatch' | 'CountInWindow' | 'Absence';
 export type Operator = 'GreaterThan' | 'GreaterOrEqual' | 'LessThan' | 'LessOrEqual' | 'Equal' | 'NotEqual';
 export type SnmpAuth = 'None' | 'MD5' | 'SHA1' | 'SHA256' | 'SHA384' | 'SHA512';
 export type SnmpPriv = 'None' | 'DES' | 'AES128' | 'AES192' | 'AES256';
@@ -49,9 +49,13 @@ export interface DeviceListItem {
   cpuPct?: number | null;
   memPct?: number | null;
   tags: string[];
+  os: OsKind;
+  maintenanceReason?: string | null;
+  /** Name of the unreachable upstream device when this device is down/warning because of it. */
+  unreachableVia?: string | null;
 }
 
-export interface DeviceDetail extends Omit<DeviceListItem, 'tags'> {
+export interface DeviceDetail extends Omit<DeviceListItem, 'tags' | 'os'> {
   hostname?: string | null;
   os: OsKind;
   serialNumber?: string | null;
@@ -71,6 +75,8 @@ export interface DeviceDetail extends Omit<DeviceListItem, 'tags'> {
   credentials: { purpose: string; credentialProfileId: number; profileName?: string | null }[];
   createdUtc: string;
   updatedUtc: string;
+  watchedServices: string[];
+  sshHostKeyFingerprint?: string | null;
 }
 
 export interface DeviceInput {
@@ -87,6 +93,8 @@ export interface DeviceInput {
   snmpCredentialId?: number | null;
   notes?: string | null;
   tags: string[];
+  managementCredentialId?: number | null;
+  watchedServices?: string[];
 }
 
 export interface NetInterface {
@@ -177,6 +185,9 @@ export interface Alert {
   resolvedUtc?: string | null;
   closedUtc?: string | null;
   closedByUsername?: string | null;
+  isFlapping: boolean;
+  flapCount: number;
+  escalatedUtc?: string | null;
 }
 
 export interface AlertHistory {
@@ -216,6 +227,18 @@ export interface Rule {
   clearThreshold?: number | null;
   durationSec: number;
   updatedUtc: string;
+  filter: EventFilter;
+  windowSec: number;
+  countThreshold: number;
+  escalateAfterMin?: number | null;
+}
+
+export interface EventFilter {
+  pattern?: string | null;
+  minSeverity?: Severity | null;
+  eventIds: number[];
+  source?: string | null;
+  oid?: string | null;
 }
 
 export interface RuleKey {
@@ -278,6 +301,9 @@ export interface Overview {
   topMemory: { deviceId: number; name: string; type: DeviceType; value: number }[];
   problemDevices: DeviceListItem[];
   recentEvents: DeviceEvent[];
+  topDisks: { deviceId: number; deviceName: string; volume: string; usedPct: number; freeBytes: number; totalBytes: number }[];
+  received: { syslogLastHour: number; syslogErrorsLastHour: number; trapsLastHour: number };
+  inMaintenance: number;
 }
 
 export interface MonitoringSettings {
@@ -332,4 +358,247 @@ export interface DiscoveryResult {
   model?: string | null;
   suggestedType: DeviceType;
   alreadyMonitored: boolean;
+}
+
+// ---------------------------------------------------------------- Phase 2
+
+export type ServiceState = 'Unknown' | 'Running' | 'Stopped' | 'StartPending' | 'StopPending' | 'Paused' | 'Failed' | 'NotFound';
+export type CollectionMethod = 'None' | 'WinRm' | 'Dcom' | 'Ssh' | 'Snmp';
+
+export interface ServerListItem {
+  id: number;
+  name: string;
+  ipAddress: string;
+  type: DeviceType;
+  os: OsKind;
+  status: DeviceStatus;
+  worstAlert?: Severity | null;
+  groupPath?: string | null;
+  cpuPct?: number | null;
+  memPct?: number | null;
+  worstDiskPct?: number | null;
+  worstDisk?: string | null;
+  servicesTotal: number;
+  servicesRunning: number;
+  method?: CollectionMethod | null;
+  osName?: string | null;
+  lastBootUtc?: string | null;
+  pendingReboot?: boolean | null;
+  lastPatchUtc?: string | null;
+  load5?: number | null;
+  cpuCount?: number | null;
+  lastSuccessUtc?: string | null;
+  lastError?: string | null;
+  hasManagementCredential: boolean;
+}
+
+export interface ServerInfo {
+  method: CollectionMethod;
+  osName?: string | null;
+  osVersion?: string | null;
+  lastBootUtc?: string | null;
+  pendingReboot?: boolean | null;
+  lastPatchUtc?: string | null;
+  lastPatchId?: string | null;
+  cpuCount?: number | null;
+  totalMemoryBytes?: number | null;
+  load1?: number | null;
+  load5?: number | null;
+  load15?: number | null;
+  lastSuccessUtc?: string | null;
+  lastAttemptUtc: string;
+  lastError?: string | null;
+  eventLogError?: string | null;
+}
+
+export interface Volume {
+  id: number;
+  name: string;
+  label?: string | null;
+  fileSystem?: string | null;
+  totalBytes: number;
+  freeBytes: number;
+  usedPct: number;
+  lastSeenUtc: string;
+}
+
+export interface WatchedService {
+  id: number;
+  serviceName: string;
+  displayName?: string | null;
+  state: ServiceState;
+  startMode?: string | null;
+  lastSeenUtc?: string | null;
+  lastChangeUtc?: string | null;
+}
+
+export interface ServerDetail {
+  info?: ServerInfo | null;
+  volumes: Volume[];
+  services: WatchedService[];
+}
+
+export interface SeriesInfo {
+  id: number;
+  key: string;
+  instance: string;
+  displayName: string;
+}
+
+export interface PagedEvents<T> {
+  items: T[];
+  total: number;
+  page: number;
+  pageSize: number;
+  totalCapped: boolean;
+}
+
+export interface SyslogEntry {
+  id: number;
+  receivedUtc: string;
+  messageUtc?: string | null;
+  sourceIp: string;
+  deviceId?: number | null;
+  deviceName?: string | null;
+  facility: number;
+  severity: number;
+  severityName: string;
+  hostname?: string | null;
+  appName?: string | null;
+  message: string;
+}
+
+export interface TrapEntry {
+  id: number;
+  receivedUtc: string;
+  sourceIp: string;
+  deviceId?: number | null;
+  deviceName?: string | null;
+  version: string;
+  trapOid: string;
+  trapName?: string | null;
+  severity: Severity;
+  summary: string;
+  varbindsJson: string;
+}
+
+export interface WindowsEvent {
+  id: number;
+  timestampUtc: string;
+  deviceId: number;
+  deviceName?: string | null;
+  logName: string;
+  provider?: string | null;
+  eventId: number;
+  level: number;
+  message: string;
+}
+
+export type Recurrence = 'Once' | 'Daily' | 'Weekly' | 'Cron';
+
+export interface MaintenanceWindow {
+  id: number;
+  name: string;
+  isEnabled: boolean;
+  scope: RuleScope;
+  recurrence: Recurrence;
+  startUtc?: string | null;
+  endUtc?: string | null;
+  startTimeLocal?: string | null;
+  daysOfWeek?: string | null;
+  cronExpression?: string | null;
+  durationMin: number;
+  reason?: string | null;
+  createdBy?: string | null;
+  updatedUtc: string;
+  isActive: boolean;
+  activeUntilUtc?: string | null;
+  nextStartUtc?: string | null;
+  schedule: string;
+  devicesInScope: number;
+}
+
+export interface AlertingSettings {
+  flapThreshold: number;
+  flapWindowMin: number;
+  flapStableMin: number;
+  escalateCriticalAfterMin: number;
+  escalateMajorAfterMin: number;
+  repeatSoundEveryMin: number;
+  dependencySuppression: boolean;
+}
+
+export interface ReceiverSettings {
+  syslogEnabled: boolean;
+  syslogUdpPort: number;
+  syslogTcpEnabled: boolean;
+  syslogTcpPort: number;
+  trapsEnabled: boolean;
+  trapPort: number;
+  acceptUnknownSources: boolean;
+  maxMessagesPerSecond: number;
+}
+
+export interface ServerMonitoringSettings {
+  winRmPort: number;
+  winRmHttps: boolean;
+  dcomFallback: boolean;
+  readEventLogs: boolean;
+  includeWarnings: boolean;
+  maxEventsPerPoll: number;
+  sshPort: number;
+  timeoutSec: number;
+}
+
+export type LdapSecurity = 'Ldaps' | 'StartTls' | 'None';
+export type LdapBindMethod = 'Negotiate' | 'Simple';
+
+export interface LdapSettings {
+  enabled: boolean;
+  servers: string[];
+  port: number;
+  security: LdapSecurity;
+  bindMethod: LdapBindMethod;
+  validateCertificate: boolean;
+  domain?: string | null;
+  baseDn?: string | null;
+  timeoutSec: number;
+  roleMappings: { groupDn: string; role: Role }[];
+}
+
+export type SmtpSecurity = 'None' | 'StartTls' | 'SslOnConnect';
+
+export interface NotificationSettings {
+  notifyOnResolve: boolean;
+  notifyOnEscalation: boolean;
+  eventLogEnabled: boolean;
+  eventLogMinSeverity: Severity;
+  syslogForwardEnabled: boolean;
+  syslogForwardHost?: string | null;
+  syslogForwardPort: number;
+  syslogForwardProtocol: 'Udp' | 'Tcp';
+  syslogForwardMinSeverity: Severity;
+  scriptEnabled: boolean;
+  scriptFile?: string | null;
+  scriptMinSeverity: Severity;
+  scriptTimeoutSec: number;
+  smtpEnabled: boolean;
+  smtpHost?: string | null;
+  smtpPort: number;
+  smtpSecurity: SmtpSecurity;
+  smtpUsername?: string | null;
+  hasSmtpPassword: boolean;
+  smtpFrom?: string | null;
+  smtpTo?: string | null;
+  smtpMinSeverity: Severity;
+  scriptsFolder: string;
+}
+
+export interface ChannelStatus {
+  channel: string;
+  sent: number;
+  failed: number;
+  lastSuccessUtc?: string | null;
+  lastErrorUtc?: string | null;
+  lastError?: string | null;
 }

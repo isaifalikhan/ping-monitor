@@ -1,4 +1,4 @@
-<Project>
+﻿<Project>
   <!-- Settings shared by every NetWatch project. -->
   <PropertyGroup>
     <!-- Plain "-windows" (no Windows SDK projection needed). The minimum OS (Windows Server 2019 / Windows 10 1809)
@@ -11,7 +11,7 @@
     <EnforceCodeStyleInBuild>false</EnforceCodeStyleInBuild>
     <GenerateDocumentationFile>false</GenerateDocumentationFile>
 
-    <Version>1.0.0</Version>
+    <Version>1.1.0</Version>
     <Company>NetWatch</Company>
     <Product>NetWatch</Product>
     <Copyright>NetWatch</Copyright>

@@ -4,6 +4,8 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.EntityFrameworkCore;
 using NetWatch.Core;
+using NetWatch.Alerts.Notifications;
+using NetWatch.Core.Abstractions;
 using NetWatch.Core.Configuration;
 using NetWatch.Core.Entities;
 using NetWatch.Data.Config;
@@ -34,6 +36,154 @@ public static class AdminEndpoints
             SaveAsync(SecuritySettings.Key, s, x => x.Normalise(), h, svc, a, ct));
         admin.MapPut("/settings/retention", (RetentionSettings s, HttpContext h, SettingsService svc, AuditWriter a, CancellationToken ct) =>
             SaveAsync(RetentionSettings.Key, s, x => x.Normalise(), h, svc, a, ct));
+        admin.MapPut("/settings/alerting", (AlertingSettings s, HttpContext h, SettingsService svc, AuditWriter a, CancellationToken ct) =>
+            SaveAsync(AlertingSettings.Key, s, x => x.Normalise(), h, svc, a, ct));
+        admin.MapPut("/settings/receivers", (ReceiverSettings s, HttpContext h, SettingsService svc, AuditWriter a, CancellationToken ct) =>
+            SaveAsync(ReceiverSettings.Key, s, x => x.Normalise(), h, svc, a, ct));
+        admin.MapPut("/settings/servers", (ServerMonitoringSettings s, HttpContext h, SettingsService svc, AuditWriter a, CancellationToken ct) =>
+            SaveAsync(ServerMonitoringSettings.Key, s, x => x.Normalise(), h, svc, a, ct));
+        admin.MapPut("/settings/ldap", SaveLdapAsync);
+        admin.MapPost("/settings/ldap/test", TestLdapAsync);
+
+        admin.MapGet("/settings/notifications", (SettingsService s, NetWatchPaths p) => Results.Ok(NotificationSettingsDto.From(s.Notifications, p.ScriptsDir)));
+        admin.MapPut("/settings/notifications", SaveNotificationsAsync);
+        admin.MapPost("/notifications/test/{channel}", TestNotificationAsync);
+        admin.MapGet("/notifications/status", (NotificationDispatcher d) => Results.Ok(d.Status));
+    }
+
+    // ---------------------------------------------------------------- notifications
+
+    /// <summary>Notification settings as shown to the UI: the SMTP password is never returned.</summary>
+    public sealed record NotificationSettingsDto(
+        bool NotifyOnResolve, bool NotifyOnEscalation,
+        bool EventLogEnabled, Severity EventLogMinSeverity,
+        bool SyslogForwardEnabled, string? SyslogForwardHost, int SyslogForwardPort, ForwardProtocol SyslogForwardProtocol, Severity SyslogForwardMinSeverity,
+        bool ScriptEnabled, string? ScriptFile, Severity ScriptMinSeverity, int ScriptTimeoutSec,
+        bool SmtpEnabled, string? SmtpHost, int SmtpPort, SmtpSecurity SmtpSecurity, string? SmtpUsername, bool HasSmtpPassword,
+        string? SmtpFrom, string? SmtpTo, Severity SmtpMinSeverity,
+        string ScriptsFolder)
+    {
+        public static NotificationSettingsDto From(NotificationSettings s, string scriptsFolder) => new(
+            s.NotifyOnResolve, s.NotifyOnEscalation, s.EventLogEnabled, s.EventLogMinSeverity,
+            s.SyslogForwardEnabled, s.SyslogForwardHost, s.SyslogForwardPort, s.SyslogForwardProtocol, s.SyslogForwardMinSeverity,
+            s.ScriptEnabled, s.ScriptFile, s.ScriptMinSeverity, s.ScriptTimeoutSec,
+            s.SmtpEnabled, s.SmtpHost, s.SmtpPort, s.SmtpSecurity, s.SmtpUsername, !string.IsNullOrEmpty(s.SmtpPasswordProtected),
+            s.SmtpFrom, s.SmtpTo, s.SmtpMinSeverity, scriptsFolder);
+    }
+
+    /// <param name="SmtpPassword">Null keeps the stored password, empty clears it.</param>
+    public sealed record NotificationSettingsInput(
+        bool NotifyOnResolve, bool NotifyOnEscalation,
+        bool EventLogEnabled, Severity EventLogMinSeverity,
+        bool SyslogForwardEnabled, string? SyslogForwardHost, int SyslogForwardPort, ForwardProtocol SyslogForwardProtocol, Severity SyslogForwardMinSeverity,
+        bool ScriptEnabled, string? ScriptFile, Severity ScriptMinSeverity, int ScriptTimeoutSec,
+        bool SmtpEnabled, string? SmtpHost, int SmtpPort, SmtpSecurity SmtpSecurity, string? SmtpUsername, string? SmtpPassword,
+        string? SmtpFrom, string? SmtpTo, Severity SmtpMinSeverity);
+
+    private static async Task<IResult> SaveNotificationsAsync(NotificationSettingsInput input, HttpContext http, SettingsService settings, ISecretProtector protector, NetWatchPaths paths, AuditWriter audit, CancellationToken ct)
+    {
+        var current = settings.Notifications;
+        if (input.SyslogForwardEnabled && string.IsNullOrWhiteSpace(input.SyslogForwardHost))
+        {
+            return HttpExtensions.Error("Enter the syslog target host.");
+        }
+
+        if (input.SmtpEnabled && (string.IsNullOrWhiteSpace(input.SmtpHost) || string.IsNullOrWhiteSpace(input.SmtpFrom) || string.IsNullOrWhiteSpace(input.SmtpTo)))
+        {
+            return HttpExtensions.Error("Enter the SMTP server, sender and at least one recipient.");
+        }
+
+        if (input.ScriptEnabled)
+        {
+            try
+            {
+                Alerts.Notifications.NotificationDispatcher.ValidateScript(paths, input.ScriptFile);
+            }
+            catch (InvalidOperationException ex)
+            {
+                return HttpExtensions.Error(ex.Message);
+            }
+        }
+
+        var value = new NotificationSettings
+        {
+            NotifyOnResolve = input.NotifyOnResolve,
+            NotifyOnEscalation = input.NotifyOnEscalation,
+            EventLogEnabled = input.EventLogEnabled,
+            EventLogMinSeverity = input.EventLogMinSeverity,
+            SyslogForwardEnabled = input.SyslogForwardEnabled,
+            SyslogForwardHost = input.SyslogForwardHost?.Trim(),
+            SyslogForwardPort = input.SyslogForwardPort,
+            SyslogForwardProtocol = input.SyslogForwardProtocol,
+            SyslogForwardMinSeverity = input.SyslogForwardMinSeverity,
+            ScriptEnabled = input.ScriptEnabled,
+            ScriptFile = input.ScriptFile?.Trim(),
+            ScriptMinSeverity = input.ScriptMinSeverity,
+            ScriptTimeoutSec = input.ScriptTimeoutSec,
+            SmtpEnabled = input.SmtpEnabled,
+            SmtpHost = input.SmtpHost?.Trim(),
+            SmtpPort = input.SmtpPort,
+            SmtpSecurity = input.SmtpSecurity,
+            SmtpUsername = string.IsNullOrWhiteSpace(input.SmtpUsername) ? null : input.SmtpUsername.Trim(),
+            SmtpPasswordProtected = input.SmtpPassword is null
+                ? current.SmtpPasswordProtected
+                : input.SmtpPassword.Length == 0 ? null : Convert.ToBase64String(protector.Protect(input.SmtpPassword)),
+            SmtpFrom = input.SmtpFrom?.Trim(),
+            SmtpTo = input.SmtpTo?.Trim(),
+            SmtpMinSeverity = input.SmtpMinSeverity,
+        };
+        value.Normalise();
+        await settings.SaveAsync(NotificationSettings.Key, value, http.User.UserId(), ct);
+        await audit.WriteAsync(http.Actor(), "SettingsUpdated", "Settings", NotificationSettings.Key,
+            JsonSerializer.Serialize(NotificationSettingsDto.From(value, paths.ScriptsDir)) + (input.SmtpPassword is null ? string.Empty : "; SMTP password changed"));
+        return Results.Ok(NotificationSettingsDto.From(value, paths.ScriptsDir));
+    }
+
+    private static async Task<IResult> TestNotificationAsync(string channel, HttpContext http, NotificationDispatcher dispatcher, AuditWriter audit, CancellationToken ct)
+    {
+        var error = await dispatcher.TestAsync(channel, ct);
+        await audit.WriteAsync(http.Actor(), "NotificationTested", "Notification", channel, error ?? "OK");
+        return Results.Ok(new { success = error is null, error });
+    }
+
+    // ---------------------------------------------------------------- LDAP
+
+    private static async Task<IResult> SaveLdapAsync(LdapSettings value, HttpContext http, SettingsService settings, AuditWriter audit, CancellationToken ct)
+    {
+        value.Normalise();
+        if (value.Validate() is { } error)
+        {
+            return HttpExtensions.Error(error);
+        }
+
+        await settings.SaveAsync(LdapSettings.Key, value, http.User.UserId(), ct);
+        await audit.WriteAsync(http.Actor(), "SettingsUpdated", "Settings", LdapSettings.Key, JsonSerializer.Serialize(value));
+        return Results.Ok(value);
+    }
+
+    public sealed record LdapTestRequest(LdapSettings? Settings, string? Username, string? Password);
+
+    private static async Task<IResult> TestLdapAsync(LdapTestRequest request, HttpContext http, LdapAuthenticator ldap, SettingsService settings, AuditWriter audit, CancellationToken ct)
+    {
+        var s = request.Settings ?? settings.Ldap;
+        s.Normalise();
+        s.Enabled = true;
+        if (string.IsNullOrWhiteSpace(request.Username) || string.IsNullOrEmpty(request.Password))
+        {
+            return HttpExtensions.Error("Enter a directory user name and password to test with.");
+        }
+
+        var result = await ldap.AuthenticateAsync(s, request.Username, request.Password, ct);
+        await audit.WriteAsync(http.Actor(), "LdapTested", "Settings", LdapSettings.Key, $"{request.Username}: {(result.Success ? $"role {result.Role?.ToString() ?? "none"}" : result.Error)}");
+        return Results.Ok(new
+        {
+            success = result.Success,
+            error = result.Error,
+            role = result.Role,
+            account = result.SamAccountName,
+            displayName = result.DisplayName,
+            matchedGroups = result.MatchedGroups,
+        });
     }
 
     private static UserDto ToDto(User u) => new(u.Id, u.Username, u.DisplayName, u.Email, u.Role, u.AuthSource, u.IsEnabled,
@@ -126,6 +276,11 @@ public static class AdminEndpoints
             return Results.NotFound();
         }
 
+        if (user.AuthSource != AuthSource.Local)
+        {
+            return HttpExtensions.Error("Directory (AD) accounts have no NetWatch password; reset it in Active Directory.");
+        }
+
         if (PasswordService.Validate(input.Password, user.Username, settings.Security.MinPasswordLength) is { } error)
         {
             return HttpExtensions.Error(error);
@@ -216,7 +371,16 @@ public static class AdminEndpoints
     }
 
     private static IResult GetSettings(SettingsService settings) =>
-        Results.Ok(new { monitoring = settings.Monitoring, security = settings.Security, retention = settings.Retention });
+        Results.Ok(new
+        {
+            monitoring = settings.Monitoring,
+            security = settings.Security,
+            retention = settings.Retention,
+            alerting = settings.Alerting,
+            receivers = settings.Receivers,
+            servers = settings.Servers,
+            ldap = settings.Ldap,
+        });
 
     private static async Task<IResult> SaveAsync<T>(string key, T value, Action<T> normalise, HttpContext http, SettingsService settings, AuditWriter audit, CancellationToken ct)
         where T : class

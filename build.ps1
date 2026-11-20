@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
   Builds NetWatch: web UI, tests, self-contained single-file service exe and the Windows installer.
 
@@ -21,7 +21,7 @@
 #>
 [CmdletBinding()]
 param(
-    [string]$Version = '1.0.0',
+    [string]$Version = '1.1.0',
     [string]$Configuration = 'Release',
     [switch]$Offline,
     [switch]$PrepareOffline,

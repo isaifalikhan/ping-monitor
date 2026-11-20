@@ -1,10 +1,10 @@
 namespace NetWatch.Core.Alerts;
 
-/// <summary>Something the alert engine should evaluate. Produced by collectors.</summary>
+/// <summary>Something the alert engine should evaluate. Produced by collectors and receivers.</summary>
 public abstract record AlertSignal(int DeviceId, DateTime TimestampUtc);
 
-/// <summary>A numeric measurement, evaluated by Threshold rules.</summary>
-/// <param name="EntityName">Human-readable entity, e.g. the interface name. Null for device-level metrics.</param>
+/// <summary>A numeric measurement, evaluated by Threshold (and Absence) rules.</summary>
+/// <param name="EntityName">Human-readable entity, e.g. the interface or volume name. Null for device-level metrics.</param>
 public sealed record MetricSignal(
     int DeviceId,
     int? InterfaceId,
@@ -27,12 +27,20 @@ public sealed record StateSignal(
     string? EntityName = null,
     bool IsImportant = false) : AlertSignal(DeviceId, TimestampUtc);
 
-/// <summary>A discrete event, evaluated by EventMatch rules.</summary>
+/// <summary>A discrete event, evaluated by EventMatch, CountInWindow and Absence rules.</summary>
+/// <param name="Severity">Severity of the source event (syslog/Windows level, trap type), used by event filters.</param>
+/// <param name="Source">Syslog app name, event-log provider or trap name.</param>
+/// <param name="EventId">Windows event ID.</param>
+/// <param name="Oid">SNMP trap OID.</param>
 public sealed record EventSignal(
     int DeviceId,
     string EventKey,
     string Message,
-    DateTime TimestampUtc) : AlertSignal(DeviceId, TimestampUtc);
+    DateTime TimestampUtc,
+    Severity Severity = Severity.Info,
+    string? Source = null,
+    int? EventId = null,
+    string? Oid = null) : AlertSignal(DeviceId, TimestampUtc);
 
 /// <summary>Entry point into the alert engine. Non-blocking.</summary>
 public interface IAlertSignalSink
@@ -48,4 +56,14 @@ public interface IActiveAlertIndex
 
     /// <summary>Open alert count per severity.</summary>
     IReadOnlyDictionary<Severity, int> CountBySeverity();
+}
+
+/// <summary>
+/// Dependency information for alert suppression: when an upstream device (the parent chain) is unreachable,
+/// alerts for devices behind it are suppressed because they are a consequence, not a cause.
+/// </summary>
+public interface IDependencyStatus
+{
+    /// <summary>Name of the nearest unreachable upstream device of <paramref name="deviceId"/>, or null if all are reachable.</summary>
+    string? FindUnreachableUpstream(int deviceId);
 }

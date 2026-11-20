@@ -55,10 +55,19 @@ namespace NetWatch.Data.Config.Migrations
                     b.Property<int?>("DeviceId")
                         .HasColumnType("INTEGER");
 
+                    b.Property<DateTime?>("EscalatedUtc")
+                        .HasColumnType("TEXT");
+
                     b.Property<DateTime>("FirstSeenUtc")
                         .HasColumnType("TEXT");
 
+                    b.Property<int>("FlapCount")
+                        .HasColumnType("INTEGER");
+
                     b.Property<int?>("InterfaceId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<bool>("IsFlapping")
                         .HasColumnType("INTEGER");
 
                     b.Property<DateTime>("LastSeenUtc")
@@ -147,6 +156,9 @@ namespace NetWatch.Data.Config.Migrations
                     b.Property<double?>("ClearThreshold")
                         .HasColumnType("REAL");
 
+                    b.Property<int>("CountThreshold")
+                        .HasColumnType("INTEGER");
+
                     b.Property<DateTime>("CreatedUtc")
                         .HasColumnType("TEXT");
 
@@ -155,6 +167,13 @@ namespace NetWatch.Data.Config.Migrations
 
                     b.Property<int>("DurationSec")
                         .HasColumnType("INTEGER");
+
+                    b.Property<int?>("EscalateAfterMin")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("FilterJson")
+                        .HasMaxLength(2000)
+                        .HasColumnType("TEXT");
 
                     b.Property<bool>("IsBuiltIn")
                         .HasColumnType("INTEGER");
@@ -195,6 +214,9 @@ namespace NetWatch.Data.Config.Migrations
 
                     b.Property<DateTime>("UpdatedUtc")
                         .HasColumnType("TEXT");
+
+                    b.Property<int>("WindowSec")
+                        .HasColumnType("INTEGER");
 
                     b.HasKey("Id");
 
@@ -351,6 +373,10 @@ namespace NetWatch.Data.Config.Migrations
                     b.Property<string>("SerialNumber")
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("SshHostKeyFingerprint")
+                        .HasMaxLength(128)
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("Status")
                         .IsRequired()
                         .HasMaxLength(32)
@@ -461,6 +487,69 @@ namespace NetWatch.Data.Config.Migrations
                     b.ToTable("DeviceTags", (string)null);
                 });
 
+            modelBuilder.Entity("NetWatch.Core.Entities.MaintenanceWindow", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("CreatedBy")
+                        .HasMaxLength(128)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("CreatedUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("CronExpression")
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("DaysOfWeek")
+                        .HasMaxLength(40)
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("DurationMin")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime?>("EndUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<bool>("IsEnabled")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Reason")
+                        .HasMaxLength(1000)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Recurrence")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ScopeJson")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("StartTimeLocal")
+                        .HasMaxLength(5)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime?>("StartUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("UpdatedUtc")
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("MaintenanceWindows", (string)null);
+                });
+
             modelBuilder.Entity("NetWatch.Core.Entities.NetInterface", b =>
                 {
                     b.Property<int>("Id")
@@ -561,6 +650,71 @@ namespace NetWatch.Data.Config.Migrations
                         .IsUnique();
 
                     b.ToTable("Sensors", (string)null);
+                });
+
+            modelBuilder.Entity("NetWatch.Core.Entities.ServerInfo", b =>
+                {
+                    b.Property<int>("DeviceId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int?>("CpuCount")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("EventLogError")
+                        .HasMaxLength(1000)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("LastAttemptUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime?>("LastBootUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("LastError")
+                        .HasMaxLength(1000)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("LastPatchId")
+                        .HasMaxLength(64)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime?>("LastPatchUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime?>("LastSuccessUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<double?>("Load1")
+                        .HasColumnType("REAL");
+
+                    b.Property<double?>("Load15")
+                        .HasColumnType("REAL");
+
+                    b.Property<double?>("Load5")
+                        .HasColumnType("REAL");
+
+                    b.Property<string>("Method")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("OsName")
+                        .HasMaxLength(200)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("OsVersion")
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.Property<bool?>("PendingReboot")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<long?>("TotalMemoryBytes")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("DeviceId");
+
+                    b.ToTable("ServerInfo", (string)null);
                 });
 
             modelBuilder.Entity("NetWatch.Core.Entities.SettingEntry", b =>
@@ -683,6 +837,87 @@ namespace NetWatch.Data.Config.Migrations
                     b.ToTable("UserSessions", (string)null);
                 });
 
+            modelBuilder.Entity("NetWatch.Core.Entities.Volume", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("DeviceId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("FileSystem")
+                        .HasMaxLength(32)
+                        .HasColumnType("TEXT");
+
+                    b.Property<long>("FreeBytes")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Label")
+                        .HasMaxLength(200)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("LastSeenUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(260)
+                        .HasColumnType("TEXT");
+
+                    b.Property<long>("TotalBytes")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("DeviceId", "Name")
+                        .IsUnique();
+
+                    b.ToTable("Volumes", (string)null);
+                });
+
+            modelBuilder.Entity("NetWatch.Core.Entities.WatchedService", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("DeviceId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("DisplayName")
+                        .HasMaxLength(256)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime?>("LastChangeUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime?>("LastSeenUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("LastState")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ServiceName")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("TEXT")
+                        .UseCollation("NOCASE");
+
+                    b.Property<string>("StartMode")
+                        .HasMaxLength(32)
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("DeviceId", "ServiceName")
+                        .IsUnique();
+
+                    b.ToTable("WatchedServices", (string)null);
+                });
+
             modelBuilder.Entity("NetWatch.Core.Entities.Alert", b =>
                 {
                     b.HasOne("NetWatch.Core.Entities.Device", null)
@@ -774,6 +1009,15 @@ namespace NetWatch.Data.Config.Migrations
                         .IsRequired();
                 });
 
+            modelBuilder.Entity("NetWatch.Core.Entities.ServerInfo", b =>
+                {
+                    b.HasOne("NetWatch.Core.Entities.Device", null)
+                        .WithOne()
+                        .HasForeignKey("NetWatch.Core.Entities.ServerInfo", "DeviceId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("NetWatch.Core.Entities.UserSession", b =>
                 {
                     b.HasOne("NetWatch.Core.Entities.User", "User")
@@ -783,6 +1027,24 @@ namespace NetWatch.Data.Config.Migrations
                         .IsRequired();
 
                     b.Navigation("User");
+                });
+
+            modelBuilder.Entity("NetWatch.Core.Entities.Volume", b =>
+                {
+                    b.HasOne("NetWatch.Core.Entities.Device", null)
+                        .WithMany()
+                        .HasForeignKey("DeviceId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("NetWatch.Core.Entities.WatchedService", b =>
+                {
+                    b.HasOne("NetWatch.Core.Entities.Device", null)
+                        .WithMany("WatchedServices")
+                        .HasForeignKey("DeviceId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("NetWatch.Core.Entities.Alert", b =>
@@ -797,6 +1059,8 @@ namespace NetWatch.Data.Config.Migrations
                     b.Navigation("Interfaces");
 
                     b.Navigation("Tags");
+
+                    b.Navigation("WatchedServices");
                 });
 
             modelBuilder.Entity("NetWatch.Core.Entities.DeviceGroup", b =>

@@ -1,6 +1,6 @@
-﻿# NetWatch (Offline Edition): Phase 0 design for review
+# NetWatch (Offline Edition): Phase 0 design for review
 
-Status: **DRAFT, waiting for approval before Phase 1 coding starts** (per Section 16 of the project prompt).
+Status: **Approved.** Phase 1 delivered (1.0.0); Phase 2 delivered (1.1.0, section 5).
 Date: 2026-11-18
 
 ---
@@ -220,3 +220,22 @@ No UI kit and no web fonts. The UI uses its own CSS with design tokens and a sys
 9. Simulator mode (`--simulate`): 120 fake switches, 20 servers, 40 VMs, with realistic traffic curves and random faults.
 10. Tests: alert engine (threshold duration, hysteresis, dedup), counter-to-rate math (wrap and reboot cases), SNMP vendor detection, CSV import parsing.
 11. `build.ps1` + Inno Setup installer: install, upgrade in place (stop service → replace exe → start, keeping ProgramData), uninstall with a "delete data" checkbox (unchecked by default), firewall rule for 8443 (162/514 are added in Phase 2 together with the trap/syslog receivers), Start-menu shortcut.
+
+---
+
+## 5. Phase 2 scope (delivered in 1.1.0)
+
+Decisions made while building Phase 2 (they refine sections 0–3):
+
+| Topic | Decision |
+|---|---|
+| WinRM client | The Windows WinRM client (`WSMan.Automation` COM object) instead of `Microsoft.Management.Infrastructure`: it is part of every Windows Server, works in a single-file exe and handles Kerberos/NTLM message encryption on port 5985. WMI over DCOM (`System.Management`) is the fallback. |
+| Event logs | Remote `EventLogSession` (RPC) with XPath queries on System/Application, Critical+Error (Warning optional), incremental by record-ID bookmark stored in `events.db` (`EventBookmarks`). First contact starts at the newest record. |
+| Linux | SSH.NET; one read-only command (`/proc`, `df`, `systemctl show`); host key pinned on first use (`Devices.SshHostKeyFingerprint`). |
+| Server metrics | Device CPU/memory stay in `dev_*`; per-volume disk %, load per CPU and network throughput go to a new generic series store (`Series` registry + `gen_raw/5m/1h` shards, same rollups and retention). |
+| New tables | `ServerInfo`, `Volumes`, `WatchedServices`, `MaintenanceWindows` (netwatch.db); `SyslogMessages`, `SnmpTraps`, `WindowsEvents`, `EventBookmarks` (events.db). Rules gained `FilterJson`, `WindowSec`, `CountThreshold`, `EscalateAfterMin`; alerts gained `IsFlapping`, `FlapCount`, `EscalatedUtc`. |
+| Receivers | Syslog UDP/TCP 514 (RFC 6587 framing) and traps UDP 162 (SharpSnmpLib, v3 users from credential profiles) feed one batched writer with a global rate limit. |
+| Alert lifecycle | Rule types EventMatch (filters), CountInWindow, Absence; flapping hold; escalation; dependency suppression via the parent chain (a parent counts as unreachable from its first failed poll); maintenance windows evaluated by the inventory cache every 30 s (cron in Asia/Karachi via Cronos). |
+| Notifications | Windows Event Log (source registered by the installer), RFC 5424 syslog forward, scripts restricted to `ProgramData\NetWatch\scripts` (data via environment/stdin, never the command line), SMTP via MailKit with digest for bursts. |
+| LDAP | `System.DirectoryServices.Protocols`, bind as the user (Negotiate or simple bind over TLS), nested group check with `LDAP_MATCHING_RULE_IN_CHAIN`, highest mapped role wins, role refreshed at each sign-in. |
+| Packages added | System.Management, System.Diagnostics.EventLog, System.DirectoryServices.Protocols (MIT, Microsoft), SSH.NET (MIT), MailKit (MIT). All offline at run time. |

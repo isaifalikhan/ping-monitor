@@ -176,7 +176,12 @@ export function UsersTab() {
             {(q.data ?? []).map((u) => (
               <tr key={u.id}>
                 <td>
-                  <strong>{u.username}</strong> <span className="muted">{u.displayName !== u.username ? u.displayName : ''}</span>
+                  <strong>{u.username}</strong> <span className="muted">{u.displayName !== u.username ? u.displayName : ''}</span>{' '}
+                  {u.authSource === 'Ldap' && (
+                    <span className="tag" title="Active Directory account: password and role come from AD (role is updated at each sign-in)">
+                      AD
+                    </span>
+                  )}
                 </td>
                 <td>{u.role}</td>
                 <td>
@@ -196,9 +201,11 @@ export function UsersTab() {
                       Unlock
                     </button>
                   )}{' '}
-                  <button className="small" onClick={() => setReset(u)}>
-                    Reset password
-                  </button>{' '}
+                  {u.authSource === 'Local' && (
+                    <button className="small" onClick={() => setReset(u)}>
+                      Reset password
+                    </button>
+                  )}{' '}
                   <button className="small" onClick={() => setEdit(u)}>
                     Edit
                   </button>{' '}

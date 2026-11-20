@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.EntityFrameworkCore;
+using NetWatch.Collectors.Servers;
 using NetWatch.Collectors.Snmp;
 using NetWatch.Core;
 using NetWatch.Core.Abstractions;
@@ -255,7 +256,7 @@ public static class InventoryEndpoints
         return Results.NoContent();
     }
 
-    private static async Task<IResult> TestCredentialAsync(int id, CredentialTestRequest request, HttpContext http, NetWatchDbContext db, ISecretProtector protector, SettingsService settings, AuditWriter audit, CancellationToken ct)
+    private static async Task<IResult> TestCredentialAsync(int id, CredentialTestRequest request, HttpContext http, NetWatchDbContext db, ISecretProtector protector, SettingsService settings, IServerCollector servers, AuditWriter audit, CancellationToken ct)
     {
         if (!System.Net.IPAddress.TryParse(request.IpAddress?.Trim(), out var ip))
         {
@@ -268,12 +269,24 @@ public static class InventoryEndpoints
             return Results.NotFound();
         }
 
-        if (profile.Kind is not (CredentialKind.SnmpV2c or CredentialKind.SnmpV3))
+        var secret = CredentialSecret.FromJson(protector.Unprotect(profile.SecretBlob));
+        if (profile.Kind is CredentialKind.Windows or CredentialKind.Ssh)
         {
-            return HttpExtensions.Error("Only SNMP profiles can be tested in this version.");
+            await audit.WriteAsync(http.Actor(), "CredentialTested", "Credential", id.Inv(), ip.ToString());
+            var s = settings.Servers;
+            var data = await servers.CollectAsync(new ServerPollRequest(
+                ip.ToString(), new ManagementCredential(profile.Kind, secret), Array.Empty<string>(), new Dictionary<string, long>(),
+                null, false, false, 10, s.WinRmHttps && s.WinRmPort == 5985 ? 5986 : s.WinRmPort, s.WinRmHttps, s.DcomFallback, s.SshPort,
+                TimeSpan.FromSeconds(s.TimeoutSec)), ct);
+            return data.Ok
+                ? Results.Ok(new { success = true, sysName = data.OsName, sysDescription = $"{data.OsName} {data.OsVersion} via {data.Method}", vendor = (string?)null, model = (string?)null, method = data.Method.ToString() })
+                : Results.Ok(new { success = false, error = data.Error });
         }
 
-        var secret = CredentialSecret.FromJson(protector.Unprotect(profile.SecretBlob));
+        if (profile.Kind is not (CredentialKind.SnmpV2c or CredentialKind.SnmpV3))
+        {
+            return HttpExtensions.Error("This credential type cannot be tested yet (vCenter arrives in Phase 3).");
+        }
         var monitoring = settings.Monitoring;
         var client = new SnmpClient(ip, new Collectors.Polling.SnmpCredential(profile.Kind, secret), monitoring.SnmpTimeoutMs, monitoring.SnmpRetries);
         await audit.WriteAsync(http.Actor(), "CredentialTested", "Credential", id.Inv(), ip.ToString());

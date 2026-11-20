@@ -25,6 +25,12 @@ public readonly record struct DeviceSample(
     double? MemPct,
     double? TempC);
 
+/// <summary>One value of a generic series (disk usage per volume, load, server throughput ...).</summary>
+public readonly record struct GenericSample(int SeriesId, long TsMs, double Value);
+
+/// <summary>A registered generic series: device + metric key + instance (e.g. volume "C:").</summary>
+public sealed record SeriesInfo(int Id, int DeviceId, string Key, string Instance);
+
 public enum MetricResolution
 {
     Raw,
