@@ -12,6 +12,8 @@ namespace NetWatch.Collectors.Simulator;
 /// </summary>
 public sealed class SimulatedDevicePoller : IDevicePoller
 {
+    private static readonly DateTime SimEpoch = new(2026, 11, 1, 0, 0, 0, DateTimeKind.Utc);
+
     private readonly ConcurrentDictionary<int, SimDevice> _devices = new();
     private readonly TimeProvider _time;
 
@@ -404,7 +406,8 @@ public sealed class SimulatedDevicePoller : IDevicePoller
             Type = type,
             Vendor = SimulatedTopology.VendorFor(type, id),
             Ports = ports,
-            BootUtc = DateTime.UtcNow.AddDays(-rng.Next(3, 400)).AddSeconds(-rng.Next(0, 86_400)),
+            // A fixed reference date keeps uptimes growing across service restarts (no false "rebooted" alerts).
+            BootUtc = SimEpoch.AddDays(-rng.Next(3, 400)).AddSeconds(-rng.Next(0, 86_400)),
             BaseCpu = type switch { DeviceType.Switch => 8 + rng.Next(0, 15), DeviceType.VM => 10 + rng.Next(0, 40), _ => 15 + rng.Next(0, 30) },
             BaseMem = type switch { DeviceType.Switch => 30 + rng.Next(0, 25), _ => 40 + rng.Next(0, 40) },
             BaseRtt = type switch { DeviceType.VM => 0.4, DeviceType.Server => 0.6, _ => 1.2 + (rng.NextDouble() * 2) },
