@@ -67,7 +67,10 @@ public enum UserRole
 public enum AuthSource
 {
     Local,
-    Ldap
+    Ldap,
+
+    /// <summary>A NOC wall display signed in with a kiosk link (read-only, no password).</summary>
+    Kiosk
 }
 
 public enum GroupKind

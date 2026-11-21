@@ -21,6 +21,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const refresh = useCallback(async () => {
     try {
+      const kiosk = new URLSearchParams(window.location.search).get('kiosk');
+      if (kiosk) {
+        window.history.replaceState(null, '', '/noc');
+        try {
+          await api.post('/api/auth/kiosk', { token: kiosk });
+        } catch {
+          /* invalid link: falls through to the sign-in page */
+        }
+      }
       setUser(await api.get<CurrentUser>('/api/auth/me'));
     } catch {
       setUser(null);

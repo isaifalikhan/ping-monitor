@@ -1246,3 +1246,116 @@ a.btn:hover {
   outline: 2px dashed var(--warn);
   outline-offset: -2px;
 }
+
+/* NOC: per-group tiles, DC ticker and scaling for 1080p to 4K wall screens. */
+.noc {
+  font-size: clamp(14px, 0.85vw, 34px);
+}
+
+.noc-head,
+.noc-panel h2 {
+  font-size: 1.3em;
+}
+
+.noc-alert,
+.noc-row {
+  font-size: 1.05em;
+}
+
+.noc-tile-label {
+  font-size: 0.95em;
+}
+
+.noc-tile-value {
+  font-size: clamp(32px, 3.6vw, 140px);
+}
+
+.noc-groups {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(clamp(150px, 11vw, 420px), 1fr));
+  gap: 10px;
+}
+
+.noc-group {
+  border-radius: var(--radius-sm);
+  padding: 0.7em 0.9em;
+  display: flex;
+  flex-direction: column;
+  gap: 0.2em;
+  color: #fff;
+  font-weight: 600;
+}
+
+.noc-group.s-up {
+  background: color-mix(in srgb, var(--ok) 70%, #000 30%);
+}
+
+.noc-group.s-warning {
+  background: color-mix(in srgb, var(--warn) 75%, #000 25%);
+}
+
+.noc-group.s-down {
+  background: color-mix(in srgb, var(--crit) 80%, #000 20%);
+  animation: noc-pulse 2s ease-in-out infinite;
+}
+
+.noc-group-name {
+  font-size: 1.15em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.noc-group-count {
+  font-size: 0.95em;
+  opacity: 0.9;
+}
+
+@keyframes noc-pulse {
+  50% {
+    filter: brightness(1.25);
+  }
+}
+
+.noc-ticker {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  border-top: 1px solid var(--border);
+  padding-top: 8px;
+  overflow: hidden;
+}
+
+.noc-ticker-label {
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.noc-ticker-track {
+  overflow: hidden;
+  flex: 1;
+}
+
+.noc-ticker-items {
+  display: inline-flex;
+  gap: 3em;
+  white-space: nowrap;
+  animation: noc-scroll 90s linear infinite;
+}
+
+@keyframes noc-scroll {
+  from {
+    transform: translateX(0);
+  }
+
+  to {
+    transform: translateX(-50%);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .noc-ticker-items,
+  .noc-group.s-down {
+    animation: none;
+  }
+}

@@ -194,7 +194,7 @@ public static class AdminEndpoints
         u.LockedUntilUtc > DateTime.UtcNow, u.LastLoginUtc, u.MustChangePassword, u.CreatedUtc);
 
     private static async Task<IResult> ListUsersAsync(NetWatchDbContext db, CancellationToken ct) =>
-        Results.Ok((await db.Users.AsNoTracking().OrderBy(u => u.Username).ToListAsync(ct)).Select(ToDto));
+        Results.Ok((await db.Users.AsNoTracking().Where(u => u.AuthSource != AuthSource.Kiosk).OrderBy(u => u.Username).ToListAsync(ct)).Select(ToDto));
 
     private static async Task<IResult> CreateUserAsync(UserCreate input, HttpContext http, NetWatchDbContext db, PasswordService passwords, SettingsService settings, AuditWriter audit, CancellationToken ct)
     {

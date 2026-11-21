@@ -13,6 +13,7 @@ public class NetWatchDbContext : DbContext
 
     public DbSet<User> Users => Set<User>();
     public DbSet<UserSession> UserSessions => Set<UserSession>();
+    public DbSet<KioskDisplay> KioskDisplays => Set<KioskDisplay>();
     public DbSet<AuditEntry> AuditLog => Set<AuditEntry>();
     public DbSet<SettingEntry> Settings => Set<SettingEntry>();
     public DbSet<DeviceGroup> Groups => Set<DeviceGroup>();
@@ -56,6 +57,16 @@ public class NetWatchDbContext : DbContext
             e.HasIndex(x => x.Username).IsUnique();
             e.Property(x => x.DisplayName).HasMaxLength(200);
             e.Property(x => x.Email).HasMaxLength(256);
+        });
+
+        b.Entity<KioskDisplay>(e =>
+        {
+            e.ToTable("KioskDisplays");
+            e.Property(x => x.Name).HasMaxLength(60);
+            e.Property(x => x.TokenHash).HasMaxLength(64);
+            e.Property(x => x.CreatedBy).HasMaxLength(128);
+            e.HasOne<User>().WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Cascade);
+            e.HasIndex(x => x.TokenHash).IsUnique();
         });
 
         b.Entity<UserSession>(e =>

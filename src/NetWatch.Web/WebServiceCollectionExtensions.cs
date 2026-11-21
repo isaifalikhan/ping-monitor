@@ -73,6 +73,7 @@ public static class WebServiceCollectionExtensions
         app.UseAuthorization();
 
         app.MapAuthEndpoints();
+        app.MapKioskEndpoints();
         app.MapDeviceEndpoints();
         app.MapInventoryEndpoints();
         app.MapAlertEndpoints();

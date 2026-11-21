@@ -26,6 +26,7 @@ export interface CurrentUser {
   role: Role;
   mustChangePassword: boolean;
   sessionIdleTimeoutMin: number;
+  authSource?: 'Local' | 'Ldap' | 'Kiosk';
 }
 
 export interface DeviceListItem {
@@ -306,7 +307,7 @@ export interface User {
   displayName: string;
   email?: string | null;
   role: Role;
-  authSource: 'Local' | 'Ldap';
+  authSource: 'Local' | 'Ldap' | 'Kiosk';
   isEnabled: boolean;
   isLocked: boolean;
   lastLoginUtc?: string | null;

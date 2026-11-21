@@ -67,13 +67,15 @@ public sealed class SessionAuthenticationHandler : AuthenticationHandler<Authent
         return Task.CompletedTask;
     }
 
-    public static CookieOptions CookieOptionsFor(HttpRequest request) => new()
+    /// <param name="persistent">Kiosk displays keep their cookie across browser restarts (a wall screen rebooting overnight).</param>
+    public static CookieOptions CookieOptionsFor(HttpRequest request, bool persistent = false) => new()
     {
         HttpOnly = true,
         Secure = true,
         SameSite = SameSiteMode.Strict,
         Path = "/",
         IsEssential = true,
+        Expires = persistent ? DateTimeOffset.UtcNow.AddYears(1) : null,
     };
 }
 
