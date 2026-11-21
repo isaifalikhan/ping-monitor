@@ -9,6 +9,7 @@ import { SeverityBadge, StatusBadge } from '../components/Badges';
 import { DataTable, type Column } from '../components/DataTable';
 import { ErrorBox, Modal } from '../components/Modal';
 import { fmtAgo, fmtDateTime, fmtNum } from '../util/format';
+import { eventQueryParams, type EventQuery } from '../util/logic';
 
 type Tab = 'overview' | 'events' | 'lockouts' | 'groups' | 'replication' | 'audit';
 
@@ -43,16 +44,6 @@ const RANGES: { key: string; label: string; hours?: number }[] = [
 
 const LOGON_TYPES: Record<number, string> = { 2: 'interactive', 3: 'network', 4: 'batch', 5: 'service', 7: 'unlock', 8: 'network cleartext', 9: 'new credentials', 10: 'remote desktop', 11: 'cached' };
 
-/** Filters of the security event viewer (also the shape of a saved search). */
-interface EventQuery {
-  deviceId: string;
-  preset: string;
-  eventIds: string;
-  user: string;
-  source: string;
-  search: string;
-  range: string;
-}
 
 const EMPTY_QUERY: EventQuery = { deviceId: '', preset: '', eventIds: '', user: '', source: '', search: '', range: '24h' };
 
@@ -239,27 +230,12 @@ function EventsTab({ dcs, query, setQuery }: { dcs: DcSummary[]; query: EventQue
   const [page, setPage] = useState(1);
   const [saving, setSaving] = useState(false);
   const [selected, setSelected] = useState<DcSecurityEvent | null>(null);
-  const preset = PRESETS.find((p) => p.key === query.preset);
-  const hours = RANGES.find((r) => r.key === query.range)?.hours;
   const update = (patch: Partial<EventQuery>) => {
     setPage(1);
     setQuery({ ...query, ...patch });
   };
 
-  const params = useMemo(
-    () => ({
-      deviceId: query.deviceId || undefined,
-      eventIds: query.eventIds.trim() || preset?.eventIds,
-      failedOnly: preset?.failedOnly || undefined,
-      user: query.user.trim() || undefined,
-      source: query.source.trim() || undefined,
-      search: query.search.trim() || undefined,
-      from: hours ? new Date(Date.now() - hours * 3600_000).toISOString() : undefined,
-      page,
-      pageSize: 500,
-    }),
-    [query, preset, hours, page],
-  );
+  const params = useMemo(() => eventQueryParams(query, PRESETS, RANGES, page, Date.now()), [query, page]);
   const q = useQuery({ queryKey: ['dc', 'events', params], queryFn: () => api.get<PagedEvents<DcSecurityEvent>>(`/api/dc/security-events${qs(params)}`), refetchInterval: 30000 });
   const searches = useQuery({ queryKey: ['saved-searches', 'dc-security'], queryFn: () => api.get<SavedSearch<EventQuery>[]>('/api/saved-searches?page=dc-security') });
   const remove = useMutation({ mutationFn: (id: number) => api.del(`/api/saved-searches/${id}`), onSuccess: () => void client.invalidateQueries({ queryKey: ['saved-searches'] }) });

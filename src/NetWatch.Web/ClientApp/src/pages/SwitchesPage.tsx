@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api } from '../api/client';
+import { portClass } from '../util/logic';
 import type { DeviceListItem, NetInterface } from '../api/types';
 import { StatusBadge, UtilBar } from '../components/Badges';
 import { useLive, useLiveEvent } from '../live/LiveContext';
@@ -12,17 +13,6 @@ interface LiveMetrics {
   interfaces: { id: number; operStatus: number; inBps?: number | null; outBps?: number | null; inUtilPct?: number | null; outUtilPct?: number | null }[];
 }
 
-function portClass(i: NetInterface): string {
-  const util = Math.max(i.inUtilPct ?? 0, i.outUtilPct ?? 0);
-  const cls = ['port'];
-  if (i.adminStatus !== 1) cls.push('admin-down');
-  else if (i.operStatus === 1) cls.push(util >= 80 ? 'hot' : 'up');
-  else cls.push(i.isImportant ? 'problem' : 'down');
-  if (i.isImportant) cls.push('important');
-  if (i.operStatus === 1 && i.duplex === 2) cls.push('half-duplex');
-  if ((i.flapCount24h ?? 0) >= 4) cls.push('flappy');
-  return cls.join(' ');
-}
 
 export function duplexText(d?: number | null): string {
   return d === 2 ? 'half' : d === 3 ? 'full' : 'unknown';

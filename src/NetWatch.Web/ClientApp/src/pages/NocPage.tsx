@@ -6,7 +6,7 @@ import { api, qs } from '../api/client';
 import type { Alert, DcOverview, DcSecurityEvent, Overview, PagedEvents, Severity } from '../api/types';
 import type { Paged } from '../api/types';
 import { useAuth } from '../auth/AuthContext';
-import { severityRank } from '../api/types';
+import { groupState, sortOpenAlerts } from '../util/logic';
 import { SeverityBadge } from '../components/Badges';
 import { useLive } from '../live/LiveContext';
 import { fmtAgo, fmtBps, fmtNum, TIME_ZONE } from '../util/format';
@@ -85,9 +85,7 @@ export function NocPage() {
 
   const devices = summary?.devices ?? o?.totals;
   const counts = summary?.alerts ?? o?.alerts;
-  const open = (alerts.data?.items ?? [])
-    .slice()
-    .sort((a, b) => (a.state === b.state ? 0 : a.state === 'Active' ? -1 : 1) || severityRank[b.severity] - severityRank[a.severity] || b.firstSeenUtc.localeCompare(a.firstSeenUtc));
+  const open = sortOpenAlerts(alerts.data?.items ?? []);
 
   const toggleFullscreen = () => {
     if (document.fullscreenElement) void document.exitFullscreen();
@@ -129,7 +127,7 @@ export function NocPage() {
       {(o?.groups.length ?? 0) > 0 && (
         <section className="noc-groups" aria-label="Sites and groups">
           {o!.groups.map((g) => {
-            const state = g.counts.down > 0 ? 'down' : g.counts.warning > 0 ? 'warning' : 'up';
+            const state = groupState(g.counts);
             return (
               <div key={g.groupId} className={`noc-group s-${state}`} title={g.path}>
                 <span className="noc-group-name">{g.name}</span>

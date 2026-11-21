@@ -136,6 +136,7 @@ if (-not $SkipUi) {
         } else {
             Invoke-Checked 'npm' @('ci')
         }
+        if (-not $SkipTests) { Invoke-Checked 'npm' @('test') }
         Invoke-Checked 'npm' @('run', 'build')
     } finally { Pop-Location }
 } elseif (-not (Test-Path (Join-Path $clientApp 'dist\index.html'))) {
