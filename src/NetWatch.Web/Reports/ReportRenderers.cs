@@ -240,6 +240,11 @@ public static class PdfReportRenderer
 /// <summary>CSV output: every section's key figures and table, separated by a heading line. UTF-8 with BOM for Excel.</summary>
 public static class CsvReportRenderer
 {
+    /// <summary>Spreadsheet formula injection: non-numeric values starting with = + - @ tab or CR get a leading quote.</summary>
+    public static string SafeCell(string? cell) =>
+        cell is null ? string.Empty
+        : cell.Length > 0 && "=+-@\t\r".Contains(cell[0]) && !double.TryParse(cell, NumberStyles.Float, CultureInfo.InvariantCulture, out _) ? "'" + cell : cell;
+
     public static byte[] Render(ReportDocument doc)
     {
         using var stream = new MemoryStream();
@@ -250,8 +255,7 @@ public static class CsvReportRenderer
             {
                 foreach (var cell in cells)
                 {
-                    // Spreadsheet formula injection: values starting with = + - @ are prefixed with a quote.
-                    csv.WriteField(cell.Length > 0 && "=+-@\t\r".Contains(cell[0]) && !double.TryParse(cell, NumberStyles.Float, CultureInfo.InvariantCulture, out _) ? "'" + cell : cell);
+                    csv.WriteField(SafeCell(cell));
                 }
 
                 csv.NextRecord();

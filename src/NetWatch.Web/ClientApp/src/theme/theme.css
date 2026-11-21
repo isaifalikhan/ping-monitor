@@ -1221,3 +1221,18 @@ textarea {
   background: var(--accent);
   border-color: var(--accent);
 }
+
+/* Small wrapped badge lists (DC services, service ports). */
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+a.btn {
+  text-decoration: none;
+}
+
+a.btn:hover {
+  background: var(--bg-hover);
+}

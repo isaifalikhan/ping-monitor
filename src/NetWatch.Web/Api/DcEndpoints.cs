@@ -10,7 +10,9 @@ using NetWatch.Core;
 using NetWatch.Core.Entities;
 using NetWatch.Data.Config;
 using NetWatch.Data.Events;
+using NetWatch.Core.Configuration;
 using NetWatch.Web.Auth;
+using NetWatch.Web.Infrastructure;
 
 namespace NetWatch.Web.Api;
 
@@ -18,7 +20,14 @@ public sealed record DcSummaryDto(
     int DeviceId, string Name, string IpAddress, DeviceStatus Status, DateTime? LastPollUtc,
     string? Domain, string? Site, string? DcName, bool IsGlobalCatalog, string? Roles, string? PdcEmulator,
     double? ClockOffsetSec, double? SkewToPdcSec, DateTime? LastReplicationCheckUtc, string? ReplicationError, string? SecurityLogError,
-    int ReplicationLinks, int ReplicationFailing, int ServicesDown, int Events24h, int FailedLogons24h, int Lockouts24h, int GroupChanges24h);
+    int ReplicationLinks, int ReplicationFailing, int ServicesDown, int Events24h, int FailedLogons24h, int Lockouts24h, int GroupChanges24h,
+    IReadOnlyList<DcServiceStateDto>? Services = null, IReadOnlyList<DcPortStateDto>? Ports = null);
+
+/// <summary>A watched service on a DC (NTDS, DNS, Netlogon, Kdc, DFSR, W32Time by default).</summary>
+public sealed record DcServiceStateDto(string Name, string? DisplayName, ServiceState State, DateTime? LastChangeUtc);
+
+/// <summary>Last TCP check of a DC service port; Error null = answered.</summary>
+public sealed record DcPortStateDto(string Service, int Port, string? Error, double? Ms);
 
 public sealed record DcOverviewDto(IReadOnlyList<DcSummaryDto> Controllers, bool UseForwardedEvents, string? ForwardedError, DateTime? ForwardedLastReadUtc, long ForwardedEventsRead);
 
@@ -52,6 +61,7 @@ public static class DcEndpoints
         var read = app.MapGroup("/api/dc").RequireAuthorization(Policies.Viewer);
         read.MapGet("/summary", SummaryAsync);
         read.MapGet("/security-events", SecurityEventsAsync);
+        read.MapGet("/security-events/export", ExportSecurityEventsAsync);
         read.MapGet("/lockouts", LockoutsAsync);
         read.MapGet("/group-changes", GroupChangesAsync);
         read.MapGet("/replication", ReplicationAsync);
@@ -72,6 +82,10 @@ public static class DcEndpoints
             .Select(d => new { d.Id, d.Name, d.IpAddress, d.Status, d.LastPollUtc, Down = d.WatchedServices.Count(w => w.LastState != ServiceState.Running && w.LastState != ServiceState.Unknown) })
             .ToListAsync(ct);
         var ids = dcs.Select(d => d.Id).ToList();
+        var services = (await db.WatchedServices.AsNoTracking().Where(w => ids.Contains(w.DeviceId)).ToListAsync(ct))
+            .GroupBy(w => w.DeviceId)
+            .ToDictionary(g => g.Key, g => (IReadOnlyList<DcServiceStateDto>)g.OrderBy(w => w.ServiceName, StringComparer.OrdinalIgnoreCase)
+                .Select(w => new DcServiceStateDto(w.ServiceName, w.DisplayName, w.LastState, w.LastChangeUtc)).ToList());
         var infos = await db.DcInfos.AsNoTracking().Where(i => ids.Contains(i.DeviceId)).ToDictionaryAsync(i => i.DeviceId, ct);
         var links = await db.DcReplicationLinks.AsNoTracking().Where(l => ids.Contains(l.DeviceId))
             .GroupBy(l => l.DeviceId).Select(g => new { g.Key, Total = g.Count(), Failing = g.Count(l => l.LastResult != 0 && l.ConsecutiveFailures > 0) })
@@ -97,7 +111,8 @@ public static class DcEndpoints
             var c = counts.GetValueOrDefault(d.Id);
             return new DcSummaryDto(d.Id, d.Name, d.IpAddress, d.Status, d.LastPollUtc, i?.Domain, i?.Site, i?.DcName, i?.IsGlobalCatalog ?? false, i?.Roles, i?.PdcEmulator,
                 i?.ClockOffsetSec, i?.SkewToPdcSec, i?.LastReplicationCheckUtc, i?.ReplicationError, i?.SecurityLogError,
-                l?.Total ?? 0, l?.Failing ?? 0, d.Down, c?.Total ?? 0, c?.Failed ?? 0, c?.Lockouts ?? 0, c?.Groups ?? 0);
+                l?.Total ?? 0, l?.Failing ?? 0, d.Down, c?.Total ?? 0, c?.Failed ?? 0, c?.Lockouts ?? 0, c?.Groups ?? 0,
+                services.GetValueOrDefault(d.Id) ?? [], ParsePorts(i?.ReachabilityJson));
         }).ToList();
 
         var s = settings.Dc;
@@ -112,6 +127,95 @@ public static class DcEndpoints
     private static async Task<IResult> SecurityEventsAsync(
         EventsDbContext events, NetWatchDbContext db, int? deviceId, string? eventIds, string? category, string? user, string? source, string? group,
         string? search, Severity? minSeverity, bool? failedOnly, DateTime? from, DateTime? to, int? page, int? pageSize, CancellationToken ct)
+    {
+        var q = Filter(events, deviceId, eventIds, category, user, source, group, search, minSeverity, failedOnly, from, to);
+        var (p, size) = (Math.Max(1, page ?? 1), Math.Clamp(pageSize ?? 200, 1, 2000));
+        var total = await q.Take(10_001).CountAsync(ct);
+        var rows = await q.OrderByDescending(x => x.TimestampUtc).ThenByDescending(x => x.Id).Skip((p - 1) * size).Take(size).ToListAsync(ct);
+        var names = await NamesAsync(db, rows.Select(r => r.DeviceId), ct);
+        var items = rows.Select(r => new DcSecurityEventDto(r.Id, r.TimestampUtc, r.DeviceId, names.GetValueOrDefault(r.DeviceId), r.EventId, DcEventCatalog.NameOf(r.EventId),
+            r.Category, r.Severity, r.SubjectUser, r.TargetUser, r.GroupName, r.ObjectName, r.SourceIp, r.Workstation, r.LogonType, r.Status, r.SubStatus, r.Message)).ToList();
+        return Results.Ok(new { items, total, page = p, pageSize = size, totalCapped = total > 10_000 });
+    }
+
+    /// <summary>Maximum rows of one CSV export (newest first).</summary>
+    internal const int MaxExportRows = 100_000;
+
+    /// <summary>CSV of the security events matching the same filters as the viewer (newest first, at most 100,000 rows).</summary>
+    private static async Task<IResult> ExportSecurityEventsAsync(
+        EventsDbContext events, NetWatchDbContext db, HttpContext http, AuditWriter audit, int? deviceId, string? eventIds, string? category, string? user, string? source,
+        string? group, string? search, Severity? minSeverity, bool? failedOnly, DateTime? from, DateTime? to, CancellationToken ct)
+    {
+        var q = Filter(events, deviceId, eventIds, category, user, source, group, search, minSeverity, failedOnly, from, to);
+        var rows = await q.OrderByDescending(x => x.TimestampUtc).ThenByDescending(x => x.Id).Take(MaxExportRows).ToListAsync(ct);
+        var names = await NamesAsync(db, rows.Select(r => r.DeviceId).Distinct(), ct);
+        var bytes = WriteCsv(rows, names);
+        await audit.WriteAsync(http.Actor(), "DcEventsExported", "DcSecurityEvents", string.Create(CultureInfo.InvariantCulture, $"{rows.Count} rows"));
+        return Results.File(bytes, "text/csv; charset=utf-8", string.Create(CultureInfo.InvariantCulture, $"dc-security-events-{DateTime.UtcNow:yyyyMMdd-HHmmss}.csv"));
+    }
+
+    /// <summary>UTF-8 (with BOM, for Excel) CSV; times in PKT; formula-injection safe.</summary>
+    internal static byte[] WriteCsv(IReadOnlyList<DcSecurityEvent> rows, IReadOnlyDictionary<int, string> names)
+    {
+        using var stream = new MemoryStream();
+        using (var writer = new StreamWriter(stream, new System.Text.UTF8Encoding(encoderShouldEmitUTF8Identifier: true), leaveOpen: true))
+        using (var csv = new CsvHelper.CsvWriter(writer, new CsvHelper.Configuration.CsvConfiguration(CultureInfo.InvariantCulture)))
+        {
+            foreach (var h in new[] { "Time (PKT)", "DC", "Event ID", "Event", "Category", "Severity", "Subject", "Target", "Group", "Object", "Source IP", "Workstation", "Logon type", "Status", "Sub-status", "Result", "Details" })
+            {
+                csv.WriteField(h);
+            }
+
+            csv.NextRecord();
+            foreach (var r in rows)
+            {
+                var reason = DcEventCatalog.StatusText(r.SubStatus) ?? DcEventCatalog.StatusText(r.Status);
+                string?[] cells =
+                [
+                    LocalTime.ToLocal(r.TimestampUtc).ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture), names.GetValueOrDefault(r.DeviceId),
+                    r.EventId.ToString(CultureInfo.InvariantCulture), DcEventCatalog.NameOf(r.EventId), r.Category, r.Severity.ToString(),
+                    Account(r.SubjectDomain, r.SubjectUser), Account(r.TargetDomain, r.TargetUser), r.GroupName, r.ObjectName, r.SourceIp, r.Workstation,
+                    r.LogonType?.ToString(CultureInfo.InvariantCulture), r.Status, r.SubStatus, reason, r.Message,
+                ];
+                foreach (var cell in cells)
+                {
+                    csv.WriteField(Reports.CsvReportRenderer.SafeCell(cell));
+                }
+
+                csv.NextRecord();
+            }
+        }
+
+        return stream.ToArray();
+
+        static string? Account(string? domain, string? user) => user is null ? null : domain is null ? user : $"{domain}\\{user}";
+    }
+
+    internal static IReadOnlyList<DcPortStateDto> ParsePorts(string? json)
+    {
+        if (string.IsNullOrWhiteSpace(json))
+        {
+            return [];
+        }
+
+        try
+        {
+            using var doc = JsonDocument.Parse(json);
+            return doc.RootElement.EnumerateArray().Select(e => new DcPortStateDto(
+                e.GetProperty("service").GetString() ?? "?",
+                e.GetProperty("port").GetInt32(),
+                e.TryGetProperty("error", out var err) && err.ValueKind == JsonValueKind.String ? err.GetString() : null,
+                e.TryGetProperty("ms", out var ms) && ms.ValueKind == JsonValueKind.Number ? ms.GetDouble() : null)).ToList();
+        }
+        catch (Exception ex) when (ex is JsonException or InvalidOperationException or KeyNotFoundException)
+        {
+            return [];
+        }
+    }
+
+    private static IQueryable<DcSecurityEvent> Filter(
+        EventsDbContext events, int? deviceId, string? eventIds, string? category, string? user, string? source, string? group,
+        string? search, Severity? minSeverity, bool? failedOnly, DateTime? from, DateTime? to)
     {
         var q = events.DcSecurityEvents.AsNoTracking().AsQueryable();
         if (deviceId is { } d)
@@ -177,13 +281,7 @@ public static class DcEndpoints
             q = q.Where(x => x.TimestampUtc < tu);
         }
 
-        var (p, size) = (Math.Max(1, page ?? 1), Math.Clamp(pageSize ?? 200, 1, 2000));
-        var total = await q.Take(10_001).CountAsync(ct);
-        var rows = await q.OrderByDescending(x => x.TimestampUtc).ThenByDescending(x => x.Id).Skip((p - 1) * size).Take(size).ToListAsync(ct);
-        var names = await NamesAsync(db, rows.Select(r => r.DeviceId), ct);
-        var items = rows.Select(r => new DcSecurityEventDto(r.Id, r.TimestampUtc, r.DeviceId, names.GetValueOrDefault(r.DeviceId), r.EventId, DcEventCatalog.NameOf(r.EventId),
-            r.Category, r.Severity, r.SubjectUser, r.TargetUser, r.GroupName, r.ObjectName, r.SourceIp, r.Workstation, r.LogonType, r.Status, r.SubStatus, r.Message)).ToList();
-        return Results.Ok(new { items, total, page = p, pageSize = size, totalCapped = total > 10_000 });
+        return q;
     }
 
     // ---------------------------------------------------------------- lockouts

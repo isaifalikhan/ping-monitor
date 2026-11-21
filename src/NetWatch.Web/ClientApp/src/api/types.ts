@@ -765,6 +765,22 @@ export interface DcSummary {
   failedLogons24h: number;
   lockouts24h: number;
   groupChanges24h: number;
+  services?: DcServiceState[];
+  ports?: DcPortState[];
+}
+
+export interface DcServiceState {
+  name: string;
+  displayName?: string | null;
+  state: 'Unknown' | 'Running' | 'Stopped' | 'StartPending' | 'StopPending' | 'Paused' | 'NotFound' | string;
+  lastChangeUtc?: string | null;
+}
+
+export interface DcPortState {
+  service: string;
+  port: number;
+  error?: string | null;
+  ms?: number | null;
 }
 
 export interface DcOverview {
