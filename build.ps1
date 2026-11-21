@@ -152,14 +152,14 @@ if (-not $SkipTests) {
 # ---------------------------------------------------------------------------------------------- publish
 Step "Publishing self-contained single-file service ($Version)"
 if (Test-Path $publishDir) { Remove-Item -Recurse -Force $publishDir }
+# PublishSingleFile, IncludeNativeLibrariesForSelfExtract and EnableCompressionInSingleFile are set in
+# NetWatch.Service.csproj. Do not pass them here: command-line properties are global, reach the library projects
+# too, turn on the single-file analyzer there (adds Microsoft.NET.ILLink.Tasks) and break the locked restore (NU1004).
 Invoke-Checked 'dotnet' (@(
     'publish', $serviceProject,
     '-c', $Configuration,
     '-r', 'win-x64',
     '--self-contained', 'true',
-    '-p:PublishSingleFile=true',
-    '-p:IncludeNativeLibrariesForSelfExtract=true',
-    '-p:EnableCompressionInSingleFile=true',
     "-p:Version=$Version",
     '-p:NetWatchLockedRestore=true',
     '-o', $publishDir,
