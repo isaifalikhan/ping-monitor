@@ -183,7 +183,7 @@ public static class DeviceEndpoints
             var l = live.GetInterface(i.Id);
             return new InterfaceDto(i.Id, i.DeviceId, i.IfIndex, i.Name, i.Description, i.Alias, i.IfType, i.SpeedBps, i.Mac,
                 l?.AdminStatus ?? i.AdminStatus, l?.OperStatus ?? i.OperStatus, i.LastChangeUtc, i.IsImportant, i.IsMonitored,
-                l?.InBps, l?.OutBps, l?.InUtilPct, l?.OutUtilPct, l?.ErrorsPs);
+                l?.InBps, l?.OutBps, l?.InUtilPct, l?.OutUtilPct, l?.ErrorsPs, i.Duplex, i.ExpectedSpeedBps, i.FlapCount24h);
         }).ToList());
     }
 
@@ -481,9 +481,19 @@ public static class DeviceEndpoints
 
         row.IsImportant = update.IsImportant ?? row.IsImportant;
         row.IsMonitored = update.IsMonitored ?? row.IsMonitored;
+        if (update.ExpectedSpeedBps is { } expected)
+        {
+            if (expected < 0 || expected > 1_000_000_000_000)
+            {
+                return Results.BadRequest(new { error = "Expected speed must be between 0 and 1 Tbit/s." });
+            }
+
+            row.ExpectedSpeedBps = expected == 0 ? null : expected;
+        }
+
         await db.SaveChangesAsync(ct);
         notifier.NotifyInventoryChanged();
-        await audit.WriteAsync(http.Actor(), "InterfaceUpdated", "Interface", id.Inv(), $"{row.Name}: important={row.IsImportant}, monitored={row.IsMonitored}");
+        await audit.WriteAsync(http.Actor(), "InterfaceUpdated", "Interface", id.Inv(), $"{row.Name}: important={row.IsImportant}, monitored={row.IsMonitored}, expectedSpeed={row.ExpectedSpeedBps}");
         return Results.NoContent();
     }
 

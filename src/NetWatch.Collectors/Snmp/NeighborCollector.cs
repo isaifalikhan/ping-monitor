@@ -150,7 +150,7 @@ public static class NeighborParser
     /// <summary>A Cisco device often reports the same neighbour by LLDP and CDP; keep one row per local port and neighbour.</summary>
     public static List<NeighborReading> Deduplicate(List<NeighborReading> neighbors) =>
         neighbors
-            .GroupBy(n => (n.LocalIfIndex?.ToString(CultureInfo.InvariantCulture) ?? n.LocalPortId ?? n.LocalPortNum.ToString(CultureInfo.InvariantCulture),
+            .GroupBy(n => (n.LocalPortNum,
                 ShortName(n.RemoteName) ?? n.RemoteChassisId ?? n.RemoteAddress ?? string.Empty))
             .Select(g => g.OrderBy(n => n.Protocol == "LLDP" ? 0 : 1).First() with
             {

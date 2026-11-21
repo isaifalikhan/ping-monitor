@@ -1236,3 +1236,13 @@ a.btn {
 a.btn:hover {
   background: var(--bg-hover);
 }
+
+/* Port grid: half duplex (striped) and frequently flapping ports (dashed outline). */
+.port.half-duplex {
+  background-image: repeating-linear-gradient(45deg, transparent 0 4px, rgba(229, 72, 77, 0.35) 4px 7px);
+}
+
+.port.flappy {
+  outline: 2px dashed var(--warn);
+  outline-offset: -2px;
+}

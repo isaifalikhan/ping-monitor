@@ -277,7 +277,36 @@ export function DeviceDetailPage() {
       ),
       sort: (i) => i.operStatus,
     },
-    { key: 'speed', header: 'Speed', render: (i) => fmtSpeed(i.speedBps), sort: (i) => i.speedBps, className: 'num' },
+    {
+      key: 'speed',
+      header: 'Speed',
+      render: (i) => {
+        const slow = i.operStatus === 1 && (i.expectedSpeedBps ?? 0) > 0 && i.speedBps < (i.expectedSpeedBps ?? 0);
+        const text = <span style={{ color: slow ? 'var(--warn)' : undefined }} title={i.expectedSpeedBps ? `Expected ${fmtSpeed(i.expectedSpeedBps)}bps` : 'No expected speed set'}>{fmtSpeed(i.speedBps)}</span>;
+        return can('Admin') ? (
+          <button
+            className="ghost"
+            style={{ padding: '0 4px' }}
+            title="Set the expected speed (alert when an important port negotiates lower)"
+            onClick={(e) => {
+              e.stopPropagation();
+              const value = window.prompt(`Expected speed of ${i.name} in Mbit/s (0 = no check)`, i.expectedSpeedBps ? String(i.expectedSpeedBps / 1e6) : String(i.speedBps / 1e6));
+              if (value === null || !/^\d+(\.\d+)?$/.test(value.trim())) return;
+              void api.put(`/api/interfaces/${i.id}`, { expectedSpeedBps: Math.round(Number(value) * 1e6) }).then(() => void qc.invalidateQueries({ queryKey: ['device'] }));
+            }}
+          >
+            {text}
+            {i.expectedSpeedBps ? <span className="faint"> / {fmtSpeed(i.expectedSpeedBps)}</span> : null}
+          </button>
+        ) : (
+          text
+        );
+      },
+      sort: (i) => i.speedBps,
+      className: 'num',
+    },
+    { key: 'duplex', header: 'Duplex', render: (i) => (i.duplex === 2 && i.operStatus === 1 ? <span className="badge s-down">half</span> : <span className="muted">{i.duplex === 3 ? 'full' : '—'}</span>), sort: (i) => i.duplex ?? 0 },
+    { key: 'flaps', header: 'Flaps 24 h', render: (i) => <span style={{ color: (i.flapCount24h ?? 0) >= 4 ? 'var(--warn)' : undefined }}>{i.flapCount24h ?? 0}</span>, sort: (i) => i.flapCount24h ?? 0, className: 'num' },
     { key: 'in', header: 'In', render: (i) => fmtBps(i.inBps), sort: (i) => i.inBps ?? -1, className: 'num' },
     { key: 'out', header: 'Out', render: (i) => fmtBps(i.outBps), sort: (i) => i.outBps ?? -1, className: 'num' },
     { key: 'util', header: 'Utilization', render: (i) => <UtilBar value={i.inUtilPct == null && i.outUtilPct == null ? null : Math.max(i.inUtilPct ?? 0, i.outUtilPct ?? 0)} />, sort: (i) => Math.max(i.inUtilPct ?? -1, i.outUtilPct ?? -1), width: 160 },

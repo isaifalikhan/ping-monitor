@@ -114,9 +114,13 @@ public sealed record InterfaceDto(
     double? OutBps,
     double? InUtilPct,
     double? OutUtilPct,
-    double? ErrorsPs);
+    double? ErrorsPs,
+    int? Duplex = null,
+    long? ExpectedSpeedBps = null,
+    int FlapCount24h = 0);
 
-public sealed record InterfaceUpdate(bool? IsImportant, bool? IsMonitored);
+/// <param name="ExpectedSpeedBps">Expected negotiated speed; 0 clears the check, null leaves it unchanged.</param>
+public sealed record InterfaceUpdate(bool? IsImportant, bool? IsMonitored, long? ExpectedSpeedBps = null);
 
 public sealed record BulkInterfaceUpdate(IReadOnlyList<int> InterfaceIds, bool? IsImportant, bool? IsMonitored);
 
