@@ -78,6 +78,19 @@ export function BackupPanel() {
   }, [q.data, settings]);
   const refresh = () => void qc.invalidateQueries({ queryKey: ['backups'] });
   const create = useMutation({ mutationFn: () => api.post('/api/backups'), onSettled: refresh });
+  const portable = useMutation({ mutationFn: (password: string) => api.post('/api/backups/portable', { password }), onSettled: refresh });
+  const restore = useMutation({
+    mutationFn: (v: { name: string; password: string }) => api.post<{ message: string }>(`/api/backups/${v.name}/restore`, { confirm: 'RESTORE', password: v.password || null }),
+  });
+  const askPortable = () => {
+    const password = window.prompt('Password for the credential export (at least 12 characters). Keep it safe: it is needed to restore this backup on another server.');
+    if (password) portable.mutate(password);
+  };
+  const askRestore = (name: string) => {
+    if (window.prompt(`Restore ${name}? ALL current data (devices, alerts, history, settings) is replaced. NetWatch stops and restores at the next start. Type RESTORE to continue.`) !== 'RESTORE') return;
+    const password = name.includes('-portable') ? (window.prompt('Portable credential password (leave empty to keep the credentials encrypted for the original server):') ?? '') : '';
+    restore.mutate({ name, password });
+  };
   const remove = useMutation({ mutationFn: (name: string) => api.del(`/api/backups/${name}`), onSuccess: refresh });
   const save = useMutation({
     mutationFn: (v: BackupSettings) => api.put<BackupSettings>('/api/settings/backup', { ...v, folder: v.folder?.trim() || null }),
@@ -93,18 +106,22 @@ export function BackupPanel() {
       <div className="card-head">
         <h2>Backups</h2>
         <span className="spacer" />
+        <button className="small" disabled={portable.isPending || d?.running} onClick={askPortable} title="Also export the credentials, re-encrypted with a password, so the backup can be restored on a new server">
+          Back up for another server…
+        </button>
         <button className="primary small" disabled={create.isPending || d?.running} onClick={() => create.mutate()}>
           {create.isPending || d?.running ? 'Backing up…' : 'Back up now'}
         </button>
       </div>
       <div className="card-body">
-        <ErrorBox error={q.error ?? create.error ?? remove.error ?? save.error} />
+        <ErrorBox error={q.error ?? create.error ?? remove.error ?? save.error ?? portable.error ?? restore.error} />
+        {restore.data && <div style={{ color: 'var(--warn)', marginBottom: 8 }}>{restore.data.message}</div>}
         {d?.lastError && <div style={{ color: 'var(--crit)', marginBottom: 8 }}>Last backup failed: {d.lastError}</div>}
         <p className="muted" style={{ marginTop: 0 }}>
           A backup is a zip with consistent copies of the three databases (taken while NetWatch keeps running), appsettings.json and the certificate, plus a checksum manifest.
           Stored in <span className="mono">{d?.settings.folder || d?.defaultFolder}</span>
-          {d?.nextRunUtc ? `; next automatic backup ${fmtDateTime(d.nextRunUtc)} PKT` : ''}. To restore, stop the service and run{' '}
-          <span className="mono">NetWatch.Service.exe --restore &lt;file&gt;</span> (see the admin guide).
+          {d?.nextRunUtc ? `; next automatic backup ${fmtDateTime(d.nextRunUtc)} PKT` : ''}. Restore here (NetWatch restarts) or with the service stopped:{' '}
+          <span className="mono">NetWatch.Service.exe --restore &lt;file&gt; [--restore-password]</span>.
         </p>
         {settings && (
           <>
@@ -160,6 +177,9 @@ export function BackupPanel() {
                     <a className="btn small" href={`/api/backups/${b.name}`} download={b.name} title="Download">
                       <Download size={13} />
                     </a>{' '}
+                    <button className="small" title="Restore this backup" disabled={restore.isPending} onClick={() => askRestore(b.name)}>
+                      Restore
+                    </button>{' '}
                     <button className="small" title="Delete" onClick={() => window.confirm(`Delete backup ${b.name}? This cannot be undone.`) && remove.mutate(b.name)}>
                       <Trash2 size={13} />
                     </button>

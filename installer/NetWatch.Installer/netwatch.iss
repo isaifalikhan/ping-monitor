@@ -162,6 +162,8 @@ begin
     Sc('create {#ServiceName} ' + BinPath + ' start= delayed-auto DisplayName= "{#ServiceDisplayName}"');
   Sc('description {#ServiceName} "NetWatch infrastructure monitoring: collectors, alerting and the web console (HTTPS port {#HttpsPort})."');
   Sc('failure {#ServiceName} reset= 86400 actions= restart/60000/restart/60000/restart/300000');
+  // Also restart after a clean stop with a non-zero exit code (used by "restore from the web console").
+  Sc('failureflag {#ServiceName} 1');
 end;
 
 function PrepareToInstall(var NeedsRestart: Boolean): String;

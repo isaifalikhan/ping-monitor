@@ -550,7 +550,7 @@ public sealed class BackupSettings
     public bool Enabled { get; set; } = true;
 
     /// <summary>Daily backup time, local (PKT) "HH:mm".</summary>
-    public string DailyAt { get; set; } = "01:30";
+    public string DailyAt { get; set; } = "02:00";
 
     /// <summary>Include the performance history (metrics.db, usually the largest file).</summary>
     public bool IncludeMetrics { get; set; } = true;
@@ -566,7 +566,7 @@ public sealed class BackupSettings
         KeepCount = Math.Clamp(KeepCount, 1, 365);
         if (!TimeSpan.TryParseExact(DailyAt, @"hh\:mm", null, out _))
         {
-            DailyAt = "01:30";
+            DailyAt = "02:00";
         }
 
         Folder = string.IsNullOrWhiteSpace(Folder) ? null : Folder.Trim();
