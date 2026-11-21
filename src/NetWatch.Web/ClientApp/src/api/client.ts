@@ -69,3 +69,29 @@ export function qs(params: Record<string, string | number | boolean | undefined 
   const s = p.toString();
   return s ? `?${s}` : '';
 }
+
+/** POSTs JSON and saves the returned file (reports). The file name comes from Content-Disposition. */
+export async function downloadPost(url: string, body: unknown, fallbackName: string): Promise<void> {
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-NetWatch-Request': '1' },
+    body: JSON.stringify(body),
+    credentials: 'same-origin',
+  });
+  if (!response.ok) {
+    const data = await response.json().catch(() => null);
+    throw new ApiError(response.status, (data && (data.error || data.title)) || `Request failed (${response.status})`);
+  }
+  const disposition = response.headers.get('content-disposition') ?? '';
+  const match = /filename\*?=(?:UTF-8'')?"?([^";]+)"?/i.exec(disposition);
+  const name = match ? decodeURIComponent(match[1]) : fallbackName;
+  const blob = await response.blob();
+  const href = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = href;
+  a.download = name;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(href), 10_000);
+}

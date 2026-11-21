@@ -10,6 +10,7 @@ public static class AlertsServiceCollectionExtensions
     public static IServiceCollection AddNetWatchAlerts(this IServiceCollection services)
     {
         services.AddSingleton<NotificationDispatcher>();
+        services.AddSingleton<MailSender>();
         services.AddSingleton<INotificationSink>(sp => sp.GetRequiredService<NotificationDispatcher>());
         services.AddHostedService(sp => sp.GetRequiredService<NotificationDispatcher>());
 

@@ -21,6 +21,7 @@ namespace NetWatch.Service;
 ///   NetWatch.Service.exe --data-dir D:\NW      use another data folder (default C:\ProgramData\NetWatch)
 ///   NetWatch.Service.exe --reset-admin         generate a new password for 'admin' and exit
 ///   NetWatch.Service.exe --set-certificate F   store the password of a .pfx (asked on the console) and exit
+///   NetWatch.Service.exe --restore F.zip       restore a backup (service must be stopped) and exit
 ///   NetWatch.Service.exe --version             print the version and exit
 /// </code>
 /// </summary>
@@ -51,6 +52,35 @@ public static class Program
             if (cli.SetCertificate is { } pfx)
             {
                 return SetCertificate(pfx, paths);
+            }
+
+            // One running instance per data folder; the restore command checks this lock.
+            using var instanceLock = InstanceLock.TryAcquire(paths);
+            if (cli.Restore is { } backupFile)
+            {
+                if (instanceLock is null)
+                {
+                    Console.Error.WriteLine("NetWatch is running on this data folder. Stop the service first: Stop-Service NetWatch");
+                    return 3;
+                }
+
+                try
+                {
+                    Console.WriteLine(Data.Backup.BackupRestore.Restore(Path.GetFullPath(backupFile), paths));
+                    Console.WriteLine("Start the service again: Start-Service NetWatch");
+                    return 0;
+                }
+                catch (Exception ex) when (ex is IOException or InvalidDataException or UnauthorizedAccessException or System.Text.Json.JsonException)
+                {
+                    Console.Error.WriteLine($"Restore failed, nothing was changed: {ex.Message}");
+                    return 4;
+                }
+            }
+
+            if (instanceLock is null && !cli.ResetAdmin)
+            {
+                Log.Fatal("Another NetWatch instance is already running on data folder {DataDir}", paths.Root);
+                return 5;
             }
 
             Log.Information("NetWatch {Version} starting (data folder {DataDir}, PID {Pid})", version, paths.Root, Environment.ProcessId);
@@ -92,6 +122,7 @@ public static class Program
                 }
             });
 
+            builder.Services.AddSingleton(new ServerCertificateInfo(certificate?.Subject, certificate?.NotAfter.ToUniversalTime(), certificate?.Thumbprint));
             var app = builder.Build();
             await app.Services.InitialiseDatabasesAsync(startupLogger);
 
@@ -219,12 +250,12 @@ public static class Program
 }
 
 /// <summary>Parsed command line.</summary>
-internal sealed record CommandLine(bool Simulate, bool ResetAdmin, bool Version, string? DataDir, string? SetCertificate, string[] Remaining)
+internal sealed record CommandLine(bool Simulate, bool ResetAdmin, bool Version, string? DataDir, string? SetCertificate, string[] Remaining, string? Restore = null)
 {
     public static CommandLine Parse(string[] args)
     {
         bool simulate = false, reset = false, version = false;
-        string? dataDir = null, cert = null;
+        string? dataDir = null, cert = null, restore = null;
         var remaining = new List<string>();
         for (var i = 0; i < args.Length; i++)
         {
@@ -244,6 +275,9 @@ internal sealed record CommandLine(bool Simulate, bool ResetAdmin, bool Version,
                 case "--data-dir" when i + 1 < args.Length:
                     dataDir = args[++i];
                     break;
+                case "--restore" when i + 1 < args.Length:
+                    restore = args[++i];
+                    break;
                 case "--set-certificate" when i + 1 < args.Length:
                     cert = args[++i];
                     break;
@@ -253,6 +287,40 @@ internal sealed record CommandLine(bool Simulate, bool ResetAdmin, bool Version,
             }
         }
 
-        return new CommandLine(simulate, reset, version, dataDir, cert, remaining.ToArray());
+        return new CommandLine(simulate, reset, version, dataDir, cert, remaining.ToArray(), restore);
+    }
+}
+
+/// <summary>A machine-wide named mutex per data folder: held while NetWatch runs.</summary>
+internal static class InstanceLock
+{
+    /// <summary>Returns the held mutex, or null when another process holds it (or it cannot be opened).</summary>
+    public static Mutex? TryAcquire(NetWatchPaths paths)
+    {
+        var hash = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(paths.Root.ToUpperInvariant())))[..16];
+        try
+        {
+            var mutex = new Mutex(initiallyOwned: false, $@"Global\NetWatch-{hash}");
+            try
+            {
+                if (mutex.WaitOne(0))
+                {
+                    return mutex;
+                }
+            }
+            catch (AbandonedMutexException)
+            {
+                // The previous owner crashed: the lock is ours now.
+                return mutex;
+            }
+
+            mutex.Dispose();
+            return null;
+        }
+        catch (UnauthorizedAccessException)
+        {
+            // Created by the service account with a DACL we may not open: it is running.
+            return null;
+        }
     }
 }

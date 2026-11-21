@@ -323,36 +323,92 @@ All state is in `C:\ProgramData\NetWatch`:
 
 | Path | Content |
 |---|---|
-| `data\netwatch.db` | Configuration: devices, interfaces, credentials (encrypted), rules, alerts, users, settings, audit |
-| `data\events.db` | Device events (reboots, status changes) |
+| `data\netwatch.db` | Configuration: devices, interfaces, credentials (encrypted), rules, alerts, users, settings, audit, report schedules |
+| `data\events.db` | Device events, syslog, traps, Windows and DC security events |
 | `data\metrics.db` | Performance history |
 | `appsettings.json` | Port and certificate settings |
 | `certs\` | TLS certificate (private key encrypted) |
+| `backups\` | Backups (default location) |
+| `reports\` | Scheduled reports (kept 400 days) |
 | `logs\` | Service logs (30 days) |
 
-**Backup:**
+**Automatic backups.** NetWatch backs itself up every day at 01:30 PKT while it keeps running
+(*Settings → System → Backups*). Each backup is one zip file `netwatch-backup-YYYYMMDD-HHMMSS.zip` with
+consistent copies of the three databases (SQLite `VACUUM INTO`, taken without stopping the service),
+`appsettings.json`, the certificate folder and a `manifest.json` with a SHA-256 checksum of every file. The
+newest 14 are kept. In the same panel you can change the time, the number kept, leave out the performance
+history (`metrics.db`, usually the largest file), choose another folder (another disk or a UNC share: the
+service account needs write access; NetWatch tests this when you save), run a backup now, download or
+delete backups. Downloads are recorded in the audit trail: a backup contains the user database and the
+(encrypted) credentials, so store copies as carefully as the server itself. The self-check *Backups* raises an
+alert when the newest backup is older than 36 hours or the last one failed.
 
-1. Stop the service: `Stop-Service NetWatch`.
-2. Copy the whole folder, including any `*.db-wal` files, to your backup location.
-3. Start the service again: `Start-Service NetWatch`.
+**Restore** (offline, from an elevated prompt in `C:\Program Files\NetWatch`):
 
-`metrics.db` can be left out if you don't need the history; it is usually by far the largest file.
+```powershell
+Stop-Service NetWatch
+.\NetWatch.Service.exe --restore "C:\ProgramData\NetWatch\backups\netwatch-backup-20261121-013000.zip"
+Start-Service NetWatch
+```
 
-**Restore on the same server:**
-
-1. Stop the service.
-2. Replace the folder with the backup.
-3. Start the service.
+The restore checks the manifest and every checksum first and changes nothing if the file is damaged or contains
+anything unexpected. It then moves the current files to `C:\ProgramData\NetWatch\before-restore-<date>` (delete
+that folder once you are satisfied) and puts the backup in place. A backup without performance history keeps
+the current `metrics.db`. The command refuses to run while the service is running on the same data folder.
 
 **Restore on a different server:**
 
-1. Install NetWatch on the new server.
-2. Stop the service.
-3. Copy the backup over `C:\ProgramData\NetWatch`.
-4. Delete the `certs\` folder; a new certificate is generated on start.
-5. Start the service.
-6. Re-enter the secret of every credential in *Settings → Credentials*. DPAPI ties encrypted secrets to the
-   original server, so they cannot be decrypted on the new one. Devices, history, alerts and users carry over.
+1. Install the same (or a newer) NetWatch version on the new server.
+2. Copy the backup file there and run the restore as above.
+3. Delete `C:\ProgramData\NetWatch\certs\` before starting the service; a new certificate is generated (or set
+   your own, see the installation guide). The old private key cannot be decrypted on another machine.
+4. Start the service and re-enter the secret of every credential in *Settings → Credentials*, and the SMTP
+   password in *Settings → Notifications*. DPAPI ties encrypted secrets to the original server. Devices,
+   history, alerts, users, rules and schedules carry over.
+
+## 6a. Reports
+
+*Reports → Create report* produces a PDF or CSV (UTF-8, opens in Excel) for a period and, optionally, one
+group with its subgroups:
+
+| Report | Content |
+|---|---|
+| Availability | Uptime per device from the stored ping/SNMP history, outages, approximate downtime, latency; worst first |
+| Alert history | Alerts raised in the period by severity, rule and device; mean time to acknowledge and to resolve |
+| Interface utilization | Average and peak in/out utilization of important interfaces (flag uplinks as important) |
+| Disk and datastore capacity | Volume and datastore fill levels, growth in the period, estimated days until full |
+| Domain controller security | Failed logons (top accounts and sources), lockouts, privileged group changes, account and policy changes |
+| Device inventory | All devices with type, address, group, vendor, model, serial number, firmware/OS and status |
+
+PDFs are generated on the server without any external component. For long periods the history is read from
+5-minute or hourly averages, so short peaks are smoothed. Report generation is limited to 10 per minute per user.
+
+*Scheduled reports* (operators and admins) run daily, weekly or monthly at a PKT time and cover the previous
+day, 7 days or calendar month. Each run is saved under `reports\YYYY-MM\` (*Stored reports*) and, if
+recipients are set, e-mailed as an attachment through the SMTP relay of *Settings → Notifications*. A failed
+run is shown on the schedule and raises the self-check alert *Scheduled reports*.
+
+## 6b. NOC mode and topology
+
+**NOC mode** (*NOC mode* in the menu, or `https://<server>:8443/noc`) is a full-screen wall display: device
+and alert counts (live), the open alerts (unacknowledged and most severe first) and a panel that rotates every
+20 seconds through devices with problems, sites, the busiest links and the domain controllers. Use a *Viewer*
+account on the wall PC and press the full-screen button. The display keeps the session active, but it still
+ends after *Maximum session length* (*Settings → General → Console security*, up to 168 hours); raise that if
+the wall display should stay signed in for a week.
+
+**Topology** shows every device under its *upstream device* (set on the device page; the same link is used to
+suppress alerts behind an unreachable device), coloured by status. Large branches start collapsed and take the
+colour of the worst device inside them; click to expand, double-click to open a device, scroll to zoom.
+
+## 6c. Self-monitoring
+
+NetWatch checks itself every minute (*Settings → System → Self-monitoring*): free space on the data drive,
+polling backlog, dropped metric samples and alert signals, syslog/trap storms, expiry of the web certificate,
+backups, scheduled reports, notification delivery and Windows Event Forwarding. The results are states of the
+device *<server> (NetWatch)* (127.0.0.1, created automatically; do not delete it), so a failing check raises the
+built-in alert *NetWatch self-check failing* and goes through the normal notification channels. Thresholds are
+set in the same panel.
 
 ## 7. Troubleshooting
 

@@ -296,7 +296,7 @@ public static class DcEndpoints
     {
         var name = input.Name?.Trim();
         var page = input.Page?.Trim();
-        if (string.IsNullOrEmpty(name) || name.Length > 100 || string.IsNullOrEmpty(page) || page.Length > 64)
+        if (string.IsNullOrEmpty(name) || name.Length > 100 || string.IsNullOrEmpty(page) || page.Length > 32)
         {
             return Results.BadRequest(new { error = "A name (max 100 characters) and page are required." });
         }

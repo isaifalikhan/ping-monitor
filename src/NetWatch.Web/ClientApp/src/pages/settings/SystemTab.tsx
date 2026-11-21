@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { api } from '../../api/client';
-import type { ChannelStatus } from '../../api/types';
+import type { ChannelStatus, SelfCheck } from '../../api/types';
+import { BackupPanel, SelfCheckPanel } from './BackupPanel';
 import { ErrorBox } from '../../components/Modal';
 import { fmtAgo, fmtBytes, fmtNum } from '../../util/format';
 
@@ -15,6 +16,9 @@ interface SystemStatus {
   receivers: { syslogReceived: number; trapsReceived: number; stored: number; dropped: number; unknownSource: number; parseErrors: number; queued: number; listeners: Record<string, string> };
   notifications: ChannelStatus[];
   storage: { configDbBytes: number; metricsDbBytes: number; eventsDbBytes: number; diskFreeBytes: number; diskTotalBytes: number; dataPath: string };
+  selfChecks: SelfCheck[];
+  selfChecksUtc?: string | null;
+  selfDeviceId?: number | null;
 }
 
 /** Service self-monitoring: collector load, queues, database sizes and disk space. */
@@ -25,7 +29,9 @@ export function SystemTab() {
   if (!s) return <div className="empty">Loading…</div>;
   const diskPct = s.storage.diskTotalBytes ? (1 - s.storage.diskFreeBytes / s.storage.diskTotalBytes) * 100 : 0;
   return (
-    <div className="grid cols-2">
+    <>
+    <SelfCheckPanel checks={s.selfChecks} checkedUtc={s.selfChecksUtc} selfDeviceId={s.selfDeviceId} />
+    <div className="grid cols-2" style={{ marginBottom: 16 }}>
       <div className="card card-body">
         <h2 style={{ marginBottom: 10 }}>Service</h2>
         <dl className="kv">
@@ -141,5 +147,7 @@ export function SystemTab() {
         </dl>
       </div>
     </div>
+    <BackupPanel />
+    </>
   );
 }

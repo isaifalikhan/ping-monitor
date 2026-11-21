@@ -37,6 +37,7 @@ public sealed class SecurityMiddleware
         headers["Referrer-Policy"] = "no-referrer";
         headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()";
         headers["Cross-Origin-Opener-Policy"] = "same-origin";
+        headers["Cross-Origin-Resource-Policy"] = "same-origin";
         headers["Strict-Transport-Security"] = "max-age=31536000";
 
         var path = context.Request.Path;

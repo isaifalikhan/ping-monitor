@@ -27,4 +27,7 @@ public static class HttpExtensions
 public static class RateLimits
 {
     public const string Login = "login";
+
+    /// <summary>Expensive operations (reports, backups): 10 per minute per user.</summary>
+    public const string Heavy = "heavy";
 }

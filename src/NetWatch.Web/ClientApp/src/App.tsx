@@ -12,6 +12,9 @@ import { OverviewPage } from './pages/OverviewPage';
 import { ServersPage } from './pages/ServersPage';
 import { VmwarePage } from './pages/VmwarePage';
 import { DomainControllersPage } from './pages/DomainControllersPage';
+import { NocPage } from './pages/NocPage';
+import { ReportsPage } from './pages/ReportsPage';
+import { TopologyPage } from './pages/TopologyPage';
 import { SettingsPage } from './pages/settings/SettingsPage';
 import { SwitchesPage } from './pages/SwitchesPage';
 import { useTheme } from './theme/useTheme';
@@ -27,9 +30,22 @@ export function App() {
 
   return (
     <LiveProvider>
+      <Routes>
+        {/* NOC wall display: full screen, without the navigation. */}
+        <Route path="/noc" element={<NocPage />} />
+        <Route path="*" element={<MainLayout canAdmin={can('Admin')} />} />
+      </Routes>
+    </LiveProvider>
+  );
+}
+
+function MainLayout({ canAdmin }: { canAdmin: boolean }) {
+  return (
       <Layout>
         <Routes>
           <Route path="/" element={<OverviewPage />} />
+          <Route path="/topology" element={<TopologyPage />} />
+          <Route path="/reports" element={<ReportsPage />} />
           <Route path="/devices" element={<DevicesPage />} />
           <Route path="/devices/:id" element={<DeviceDetailPage />} />
           <Route path="/switches" element={<SwitchesPage />} />
@@ -39,10 +55,9 @@ export function App() {
           <Route path="/events" element={<EventsPage />} />
           <Route path="/alerts" element={<AlertsPage />} />
           <Route path="/account" element={<AccountPage />} />
-          {can('Admin') && <Route path="/settings" element={<SettingsPage />} />}
+          {canAdmin && <Route path="/settings" element={<SettingsPage />} />}
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </Layout>
-    </LiveProvider>
   );
 }

@@ -40,6 +40,10 @@ public sealed class SettingsService
 
     public DcSettings Dc => Get<DcSettings>(DcSettings.Key, s => s.Normalise());
 
+    public BackupSettings Backup => Get<BackupSettings>(BackupSettings.Key, s => s.Normalise());
+
+    public SelfMonitorSettings SelfMonitor => Get<SelfMonitorSettings>(SelfMonitorSettings.Key, s => s.Normalise());
+
     public T Get<T>(string key, Action<T>? normalise = null)
         where T : class, new()
     {

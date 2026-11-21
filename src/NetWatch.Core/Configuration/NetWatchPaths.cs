@@ -42,3 +42,6 @@ public sealed class NetWatchPaths
         }
     }
 }
+
+/// <summary>The HTTPS certificate the web console uses (for self-monitoring of its expiry).</summary>
+public sealed record ServerCertificateInfo(string? Subject, DateTime? NotAfterUtc, string? Thumbprint);

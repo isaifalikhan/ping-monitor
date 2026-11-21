@@ -39,6 +39,7 @@ public static class OverviewEndpoints
         app.MapGet("/api/overview", OverviewAsync).RequireAuthorization(Policies.Viewer);
         app.MapGet("/api/system/status", SystemStatusAsync).RequireAuthorization(Policies.Admin);
         app.MapGet("/api/system/info", (SettingsService s) => Info(s)).RequireAuthorization(Policies.Viewer);
+        app.MapGet("/api/topology", TopologyAsync).RequireAuthorization(Policies.Viewer);
     }
 
     internal static StatusCounts Count(IEnumerable<DeviceStatus> statuses)
@@ -129,6 +130,24 @@ public static class OverviewEndpoints
         });
     }
 
+    public sealed record TopologyNode(int Id, string Name, string IpAddress, DeviceType Type, DeviceStatus Status, Severity? WorstAlert, int? ParentId, string? GroupPath, string? UnreachableVia);
+
+    /// <summary>Devices with their upstream (parent) device, for the topology map.</summary>
+    private static async Task<IResult> TopologyAsync(NetWatchDbContext db, LiveStateCache live, IActiveAlertIndex alerts, InventoryCache inventory, IDependencyStatus dependencies, CancellationToken ct)
+    {
+        var devices = await db.Devices.AsNoTracking().Include(d => d.Tags).Where(d => d.IsEnabled).ToListAsync(ct);
+        var groups = await db.Groups.AsNoTracking().ToListAsync(ct);
+        var paths = DeviceStatusHelper.GroupPaths(groups);
+        var now = DateTime.UtcNow;
+        var ids = devices.Select(d => d.Id).ToHashSet();
+        return Results.Ok(devices.Select(d =>
+        {
+            var item = DeviceEndpoints.ToListItem(d, paths, live, alerts, inventory, dependencies, now);
+            return new TopologyNode(d.Id, d.Name, d.IpAddress, d.Type, item.Status, item.WorstAlert,
+                d.ParentDeviceId is { } p && ids.Contains(p) && p != d.Id ? p : null, item.GroupPath, item.UnreachableVia);
+        }));
+    }
+
     private static IResult SystemStatusAsync(
         CollectorStats stats,
         SqliteMetricStore metrics,
@@ -138,7 +157,9 @@ public static class OverviewEndpoints
         NetWatchPaths paths,
         ReceiverStats receivers,
         EventIngestService ingest,
-        NotificationDispatcher notifications)
+        NotificationDispatcher notifications,
+        Infrastructure.SelfMonitorService selfMonitor,
+        Data.Backup.BackupService backups)
     {
         long FileSize(string path)
         {
@@ -189,6 +210,10 @@ public static class OverviewEndpoints
                 listeners = receivers.ListenerSnapshot(),
             },
             notifications = notifications.Status,
+            selfChecks = selfMonitor.Latest,
+            selfChecksUtc = selfMonitor.LastRunUtc,
+            selfDeviceId = selfMonitor.SelfDeviceId,
+            backup = new { lastAttemptUtc = backups.LastAttemptUtc, lastError = backups.LastError, running = backups.Running, folder = backups.TargetFolder },
             storage = new
             {
                 configDbBytes = FileSize(paths.ConfigDb),

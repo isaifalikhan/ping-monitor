@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { Bell, BellOff, Boxes, Cable, HardDrive, LayoutDashboard, LogOut, Moon, Network, ScrollText, Server, Settings, ShieldCheck, Siren, Sun, Wifi, WifiOff } from 'lucide-react';
+import { Bell, BellOff, Boxes, Cable, FileText, GitFork, HardDrive, LayoutDashboard, LogOut, MonitorPlay, Moon, Network, ScrollText, Server, Settings, ShieldCheck, Siren, Sun, Wifi, WifiOff } from 'lucide-react';
 import { useEffect, useState, type ReactNode } from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
 import { api } from '../api/client';
@@ -147,6 +147,10 @@ export function Layout({ children }: { children: ReactNode }) {
             <ShieldCheck size={18} />
             <span>Domain controllers</span>
           </NavLink>
+          <NavLink to="/topology">
+            <GitFork size={18} />
+            <span>Topology</span>
+          </NavLink>
           <NavLink to="/events">
             <ScrollText size={18} />
             <span>Events &amp; logs</span>
@@ -155,6 +159,14 @@ export function Layout({ children }: { children: ReactNode }) {
             <Siren size={18} />
             <span>Alerts</span>
             {openAlerts > 0 && <span className="count">{openAlerts}</span>}
+          </NavLink>
+          <NavLink to="/reports">
+            <FileText size={18} />
+            <span>Reports</span>
+          </NavLink>
+          <NavLink to="/noc">
+            <MonitorPlay size={18} />
+            <span>NOC mode</span>
           </NavLink>
           {can('Admin') && (
             <NavLink to="/settings">

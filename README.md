@@ -19,12 +19,17 @@ Log, syslog forwarding, script, SMTP); sign-in with Active Directory accounts (L
 VMs, datastores and snapshots (age and size), CPU ready, VMware Tools, triggered vCenter alarms and events, VM →
 host → datastore mapping, a VMware page, VMware alert rules, and certificate pinning for self-signed vCenters.
 
-**Phase 4 (this release, 1.3.0):** Active Directory domain controller monitoring: Security-log collection (remote
+**Phase 4 (1.3.0):** Active Directory domain controller monitoring: Security-log collection (remote
 reads with an Event Log Readers account, or Windows Event Forwarding) for logons, failures, lockouts, account and
 group changes, admin logons, audit policy and log clearing; replication status per partner, DS/DFSR errors, AD
 services and clock skew to the PDC; brute-force, lockout, privileged-group, off-hours and replication alerts; a
 Domain controllers page with event viewer and saved searches, lockout tracker, group change log, replication
 matrix and audit-policy guidance.
+
+**Phase 5 (this release, 1.4.0):** PDF and CSV reports (availability, alert history, interface utilization,
+disk/datastore capacity, DC security, inventory) on demand and scheduled with e-mail delivery; NOC wall display;
+topology map; automatic online backups with verified offline restore; self-monitoring that alerts on disk space,
+polling backlog, storage, certificate expiry, backups, reports and notification failures; additional hardening.
 
 The earlier cloud version (Next.js + Supabase) is preserved at git tag `legacy-cloud-netwatch`.
 

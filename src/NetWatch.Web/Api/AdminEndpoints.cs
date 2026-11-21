@@ -386,6 +386,8 @@ public static class AdminEndpoints
             ldap = settings.Ldap,
             vmware = settings.Vmware,
             dc = settings.Dc,
+            backup = settings.Backup,
+            selfMonitor = settings.SelfMonitor,
         });
 
     private static async Task<IResult> SaveAsync<T>(string key, T value, Action<T> normalise, HttpContext http, SettingsService settings, AuditWriter audit, CancellationToken ct)

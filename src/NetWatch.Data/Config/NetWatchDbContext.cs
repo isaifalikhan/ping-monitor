@@ -37,6 +37,7 @@ public class NetWatchDbContext : DbContext
     public DbSet<DcInfo> DcInfos => Set<DcInfo>();
     public DbSet<DcReplicationLink> DcReplicationLinks => Set<DcReplicationLink>();
     public DbSet<SavedSearch> SavedSearches => Set<SavedSearch>();
+    public DbSet<ReportSchedule> ReportSchedules => Set<ReportSchedule>();
 
     protected override void ConfigureConventions(ModelConfigurationBuilder configurationBuilder)
     {
@@ -250,6 +251,18 @@ public class NetWatchDbContext : DbContext
             e.Property(x => x.Name).HasMaxLength(100);
             e.Property(x => x.QueryJson).HasMaxLength(4000);
             e.HasIndex(x => new { x.UserId, x.Page });
+        });
+
+        b.Entity<ReportSchedule>(e =>
+        {
+            e.ToTable("ReportSchedules");
+            e.Property(x => x.Name).HasMaxLength(100);
+            e.Property(x => x.TimeOfDay).HasMaxLength(5);
+            e.Property(x => x.EmailTo).HasMaxLength(1000);
+            e.Property(x => x.LastStatus).HasMaxLength(1000);
+            e.Property(x => x.LastFile).HasMaxLength(260);
+            e.Property(x => x.CreatedBy).HasMaxLength(100);
+            e.HasOne<DeviceGroup>().WithMany().HasForeignKey(x => x.GroupId).OnDelete(DeleteBehavior.SetNull);
         });
 
         b.Entity<MaintenanceWindow>(e =>

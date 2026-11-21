@@ -94,6 +94,7 @@ public static class StateKeys
     public const string VcenterAlarmRed = "vmware.alarm.red";
     public const string VcenterAlarmYellow = "vmware.alarm.yellow";
     public const string DcReplicationFailed = "dc.replication";
+    public const string SelfCheck = "netwatch.selfcheck";
 
     public static readonly IReadOnlyDictionary<string, string> DisplayNames = new Dictionary<string, string>
     {
@@ -113,6 +114,7 @@ public static class StateKeys
         [VcenterAlarmRed] = "vCenter alarm (red)",
         [VcenterAlarmYellow] = "vCenter alarm (yellow)",
         [DcReplicationFailed] = "AD replication failing (partner / naming context)",
+        [SelfCheck] = "NetWatch self-check failing (disk, polling, storage, backups, certificate …)",
     };
 }
 

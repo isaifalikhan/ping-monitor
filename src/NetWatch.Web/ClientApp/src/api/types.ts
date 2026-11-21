@@ -871,3 +871,94 @@ export interface DcSettings {
   workingHoursEnd: string;
   privilegedGroups: string[];
 }
+
+// ---- Phase 5: reports, backups, self-monitoring, topology
+
+export type ReportTypeName = 'Availability' | 'Alerts' | 'Interfaces' | 'Capacity' | 'Security' | 'Inventory';
+export type ReportFormatName = 'Pdf' | 'Csv';
+export type ReportFrequency = 'Daily' | 'Weekly' | 'Monthly';
+
+export interface ReportTypeInfo {
+  type: ReportTypeName;
+  name: string;
+  description: string;
+  hasPeriod: boolean;
+}
+
+export interface ReportFileInfo {
+  path: string;
+  name: string;
+  sizeBytes: number;
+  createdUtc: string;
+}
+
+export interface ReportSchedule {
+  id: number;
+  name: string;
+  isEnabled: boolean;
+  reportType: ReportTypeName;
+  format: ReportFormatName;
+  frequency: ReportFrequency;
+  timeOfDay: string;
+  dayOfWeek: number;
+  dayOfMonth: number;
+  groupId?: number | null;
+  emailTo?: string | null;
+  lastRunUtc?: string | null;
+  lastStatus?: string | null;
+  lastFile?: string | null;
+  nextRunUtc: string;
+  createdBy?: string | null;
+}
+
+export interface BackupInfo {
+  name: string;
+  sizeBytes: number;
+  createdUtc: string;
+  includesMetrics: boolean;
+  version?: string | null;
+  reason?: string | null;
+}
+
+export interface BackupSettings {
+  enabled: boolean;
+  dailyAt: string;
+  includeMetrics: boolean;
+  keepCount: number;
+  folder?: string | null;
+}
+
+export interface BackupOverview {
+  items: BackupInfo[];
+  settings: BackupSettings;
+  defaultFolder: string;
+  nextRunUtc?: string | null;
+  lastAttemptUtc?: string | null;
+  lastError?: string | null;
+  running: boolean;
+}
+
+export interface SelfCheck {
+  name: string;
+  ok: boolean;
+  detail: string;
+}
+
+export interface SelfMonitorSettings {
+  minFreeDiskPct: number;
+  minFreeDiskGb: number;
+  certificateWarnDays: number;
+  maxBackupAgeHours: number;
+}
+
+export interface TopologyNode {
+  id: number;
+  name: string;
+  ipAddress: string;
+  type: DeviceType;
+  status: DeviceStatus;
+  worstAlert?: Severity | null;
+  parentId?: number | null;
+  groupPath?: string | null;
+  unreachableVia?: string | null;
+}

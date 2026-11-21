@@ -30,6 +30,10 @@ public static class WebServiceCollectionExtensions
         services.AddSingleton<DiscoveryService>();
         services.AddSingleton<ILiveUpdatePublisher, SignalRLivePublisher>();
         services.AddHostedService<SummaryBroadcaster>();
+        services.AddSingleton<SelfMonitorService>();
+        services.AddHostedService(sp => sp.GetRequiredService<SelfMonitorService>());
+        services.AddSingleton<Reports.ReportService>();
+        services.AddHostedService<Reports.ReportScheduler>();
 
         services.AddAuthentication(SessionAuthenticationHandler.SchemeName)
             .AddScheme<Microsoft.AspNetCore.Authentication.AuthenticationSchemeOptions, SessionAuthenticationHandler>(SessionAuthenticationHandler.SchemeName, null);
@@ -44,6 +48,9 @@ public static class WebServiceCollectionExtensions
             o.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
             o.AddPolicy(RateLimits.Login, http => RateLimitPartition.GetFixedWindowLimiter(
                 http.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+                _ => new FixedWindowRateLimiterOptions { PermitLimit = 10, Window = TimeSpan.FromMinutes(1), QueueLimit = 0 }));
+            o.AddPolicy(RateLimits.Heavy, http => RateLimitPartition.GetFixedWindowLimiter(
+                http.User.Identity?.Name ?? http.Connection.RemoteIpAddress?.ToString() ?? "unknown",
                 _ => new FixedWindowRateLimiterOptions { PermitLimit = 10, Window = TimeSpan.FromMinutes(1), QueueLimit = 0 }));
         });
 
@@ -77,6 +84,8 @@ public static class WebServiceCollectionExtensions
         app.MapMaintenanceEndpoints();
         app.MapVmwareEndpoints();
         app.MapDcEndpoints();
+        app.MapBackupEndpoints();
+        app.MapReportEndpoints();
         app.MapHub<LiveHub>("/hubs/live");
 
         app.UseEmbeddedUi();

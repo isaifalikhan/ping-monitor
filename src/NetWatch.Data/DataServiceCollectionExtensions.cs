@@ -33,6 +33,8 @@ public static class DataServiceCollectionExtensions
         services.AddHostedService<MetricWriterService>();
         services.AddHostedService<MetricRollupService>();
         services.AddHostedService<RetentionService>();
+        services.AddSingleton<Backup.BackupService>();
+        services.AddHostedService(sp => sp.GetRequiredService<Backup.BackupService>());
         return services;
     }
 
