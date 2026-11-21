@@ -166,12 +166,10 @@ public static class TopologySuggester
             while (queue.Count > 0)
             {
                 var n = queue.Dequeue();
-                if (n != root && !CanBeParent(byId[n]))
-                {
-                    continue; // never route through a server
-                }
 
-                foreach (var m in adjacency[n].Order().Where(seen.Add))
+                // Never route through a server; a server can only be the parent of a VM linked to it directly.
+                var serverOnly = n != root && !CanBeParent(byId[n]);
+                foreach (var m in adjacency[n].Order().Where(m => (!serverOnly || byId[m].Type == DeviceType.VM) && seen.Add(m)))
                 {
                     via[m] = n;
                     queue.Enqueue(m);
