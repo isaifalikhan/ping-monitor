@@ -972,7 +972,19 @@ export interface DcSettings {
 
 // ---- Phase 5: reports, backups, self-monitoring, topology
 
-export type ReportTypeName = 'Availability' | 'Alerts' | 'Interfaces' | 'Capacity' | 'Security' | 'Inventory';
+export type ReportTypeName = 'Availability' | 'Alerts' | 'Interfaces' | 'Capacity' | 'Security' | 'Inventory' | 'Vmware';
+
+export interface ReportPreview {
+  title: string;
+  subtitle: string;
+  sections: {
+    heading: string;
+    note?: string | null;
+    summary: { label: string; value: string }[];
+    bars?: { max: number; items: { label: string; value: number; text: string }[] } | null;
+    table?: { headers: string[]; rows: string[][]; totalRows: number; numeric: number[]; empty?: string | null } | null;
+  }[];
+}
 export type ReportFormatName = 'Pdf' | 'Csv';
 export type ReportFrequency = 'Daily' | 'Weekly' | 'Monthly';
 

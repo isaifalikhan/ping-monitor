@@ -33,6 +33,7 @@ public static class ReportEndpoints
         var read = app.MapGroup("/api/reports").RequireAuthorization(Policies.Viewer);
         read.MapGet("/types", () => Results.Ok(ReportCatalog.Types.Select(t => new { type = t.Type.ToString(), name = t.Name, description = t.Description, hasPeriod = t.HasPeriod })));
         read.MapPost("/run", RunAsync).RequireRateLimiting(RateLimits.Heavy);
+        read.MapPost("/preview", PreviewAsync).RequireRateLimiting(RateLimits.Heavy);
         read.MapGet("/files", (ReportService reports) => Results.Ok(reports.ListFiles()));
         read.MapGet("/files/{month}/{file}", DownloadAsync);
         read.MapGet("/schedules", ListSchedulesAsync);
@@ -63,6 +64,44 @@ public static class ReportEndpoints
         await audit.WriteAsync(http.Actor(), "ReportGenerated", "Report", input.Type.ToString(),
             string.Create(CultureInfo.InvariantCulture, $"{input.Format}, {from:u} – {to:u}{(input.GroupId is { } g ? $", group {g}" : string.Empty)}"));
         return Results.File(content, mime, name);
+    }
+
+    /// <summary>The report as JSON sections (summary figures, bars, tables; tables capped at 200 rows) for the on-screen preview.</summary>
+    private static async Task<IResult> PreviewAsync(RunReportInput input, ReportService reports, NetWatchDbContext db, CancellationToken ct)
+    {
+        var to = input.ToUtc?.ToUniversalTime() ?? DateTime.UtcNow;
+        var from = input.FromUtc?.ToUniversalTime() ?? to.AddDays(-7);
+        if (from >= to || (to - from).TotalDays > MaxPeriodDays)
+        {
+            return Results.BadRequest(new { error = $"The period must be between a few minutes and {MaxPeriodDays} days." });
+        }
+
+        if (input.GroupId is { } gid && !await db.Groups.AnyAsync(g => g.Id == gid, ct))
+        {
+            return Results.BadRequest(new { error = "The selected group does not exist." });
+        }
+
+        var doc = await reports.BuildAsync(new ReportRequest(input.Type, from, to, input.GroupId), ct);
+        return Results.Ok(new
+        {
+            title = doc.Title,
+            subtitle = doc.Subtitle,
+            sections = doc.Sections.Select(s => new
+            {
+                heading = s.Heading,
+                note = s.Note,
+                summary = s.Summary.Select(x => new { label = x.Label, value = x.Value }),
+                bars = s.Bars is null ? null : new { max = s.Bars.Max, items = s.Bars.Items.Select(i => new { label = i.Label, value = i.Value, text = i.Text }) },
+                table = s.Table is null ? null : new
+                {
+                    headers = s.Table.Headers,
+                    rows = s.Table.Rows.Take(200),
+                    totalRows = s.Table.Rows.Count,
+                    numeric = s.Table.NumericColumns ?? new HashSet<int>(),
+                    empty = s.Table.Empty,
+                },
+            }),
+        });
     }
 
     private static IResult DownloadAsync(string month, string file, ReportService reports) =>

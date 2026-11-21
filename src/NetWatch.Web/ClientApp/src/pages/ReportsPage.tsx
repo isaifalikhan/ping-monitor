@@ -1,9 +1,9 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Download, Play, Trash2 } from 'lucide-react';
+import { Download, Eye, Play, Trash2 } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { api, downloadPost } from '../api/client';
-import type { Group, ReportFileInfo, ReportFormatName, ReportFrequency, ReportSchedule, ReportTypeInfo, ReportTypeName } from '../api/types';
+import type { Group, ReportFileInfo, ReportFormatName, ReportFrequency, ReportPreview, ReportSchedule, ReportTypeInfo, ReportTypeName } from '../api/types';
 import { useAuth } from '../auth/AuthContext';
 import { ErrorBox, Modal } from '../components/Modal';
 import { fmtAgo, fmtBytes, fmtDateTime } from '../util/format';
@@ -60,6 +60,7 @@ function RunTab({ types, groups }: { types: ReportTypeInfo[]; groups: Group[] })
   const [group, setGroup] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<unknown>(null);
+  const [preview, setPreview] = useState<ReportPreview | null>(null);
   const info = types.find((t) => t.type === type);
 
   const range = useMemo((): { fromUtc: string; toUtc: string } | null => {
@@ -88,8 +89,22 @@ function RunTab({ types, groups }: { types: ReportTypeInfo[]; groups: Group[] })
     }
   };
 
+  const showPreview = async () => {
+    setError(null);
+    setBusy(true);
+    try {
+      const r = range ?? { fromUtc: new Date(Date.now() - 7 * 86400_000).toISOString(), toUtc: new Date().toISOString() };
+      setPreview(await api.post<ReportPreview>('/api/reports/preview', { type, format, ...r, groupId: group ? Number(group) : null }));
+    } catch (e) {
+      setError(e);
+    } finally {
+      setBusy(false);
+    }
+  };
+
   return (
     <div className="grid cols-2" style={{ alignItems: 'start' }}>
+      {preview && <ReportPreviewDialog preview={preview} onClose={() => setPreview(null)} onDownload={() => void run()} />}
       <div className="card card-body">
         <h2 style={{ marginBottom: 12 }}>Create a report</h2>
         <ErrorBox error={error} />
@@ -143,9 +158,14 @@ function RunTab({ types, groups }: { types: ReportTypeInfo[]; groups: Group[] })
         <p className="muted" style={{ margin: '10px 0' }}>
           {info?.description}
         </p>
-        <button className="primary" disabled={busy || (period === 'custom' && !range)} onClick={() => void run()}>
-          <Download size={15} /> {busy ? 'Generating…' : 'Generate and download'}
-        </button>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button disabled={busy || (period === 'custom' && !range)} onClick={() => void showPreview()}>
+            <Eye size={15} /> Preview
+          </button>
+          <button className="primary" disabled={busy || (period === 'custom' && !range)} onClick={() => void run()}>
+            <Download size={15} /> {busy ? 'Generating…' : 'Generate and download'}
+          </button>
+        </div>
       </div>
       <div className="card card-body">
         <h2 style={{ marginBottom: 10 }}>Available reports</h2>
@@ -166,6 +186,84 @@ function RunTab({ types, groups }: { types: ReportTypeInfo[]; groups: Group[] })
         </p>
       </div>
     </div>
+  );
+}
+
+/** On-screen rendering of a report document (same sections as the PDF). */
+function ReportPreviewDialog({ preview, onClose, onDownload }: { preview: ReportPreview; onClose: () => void; onDownload: () => void }) {
+  return (
+    <Modal
+      title={preview.title}
+      onClose={onClose}
+      wide
+      footer={
+        <>
+          <button onClick={onClose}>Close</button>
+          <button className="primary" onClick={onDownload}>
+            <Download size={15} /> Download
+          </button>
+        </>
+      }
+    >
+      <p className="muted">{preview.subtitle}</p>
+      {preview.sections.map((s, i) => (
+        <section key={i} style={{ marginTop: 14 }}>
+          <h3>{s.heading}</h3>
+          {s.note && <p className="faint">{s.note}</p>}
+          {s.summary.length > 0 && (
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(170px, 1fr))', gap: 8, margin: '6px 0' }}>
+              {s.summary.map((x) => (
+                <div key={x.label} className="card card-body" style={{ padding: 8 }}>
+                  <div className="label">{x.label}</div>
+                  <strong>{x.value}</strong>
+                </div>
+              ))}
+            </div>
+          )}
+          {s.bars?.items.map((b) => (
+            <div key={b.label} style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 12 }}>
+              <span className="clip" style={{ width: 240 }}>
+                {b.label}
+              </span>
+              <span style={{ flex: 1, background: 'var(--bg-elev-2)', height: 8, borderRadius: 4 }}>
+                <span style={{ display: 'block', width: `${Math.min(100, (b.value / (s.bars!.max || 1)) * 100)}%`, height: 8, borderRadius: 4, background: 'var(--accent)' }} />
+              </span>
+              <span className="mono" style={{ width: 70, textAlign: 'right' }}>
+                {b.text}
+              </span>
+            </div>
+          ))}
+          {s.table && (
+            <div className="table-wrap" style={{ maxHeight: 360 }}>
+              <table className="data">
+                <thead>
+                  <tr>
+                    {s.table.headers.map((h, c) => (
+                      <th key={c} className={s.table!.numeric.includes(c) ? 'num' : undefined}>
+                        {h}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {s.table.rows.map((r, ri) => (
+                    <tr key={ri}>
+                      {r.map((cell, c) => (
+                        <td key={c} className={s.table!.numeric.includes(c) ? 'num' : undefined}>
+                          {cell}
+                        </td>
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              {s.table.rows.length === 0 && <div className="empty">{s.table.empty ?? 'No rows.'}</div>}
+              {s.table.totalRows > s.table.rows.length && <div className="faint">{s.table.totalRows - s.table.rows.length} more row(s) in the download.</div>}
+            </div>
+          )}
+        </section>
+      ))}
+    </Modal>
   );
 }
 
