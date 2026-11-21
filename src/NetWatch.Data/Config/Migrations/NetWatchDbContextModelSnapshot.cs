@@ -665,6 +665,70 @@ namespace NetWatch.Data.Config.Migrations
                     b.ToTable("MaintenanceWindows", (string)null);
                 });
 
+            modelBuilder.Entity("NetWatch.Core.Entities.NeighborLink", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("DeviceId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime>("FirstSeenUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("LastSeenUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int?>("LocalInterfaceId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("LocalPort")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Protocol")
+                        .IsRequired()
+                        .HasMaxLength(8)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("RemoteAddress")
+                        .HasMaxLength(64)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("RemoteChassisId")
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.Property<int?>("RemoteDeviceId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("RemoteName")
+                        .HasMaxLength(255)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("RemotePlatform")
+                        .HasMaxLength(255)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("RemotePort")
+                        .HasMaxLength(255)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("RemotePortDescription")
+                        .HasMaxLength(255)
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("DeviceId");
+
+                    b.HasIndex("RemoteDeviceId");
+
+                    b.ToTable("NeighborLinks", (string)null);
+                });
+
             modelBuilder.Entity("NetWatch.Core.Entities.NetInterface", b =>
                 {
                     b.Property<int>("Id")
@@ -681,6 +745,15 @@ namespace NetWatch.Data.Config.Migrations
                         .HasColumnType("TEXT");
 
                     b.Property<int>("DeviceId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int?>("Duplex")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<long?>("ExpectedSpeedBps")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("FlapCount24h")
                         .HasColumnType("INTEGER");
 
                     b.Property<int>("IfIndex")
@@ -1588,6 +1661,15 @@ namespace NetWatch.Data.Config.Migrations
                 {
                     b.HasOne("NetWatch.Core.Entities.Device", null)
                         .WithMany("Tags")
+                        .HasForeignKey("DeviceId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("NetWatch.Core.Entities.NeighborLink", b =>
+                {
+                    b.HasOne("NetWatch.Core.Entities.Device", null)
+                        .WithMany()
                         .HasForeignKey("DeviceId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();

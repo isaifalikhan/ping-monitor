@@ -134,6 +134,8 @@ public static class InterfaceCollector
         var outErr = await SafeWalk(client, Oids.IfOutErrors, ct);
         var inDisc = await SafeWalk(client, Oids.IfInDiscards, ct);
         var outDisc = await SafeWalk(client, Oids.IfOutDiscards, ct);
+        var duplex = await SafeWalk(client, Oids.Dot3StatsDuplexStatus, ct);
+        var lastChange = await SafeWalk(client, Oids.IfLastChange, ct);
 
         var result = new List<InterfaceCounters>(oper.Count);
         foreach (var (index, o) in oper)
@@ -153,7 +155,9 @@ public static class InterfaceCollector
                 SnmpValues.UInt64(outDisc.GetValueOrDefault(index)),
                 (int)(SnmpValues.Int64(o) ?? 4),
                 (int)(SnmpValues.Int64(admin.GetValueOrDefault(index)) ?? 0),
-                hc));
+                hc,
+                (int?)SnmpValues.Int64(duplex.GetValueOrDefault(index)),
+                SnmpValues.Int64(lastChange.GetValueOrDefault(index))));
         }
 
         return result;
@@ -179,9 +183,11 @@ public static class HealthCollector
 {
     public sealed record Health(double? CpuPct, double? MemPct, List<SensorReading> Sensors);
 
-    public static async Task<Health> ReadAsync(SnmpClient client, string? vendor, CancellationToken ct)
+    /// <param name="profile">Data-driven profile (built-in ArubaOS-CX or snmp-profiles.json); used instead of the vendor code.</param>
+    public static async Task<Health> ReadAsync(SnmpClient client, string? vendor, CancellationToken ct, SnmpHealthProfile? profile = null)
     {
-        Health health = vendor switch
+        // Generic profile for any other vendor: HOST-RESOURCES-MIB CPU/memory and ENTITY-SENSOR-MIB sensors below.
+        Health health = profile is not null ? await ProfileHealthReader.ReadAsync(client, profile, ct) : vendor switch
         {
             "Cisco" => await CiscoAsync(client, ct),
             "HP" => await HpAsync(client, ct),

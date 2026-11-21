@@ -176,6 +176,40 @@ public class NetInterface
     public bool IsImportant { get; set; }
     public bool IsMonitored { get; set; } = true;
     public DateTime LastSeenUtc { get; set; }
+
+    /// <summary>EtherLike-MIB dot3StatsDuplexStatus: 1 unknown, 2 half, 3 full; null when not reported.</summary>
+    public int? Duplex { get; set; }
+
+    /// <summary>Speed this port should negotiate; an up important port below it raises an alert. Null = no check.</summary>
+    public long? ExpectedSpeedBps { get; set; }
+
+    /// <summary>Link state changes in the last 24 hours (updated while it changes).</summary>
+    public int FlapCount24h { get; set; }
+}
+
+/// <summary>A neighbour discovered on a local port through LLDP or CDP (physical topology).</summary>
+public class NeighborLink
+{
+    public int Id { get; set; }
+    public int DeviceId { get; set; }
+    public int? LocalInterfaceId { get; set; }
+
+    /// <summary>Local port name as reported (ifName, or the LLDP port ID when it could not be matched).</summary>
+    public string LocalPort { get; set; } = string.Empty;
+
+    /// <summary>"LLDP" or "CDP".</summary>
+    public string Protocol { get; set; } = string.Empty;
+    public string? RemoteName { get; set; }
+    public string? RemoteChassisId { get; set; }
+    public string? RemotePort { get; set; }
+    public string? RemotePortDescription { get; set; }
+    public string? RemoteAddress { get; set; }
+    public string? RemotePlatform { get; set; }
+
+    /// <summary>The monitored device this neighbour was matched to (by IP, then name), if any.</summary>
+    public int? RemoteDeviceId { get; set; }
+    public DateTime FirstSeenUtc { get; set; }
+    public DateTime LastSeenUtc { get; set; }
 }
 
 /// <summary>Hardware sensor (temperature, fan, PSU) reported by the device.</summary>

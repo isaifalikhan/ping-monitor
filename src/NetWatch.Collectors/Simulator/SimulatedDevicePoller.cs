@@ -1,6 +1,8 @@
 using System.Collections.Concurrent;
+using NetWatch.Collectors.Inventory;
 using NetWatch.Collectors.Polling;
 using NetWatch.Collectors.Servers;
+using NetWatch.Collectors.Snmp;
 using NetWatch.Core;
 
 namespace NetWatch.Collectors.Simulator;
@@ -18,10 +20,12 @@ public sealed class SimulatedDevicePoller : IDevicePoller
     private readonly TimeProvider _time;
     private readonly SimulatedVcenter _vcenter = new();
     private readonly ConcurrentDictionary<int, SimulatedDomainController> _dcs = new();
+    private readonly Inventory.InventoryCache? _inventory;
 
-    public SimulatedDevicePoller(TimeProvider time)
+    public SimulatedDevicePoller(TimeProvider time, Inventory.InventoryCache? inventory = null)
     {
         _time = time;
+        _inventory = inventory;
     }
 
     /// <summary>Fault probabilities per poll. Exposed for tests; defaults give a few incidents per hour across ~180 devices.</summary>
@@ -46,6 +50,10 @@ public sealed class SimulatedDevicePoller : IDevicePoller
         public int FanFailPolls;
         public DateTime LastPollUtc;
         public SimServer? Server;
+
+        /// <summary>An access port that bounces up/down for a few minutes (link flap alerts).</summary>
+        public int FlappyPolls;
+        public int FlappyPort;
     }
 
     private sealed class SimVolume
@@ -81,6 +89,11 @@ public sealed class SimulatedDevicePoller : IDevicePoller
         public ulong OutOctets;
         public ulong InErrors;
         public ulong OutErrors;
+        public int LastOper;
+        public long LastChangeTicks;
+
+        /// <summary>dot3StatsDuplexStatus while up: 3 full, 2 half (a duplex mismatch on a few switches).</summary>
+        public int Duplex = 3;
     }
 
     public async Task<DevicePollResult> PollAsync(PollRequest request, CancellationToken ct)
@@ -156,6 +169,13 @@ public sealed class SimulatedDevicePoller : IDevicePoller
         result.MemPct = Math.Round(Math.Clamp(d.BaseMem + (diurnal * 5) + ((d.Rng.NextDouble() - 0.5) * 2), 5, 99), 1);
 
         // ---- interfaces
+        var uptimeTicks = (long)((now - d.BootUtc).TotalSeconds * 100);
+        if (d.Type == DeviceType.Switch && d.FlappyPolls == 0 && d.Rng.NextDouble() < 0.0004)
+        {
+            d.FlappyPolls = 10;
+            d.FlappyPort = d.Rng.Next(1, 49);
+        }
+
         foreach (var p in d.Ports)
         {
             if (p.FlapPolls == 0 && p.Spec.IsUplink && d.Rng.NextDouble() < FlapProbability)
@@ -170,6 +190,17 @@ public sealed class SimulatedDevicePoller : IDevicePoller
             }
 
             var operUp = p.AdminUp && p.Connected && !flapping;
+            if (d.FlappyPolls > 0 && p.Spec.IfIndex == d.FlappyPort && p.AdminUp)
+            {
+                operUp = d.FlappyPolls % 2 == 0;
+            }
+
+            var oper = operUp ? 1 : 2;
+            if (oper != p.LastOper)
+            {
+                p.LastChangeTicks = Math.Max(0, uptimeTicks - d.Rng.Next(0, 3000));
+                p.LastOper = oper;
+            }
             if (operUp)
             {
                 var util = Math.Clamp(p.BaseUtil * (0.3 + (diurnal * 1.2)) * (0.85 + (d.Rng.NextDouble() * 0.3)), 0, 0.98);
@@ -184,7 +215,17 @@ public sealed class SimulatedDevicePoller : IDevicePoller
             }
 
             result.Interfaces.Add(new InterfaceCounters(p.Spec.IfIndex, p.InOctets, p.OutOctets, p.InErrors, p.OutErrors, 0, 0,
-                operUp ? 1 : 2, p.AdminUp ? 1 : 2, HighCapacity: true));
+                oper, p.AdminUp ? 1 : 2, HighCapacity: true, Duplex: operUp ? p.Duplex : 1, LastChangeTicks: p.LastChangeTicks));
+        }
+
+        if (d.FlappyPolls > 0)
+        {
+            d.FlappyPolls--;
+        }
+
+        if (request.ReadNeighbors)
+        {
+            result.Neighbors = SimulateNeighbors(request.Device);
         }
 
         if (request.RefreshInterfaces)
@@ -406,6 +447,49 @@ public sealed class SimulatedDevicePoller : IDevicePoller
         _ => service,
     };
 
+    /// <summary>
+    /// LLDP neighbours from the simulated topology: the uplink Te1/1/1 faces the parent device, and children hang
+    /// off the access ports in order (switch children on their own Te1/1/1, servers on NIC1). Cisco switches report
+    /// their switch neighbours by CDP as well, which the parser de-duplicates.
+    /// </summary>
+    internal List<NeighborReading> SimulateNeighbors(DeviceSnapshot device)
+    {
+        var result = new List<NeighborReading>();
+        if (_inventory is null)
+        {
+            return result;
+        }
+
+        static string RemotePortOf(DeviceSnapshot d) => d.Type == DeviceType.Switch ? "Te1/1/1" : d.Type is DeviceType.Server or DeviceType.DomainController ? "NIC1" : "eth0";
+        static string Mac(int id) => $"00:50:56:{id % 256:X2}:00:31";
+
+        if (device.ParentDeviceId is { } parentId && _inventory.GetSnapshot(parentId) is { } parent)
+        {
+            var siblings = _inventory.All.Where(x => x.ParentDeviceId == parentId).OrderBy(x => x.Id).ToList();
+            var slot = siblings.FindIndex(x => x.Id == device.Id) + 1;
+            result.Add(new NeighborReading("LLDP", 49, null, "Te1/1/1", "TenGigabitEthernet1/1/1", $"{parent.Name}.sim.local", Mac(parent.Id),
+                slot is > 0 and <= 48 ? $"Gi1/0/{slot}" : "Te1/1/2", null, parent.IpAddress, SimulatedTopology.VendorFor(parent.Type, parent.Id).SysDescription));
+        }
+
+        var children = _inventory.All.Where(x => x.ParentDeviceId == device.Id).OrderBy(x => x.Id).Take(48).ToList();
+        for (var i = 0; i < children.Count; i++)
+        {
+            var c = children[i];
+            result.Add(new NeighborReading("LLDP", i + 1, null, $"Gi1/0/{i + 1}", $"GigabitEthernet1/0/{i + 1}", $"{c.Name}.sim.local", Mac(c.Id), RemotePortOf(c),
+                null, c.IpAddress, SimulatedTopology.VendorFor(c.Type, c.Id).SysDescription));
+        }
+
+        if (SimulatedTopology.VendorFor(device.Type, device.Id).Vendor == "Cisco")
+        {
+            foreach (var n in result.Where(n => n.RemotePort == "Te1/1/1" || n.LocalPortNum == 49).ToList())
+            {
+                result.Add(n with { Protocol = "CDP", LocalIfIndex = n.LocalPortNum, LocalPortId = null, LocalPortDesc = null, RemoteChassisId = null, RemoteName = n.RemoteName!.Split('.')[0] });
+            }
+        }
+
+        return NeighborParser.Deduplicate(result);
+    }
+
     private static SimDevice Create(int id, DeviceType type)
     {
         var rng = new Random(id * 7919);
@@ -423,6 +507,12 @@ public sealed class SimulatedDevicePoller : IDevicePoller
         if (type == DeviceType.Switch && id % 17 == 0)
         {
             ports[^1].BaseUtil = 0.75;
+        }
+
+        // A few switches have a duplex mismatch on an uplink (half-duplex alert on an important port).
+        if (type == DeviceType.Switch && id % 29 == 0)
+        {
+            ports[^2].Duplex = 2;
         }
 
         return new SimDevice

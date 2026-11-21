@@ -24,7 +24,8 @@ public sealed record PollRequest(
     Servers.ServerPollRequest? Server = null,
     bool SnmpStorage = false,
     Vmware.VmwarePollRequest? Vmware = null,
-    DomainControllers.DcPollRequest? Dc = null);
+    DomainControllers.DcPollRequest? Dc = null,
+    bool ReadNeighbors = false);
 
 /// <summary>Raw interface counters and status from one poll.</summary>
 public sealed record InterfaceCounters(
@@ -37,7 +38,9 @@ public sealed record InterfaceCounters(
     ulong? OutDiscards,
     int OperStatus,
     int AdminStatus,
-    bool HighCapacity);
+    bool HighCapacity,
+    int? Duplex = null,
+    long? LastChangeTicks = null);
 
 /// <summary>Interface table row (metadata).</summary>
 public sealed record InterfaceMetadata(
@@ -86,6 +89,9 @@ public sealed class DevicePollResult
 
     /// <summary>Set only when inventory was refreshed this cycle.</summary>
     public DeviceInventoryInfo? Inventory { get; set; }
+
+    /// <summary>LLDP/CDP neighbours, read together with the interface table (null = not read this cycle).</summary>
+    public List<Snmp.NeighborReading>? Neighbors { get; set; }
 
     /// <summary>Server facts (WinRM/WMI, SSH or SNMP storage), or null for network devices.</summary>
     public Servers.ServerPollData? Server { get; set; }

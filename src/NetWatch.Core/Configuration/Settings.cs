@@ -23,6 +23,13 @@ public sealed class MonitoringSettings
     /// <summary>How often vendor/model/serial/firmware are re-read.</summary>
     public int InventoryRefreshHours { get; set; } = 24;
 
+    /// <summary>A port is flapping after this many up/down changes within <see cref="FlapWindowMin"/>.</summary>
+    public int FlapChanges { get; set; } = 4;
+    public int FlapWindowMin { get; set; } = 10;
+
+    /// <summary>Read LLDP and CDP neighbours with the interface table (topology map, dependency suggestions).</summary>
+    public bool DiscoverNeighbors { get; set; } = true;
+
     public void Normalise()
     {
         DefaultPollIntervalSec = Math.Clamp(DefaultPollIntervalSec, 15, 3600);
@@ -34,6 +41,8 @@ public sealed class MonitoringSettings
         MaxConcurrentPolls = Math.Clamp(MaxConcurrentPolls, 1, 512);
         InterfaceMetadataRefreshMin = Math.Clamp(InterfaceMetadataRefreshMin, 5, 1440);
         InventoryRefreshHours = Math.Clamp(InventoryRefreshHours, 1, 168);
+        FlapChanges = Math.Clamp(FlapChanges, 2, 100);
+        FlapWindowMin = Math.Clamp(FlapWindowMin, 2, 240);
     }
 }
 

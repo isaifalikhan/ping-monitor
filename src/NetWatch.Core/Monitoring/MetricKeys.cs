@@ -80,6 +80,9 @@ public static class StateKeys
 {
     public const string DeviceDown = "device.down";
     public const string InterfaceDown = "iface.down";
+    public const string InterfaceFlapping = "iface.flapping";
+    public const string InterfaceHalfDuplex = "iface.duplex";
+    public const string InterfaceSpeedLow = "iface.speed";
     public const string SensorProblem = "sensor.problem";
     public const string SnmpUnreachable = "snmp.unreachable";
     public const string ServiceDown = "service.down";
@@ -102,6 +105,9 @@ public static class StateKeys
     {
         [DeviceDown] = "Device down",
         [InterfaceDown] = "Interface down",
+        [InterfaceFlapping] = "Interface flapping (link up/down changes)",
+        [InterfaceHalfDuplex] = "Interface running half duplex",
+        [InterfaceSpeedLow] = "Interface below its expected speed",
         [SensorProblem] = "Hardware sensor problem",
         [SnmpUnreachable] = "SNMP not responding",
         [ServiceDown] = "Watched service not running",

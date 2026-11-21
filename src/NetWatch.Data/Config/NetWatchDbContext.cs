@@ -21,6 +21,7 @@ public class NetWatchDbContext : DbContext
     public DbSet<DeviceTag> DeviceTags => Set<DeviceTag>();
     public DbSet<DeviceCredential> DeviceCredentials => Set<DeviceCredential>();
     public DbSet<NetInterface> Interfaces => Set<NetInterface>();
+    public DbSet<NeighborLink> NeighborLinks => Set<NeighborLink>();
     public DbSet<Sensor> Sensors => Set<Sensor>();
     public DbSet<AlertRule> AlertRules => Set<AlertRule>();
     public DbSet<Alert> Alerts => Set<Alert>();
@@ -297,6 +298,22 @@ public class NetWatchDbContext : DbContext
             e.ToTable("Interfaces");
             e.Property(x => x.Name).HasMaxLength(200);
             e.HasIndex(x => new { x.DeviceId, x.IfIndex }).IsUnique();
+        });
+
+        b.Entity<NeighborLink>(e =>
+        {
+            e.ToTable("NeighborLinks");
+            e.HasOne<Device>().WithMany().HasForeignKey(x => x.DeviceId).OnDelete(DeleteBehavior.Cascade);
+            e.Property(x => x.LocalPort).HasMaxLength(255);
+            e.Property(x => x.Protocol).HasMaxLength(8);
+            e.Property(x => x.RemoteName).HasMaxLength(255);
+            e.Property(x => x.RemoteChassisId).HasMaxLength(100);
+            e.Property(x => x.RemotePort).HasMaxLength(255);
+            e.Property(x => x.RemotePortDescription).HasMaxLength(255);
+            e.Property(x => x.RemoteAddress).HasMaxLength(64);
+            e.Property(x => x.RemotePlatform).HasMaxLength(255);
+            e.HasIndex(x => x.DeviceId);
+            e.HasIndex(x => x.RemoteDeviceId);
         });
 
         b.Entity<Sensor>(e =>

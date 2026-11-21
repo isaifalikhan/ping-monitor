@@ -19,9 +19,12 @@ public sealed class NetworkDevicePoller : IDevicePoller
     private readonly DomainControllers.IDcCollector _dc;
     private readonly TimeProvider _time;
     private readonly ILogger<NetworkDevicePoller> _logger;
+    private readonly SnmpHealthProfileStore _profiles;
 
-    public NetworkDevicePoller(IServerCollector servers, Vmware.IVmwareCollector vmware, DomainControllers.IDcCollector dc, TimeProvider time, ILogger<NetworkDevicePoller> logger)
+    public NetworkDevicePoller(IServerCollector servers, Vmware.IVmwareCollector vmware, DomainControllers.IDcCollector dc, TimeProvider time, ILogger<NetworkDevicePoller> logger,
+        SnmpHealthProfileStore? profiles = null)
     {
+        _profiles = profiles ?? new SnmpHealthProfileStore();
         _servers = servers;
         _vmware = vmware;
         _dc = dc;
@@ -102,6 +105,7 @@ public sealed class NetworkDevicePoller : IDevicePoller
     {
         var client = new SnmpClient(ip, request.Snmp!, request.SnmpTimeoutMs, request.SnmpRetries);
         string? vendor;
+        string? objectId;
         try
         {
             var sys = await client.GetAsync([Oids.SysUpTime, Oids.SysObjectId], ct);
@@ -112,7 +116,8 @@ public sealed class NetworkDevicePoller : IDevicePoller
 
             result.SnmpOk = true;
             result.UptimeSec = (long?)(SnmpValues.UInt64(sys[Oids.SysUpTime]) / 100);
-            vendor = VendorCatalog.VendorFromSysObjectId(SnmpValues.Text(sys.GetValueOrDefault(Oids.SysObjectId)));
+            objectId = SnmpValues.Text(sys.GetValueOrDefault(Oids.SysObjectId));
+            vendor = VendorCatalog.VendorFromSysObjectId(objectId);
         }
         catch (Exception ex) when (ex is SnmpException or TimeoutException)
         {
@@ -131,10 +136,15 @@ public sealed class NetworkDevicePoller : IDevicePoller
             await Section("interface table", async () => result.InterfaceMetadata = await InterfaceCollector.ReadMetadataAsync(client, ct));
         }
 
+        if (request.ReadNeighbors)
+        {
+            await Section("LLDP/CDP neighbours", async () => result.Neighbors = await NeighborCollector.ReadAsync(client, ct));
+        }
+
         await Section("interface counters", async () => result.Interfaces.AddRange(await InterfaceCollector.ReadCountersAsync(client, ct)));
         await Section("health", async () =>
         {
-            var health = await HealthCollector.ReadAsync(client, vendor, ct);
+            var health = await HealthCollector.ReadAsync(client, vendor, ct, _profiles.Find(vendor, objectId));
             result.CpuPct = health.CpuPct;
             result.MemPct = health.MemPct;
             result.Sensors.AddRange(health.Sensors);
