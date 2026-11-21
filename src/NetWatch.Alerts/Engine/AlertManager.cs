@@ -390,8 +390,9 @@ public sealed class AlertManager : BackgroundService, IAlertSignalSink, IActiveA
         }
         catch (DbUpdateException ex)
         {
-            // Unique open-alert index violated: another writer opened it meanwhile. Log and skip.
-            _logger.LogWarning(ex, "Open alert already exists for {DedupKey}", t.DedupKey);
+            // Unique open-alert index violated (another writer opened it meanwhile), or the device was deleted while
+            // its signals were queued (foreign key). Log and skip; the engine continues.
+            _logger.LogWarning(ex, "Alert {DedupKey} not stored: an open alert already exists or device {DeviceId} was deleted", t.DedupKey, t.DeviceId);
             db.ChangeTracker.Clear();
             return null;
         }

@@ -24,7 +24,8 @@ public sealed class PollScheduler : BackgroundService
     private readonly TimeProvider _time;
     private readonly ILogger<PollScheduler> _logger;
     private readonly ConcurrentDictionary<int, DateTime> _nextDue = new();
-    private readonly ConcurrentDictionary<int, byte> _inFlight = new();
+    /// <summary>Devices queued or being polled: when queued, and when a worker started (0 = still queued).</summary>
+    private readonly ConcurrentDictionary<int, (long QueuedTs, long StartedTs)> _inFlight = new();
     private readonly Channel<DeviceSnapshot> _queue = Channel.CreateUnbounded<DeviceSnapshot>(new UnboundedChannelOptions { SingleWriter = true });
 
     public PollScheduler(
@@ -99,9 +100,14 @@ public sealed class PollScheduler : BackgroundService
                 continue;
             }
 
-            if (_inFlight.ContainsKey(device.Id))
+            if (_inFlight.TryGetValue(device.Id, out var busy))
             {
                 _stats.Overrun();
+                var queuedFor = _time.GetElapsedTime(busy.QueuedTs);
+                var running = busy.StartedTs == 0 ? TimeSpan.Zero : _time.GetElapsedTime(busy.StartedTs);
+                _logger.LogWarning(
+                    "Poll overrun: {Device} ({Ip}) is due again but its previous poll is still {Stage} ({QueuedSec:0.0} s since queued, {RunningSec:0.0} s running, interval {Interval} s); this cycle is skipped",
+                    device.Name, device.IpAddress, busy.StartedTs == 0 ? "waiting for a worker" : "running", queuedFor.TotalSeconds, running.TotalSeconds, device.PollIntervalSec);
                 _nextDue[device.Id] = now.AddSeconds(device.PollIntervalSec);
                 continue;
             }
@@ -114,7 +120,7 @@ public sealed class PollScheduler : BackgroundService
             }
 
             _nextDue[device.Id] = next;
-            _inFlight[device.Id] = 0;
+            _inFlight[device.Id] = (_time.GetTimestamp(), 0);
             _stats.Queue();
             _queue.Writer.TryWrite(device);
         }
@@ -139,6 +145,11 @@ public sealed class PollScheduler : BackgroundService
 
             _stats.Start();
             var started = _time.GetTimestamp();
+            if (_inFlight.TryGetValue(device.Id, out var queued))
+            {
+                _inFlight[device.Id] = (queued.QueuedTs, started);
+            }
+
             var failed = false;
             try
             {

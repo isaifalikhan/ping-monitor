@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Net.Sockets;
 using System.Text;
 using System.Threading.Channels;
 using Microsoft.Extensions.Hosting;
@@ -102,7 +103,7 @@ public sealed class NotificationDispatcher : BackgroundService, INotificationSin
             var items = batch.Where(n => Wanted(n, s, s.SyslogForwardMinSeverity)).ToList();
             if (items.Count > 0)
             {
-                await TryAsync(Syslog, () => SyslogForwardChannel.SendAsync(items, s, ct));
+                await TryAsync(Syslog, () => SyslogForwardChannel.SendAsync(items, s, ct), ct, retry: true);
             }
         }
 
@@ -120,13 +121,13 @@ public sealed class NotificationDispatcher : BackgroundService, INotificationSin
             if (mails.Count >= DigestThreshold)
             {
                 var (subject, body) = Digest(mails);
-                await TryAsync(Smtp, () => SmtpChannel.SendAsync(subject, body, s, _protector, ct));
+                await TryAsync(Smtp, () => SmtpChannel.SendAsync(subject, body, s, _protector, ct), ct, retry: true);
             }
             else
             {
                 foreach (var n in mails)
                 {
-                    await TryAsync(Smtp, () => SmtpChannel.SendAsync(NotificationText.Subject(n), NotificationText.Body(n), s, _protector, ct));
+                    await TryAsync(Smtp, () => SmtpChannel.SendAsync(NotificationText.Subject(n), NotificationText.Body(n), s, _protector, ct), ct, retry: true);
                 }
             }
         }
@@ -187,17 +188,49 @@ public sealed class NotificationDispatcher : BackgroundService, INotificationSin
         }
     }
 
-    private async Task TryAsync(string channel, Func<Task> send)
+    /// <summary>Waits between delivery attempts over the network channels (SMTP, syslog) after a transient failure.</summary>
+    internal IReadOnlyList<TimeSpan> RetryDelays { get; init; } = [TimeSpan.FromSeconds(10), TimeSpan.FromSeconds(60)];
+
+    /// <summary>Connection-level failures worth another attempt (relay restarting, network blip, 4xx answer).</summary>
+    internal static bool IsTransient(Exception ex) => ex switch
     {
-        try
+        SocketException or IOException or TimeoutException or MailKit.ProtocolException or MailKit.ServiceNotConnectedException => true,
+        MailKit.Net.Smtp.SmtpCommandException smtp => (int)smtp.StatusCode is >= 400 and < 500,
+        OperationCanceledException => true, // our own connect timeout
+        _ => false,
+    };
+
+    private async Task TryAsync(string channel, Func<Task> send, CancellationToken ct = default, bool retry = false)
+    {
+        for (var attempt = 0; ; attempt++)
         {
-            await send();
-            Record(channel, null);
-        }
-        catch (Exception ex)
-        {
-            Record(channel, ex.Message);
-            _logger.LogWarning(ex, "Notification channel {Channel} failed", channel);
+            try
+            {
+                await send();
+                Record(channel, null);
+                return;
+            }
+            catch (Exception ex) when (!ct.IsCancellationRequested)
+            {
+                if (retry && attempt < RetryDelays.Count && IsTransient(ex))
+                {
+                    _logger.LogInformation("Notification channel {Channel} failed ({Error}); retrying in {Delay} s", channel, ex.Message, RetryDelays[attempt].TotalSeconds);
+                    try
+                    {
+                        await Task.Delay(RetryDelays[attempt], ct);
+                    }
+                    catch (OperationCanceledException)
+                    {
+                        return;
+                    }
+
+                    continue;
+                }
+
+                Record(channel, ex.Message);
+                _logger.LogWarning(ex, "Notification channel {Channel} failed", channel);
+                return;
+            }
         }
     }
 

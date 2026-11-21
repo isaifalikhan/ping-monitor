@@ -138,9 +138,10 @@ Use dedicated, read-only accounts for monitoring:
 | Active Directory sign-in | None stored: users bind with their own account. Use LDAPS (636) with the DC certificate trusted on the NetWatch server |
 | SMTP relay | Optional; an authenticated relay account if the relay requires it |
 
-Device credentials are encrypted with Windows DPAPI (machine scope). They can only be decrypted on this server:
-when you move NetWatch to another server, the credentials must be re-entered (see the admin guide, *Backup and
-restore*).
+Device credentials are encrypted with Windows DPAPI (machine scope). They can only be decrypted on this server.
+To move NetWatch to another server, make a *Back up for another server* backup (credentials re-encrypted with a
+password you choose) and restore it there with `--restore <file> --restore-password` or from the web console; see
+[backup-restore-guide.md](backup-restore-guide.md). With an ordinary backup the credentials must be re-entered.
 
 ## 6. Upgrade
 

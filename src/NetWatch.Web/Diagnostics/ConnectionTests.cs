@@ -158,7 +158,7 @@ public sealed class ConnectionTestService
         }
         catch (Exception ex) when (ex is SnmpException or TimeoutException)
         {
-            steps.Add(new ConnectionTestStep("SNMP system group", false, Hint(ex.Message)));
+            steps.Add(new ConnectionTestStep("SNMP system group", false, SnmpHint(ex)));
             return "No SNMP answer";
         }
 
@@ -167,7 +167,26 @@ public sealed class ConnectionTestService
             names.Count > 0 ? $"{names.Count} interfaces, e.g. {string.Join(", ", names.Values.Take(5).Select(SnmpValues.Text))}" : "the interface table is empty or not in the SNMP view"));
         return names.Count > 0 ? $"SNMP OK, {names.Count} interfaces" : "SNMP answers, no interfaces";
 
-        static string Hint(string message) => message.Contains("timed out", StringComparison.OrdinalIgnoreCase) || message.Contains("Timeout", StringComparison.Ordinal)
+    }
+
+    /// <summary>Readable reason for a failed SNMP request (BUG-004: a closed UDP port used to show the raw socket text).</summary>
+    internal static string SnmpHint(Exception ex)
+    {
+        var message = ex.Message.Trim();
+        for (var e = ex; e is not null; e = e.InnerException)
+        {
+            if (e is System.Net.Sockets.SocketException { SocketErrorCode: System.Net.Sockets.SocketError.ConnectionReset or System.Net.Sockets.SocketError.ConnectionRefused })
+            {
+                return "UDP 161 is closed on the target (ICMP port unreachable): the SNMP agent is not running or not enabled — enable SNMP on the device";
+            }
+        }
+
+        if (message.Contains("forcibly closed", StringComparison.OrdinalIgnoreCase))
+        {
+            return "UDP 161 is closed on the target (ICMP port unreachable): the SNMP agent is not running or not enabled — enable SNMP on the device";
+        }
+
+        return message.Contains("timed out", StringComparison.OrdinalIgnoreCase) || message.Contains("Timeout", StringComparison.Ordinal)
             ? $"{message} — check the community/v3 user, the switch's SNMP ACL (the NetWatch server's IP) and UDP 161 on firewalls"
             : message;
     }
