@@ -9,7 +9,7 @@ export type Severity = 'Info' | 'Warning' | 'Major' | 'Critical';
 export const SEVERITIES: Severity[] = ['Info', 'Warning', 'Major', 'Critical'];
 export type AlertState = 'Active' | 'Acknowledged' | 'Resolved' | 'Closed';
 export type Role = 'Admin' | 'Operator' | 'Viewer';
-export type CredentialKind = 'SnmpV2c' | 'SnmpV3' | 'Windows' | 'Ssh' | 'VCenter';
+export type CredentialKind = 'SnmpV2c' | 'SnmpV3' | 'Windows' | 'Ssh' | 'VCenter' | 'Redfish';
 export type GroupKind = 'Site' | 'Building' | 'Floor' | 'Rack' | 'Logical';
 export const GROUP_KINDS: GroupKind[] = ['Site', 'Building', 'Floor', 'Rack', 'Logical'];
 export type RuleType = 'Threshold' | 'StateChange' | 'EventMatch' | 'CountInWindow' | 'Absence';
@@ -78,6 +78,8 @@ export interface DeviceDetail extends Omit<DeviceListItem, 'tags' | 'os'> {
   watchedServices: string[];
   sshHostKeyFingerprint?: string | null;
   tlsThumbprint?: string | null;
+  bmcAddress?: string | null;
+  bmcTlsThumbprint?: string | null;
 }
 
 export interface DeviceInput {
@@ -97,6 +99,8 @@ export interface DeviceInput {
   managementCredentialId?: number | null;
   watchedServices?: string[];
   vcenterCredentialId?: number | null;
+  bmcAddress?: string | null;
+  bmcCredentialId?: number | null;
 }
 
 export interface NetInterface {
@@ -485,6 +489,35 @@ export interface ServerDetail {
   info?: ServerInfo | null;
   volumes: Volume[];
   services: WatchedService[];
+  gpus?: GpuInfo[];
+  hardware?: HardwareComponentInfo[];
+}
+
+export interface GpuInfo {
+  index: number;
+  name: string;
+  vendor?: string | null;
+  driverVersion?: string | null;
+  utilizationPct?: number | null;
+  memoryUsedMb?: number | null;
+  memoryTotalMb?: number | null;
+  temperatureC?: number | null;
+  powerW?: number | null;
+  fanPct?: number | null;
+  problem?: string | null;
+  lastSeenUtc: string;
+}
+
+export interface HardwareComponentInfo {
+  source: string;
+  category: string;
+  name: string;
+  health?: string | null;
+  state?: string | null;
+  reading?: number | null;
+  unit?: string | null;
+  details?: string | null;
+  lastSeenUtc: string;
 }
 
 export interface SeriesInfo {

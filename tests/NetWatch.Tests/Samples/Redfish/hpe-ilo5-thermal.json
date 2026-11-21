@@ -1,0 +1,17 @@
+{
+  "@odata.context": "/redfish/v1/$metadata#Thermal.Thermal",
+  "@odata.id": "/redfish/v1/Chassis/1/Thermal/",
+  "@odata.type": "#Thermal.v1_1_0.Thermal",
+  "Id": "Thermal",
+  "Fans": [
+    { "@odata.id": "/redfish/v1/Chassis/1/Thermal/#Fans/0", "MemberId": "0", "Name": "Fan 1", "Oem": { "Hpe": { "Location": "System", "Redundant": true, "HotPluggable": true } }, "Reading": 30, "ReadingUnits": "Percent", "Status": { "Health": "OK", "State": "Enabled" } },
+    { "@odata.id": "/redfish/v1/Chassis/1/Thermal/#Fans/1", "MemberId": "1", "Name": "Fan 2", "Reading": 0, "ReadingUnits": "Percent", "Status": { "Health": "Critical", "State": "Enabled" } },
+    { "@odata.id": "/redfish/v1/Chassis/1/Thermal/#Fans/6", "MemberId": "6", "Name": "Fan 7", "Reading": 0, "ReadingUnits": "Percent", "Status": { "State": "Absent" } }
+  ],
+  "Name": "Thermal",
+  "Temperatures": [
+    { "@odata.id": "/redfish/v1/Chassis/1/Thermal/#Temperatures/0", "MemberId": "0", "Name": "01-Inlet Ambient", "PhysicalContext": "Intake", "ReadingCelsius": 22, "SensorNumber": 1, "Status": { "Health": "OK", "State": "Enabled" }, "UpperThresholdCritical": 42, "UpperThresholdFatal": 47 },
+    { "@odata.id": "/redfish/v1/Chassis/1/Thermal/#Temperatures/1", "MemberId": "1", "Name": "02-CPU 1", "PhysicalContext": "CPU", "ReadingCelsius": 40, "SensorNumber": 2, "Status": { "Health": "OK", "State": "Enabled" }, "UpperThresholdCritical": 70, "UpperThresholdFatal": null },
+    { "@odata.id": "/redfish/v1/Chassis/1/Thermal/#Temperatures/9", "MemberId": "9", "Name": "10-P2 DIMM 1-8", "ReadingCelsius": 0, "Status": { "State": "Absent" } }
+  ]
+}

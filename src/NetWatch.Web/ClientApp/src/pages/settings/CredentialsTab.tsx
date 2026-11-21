@@ -12,6 +12,7 @@ const KINDS: { value: CredentialKind; label: string }[] = [
   { value: 'Windows', label: 'Windows / WinRM' },
   { value: 'Ssh', label: 'SSH (Linux)' },
   { value: 'VCenter', label: 'vCenter' },
+  { value: 'Redfish', label: 'iLO / iDRAC (Redfish)' },
 ];
 
 interface FormState {
@@ -105,7 +106,7 @@ function CredentialDialog({ credential, onClose }: { credential?: Credential; on
           </label>
         </>
       )}
-      {(f.kind === 'Windows' || f.kind === 'Ssh' || f.kind === 'VCenter') && (
+      {(f.kind === 'Windows' || f.kind === 'Ssh' || f.kind === 'VCenter' || f.kind === 'Redfish') && (
         <>
           <label className="field">
             <span>User name</span>

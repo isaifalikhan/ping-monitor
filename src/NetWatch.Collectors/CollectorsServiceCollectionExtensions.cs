@@ -48,6 +48,8 @@ public static class CollectorsServiceCollectionExtensions
 
         services.AddSingleton<PollResultProcessor>();
         services.AddSingleton<Snmp.SnmpHealthProfileStore>();
+        services.AddSingleton<Hardware.IHardwareCollector, Hardware.HardwareCollector>();
+        services.AddSingleton<Processing.HardwareResultProcessor>();
         services.AddSingleton<NetworkDevicePoller>();
         services.AddSingleton<SimulatedDevicePoller>();
         services.AddSingleton<IDevicePoller, RoutingDevicePoller>();

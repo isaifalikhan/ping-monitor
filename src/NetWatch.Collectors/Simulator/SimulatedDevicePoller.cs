@@ -268,6 +268,23 @@ public sealed class SimulatedDevicePoller : IDevicePoller
         if (request.Server is { } serverRequest && d.Type is DeviceType.Server or DeviceType.VM or DeviceType.DomainController)
         {
             result.Server = SimulateServer(d, serverRequest, now, diurnal, elapsed, result);
+            if (serverRequest.ReadGpus && result.Server.Ok)
+            {
+                result.Server.GpusRead = true;
+                if (d.Type == DeviceType.Server && _inventory is not null)
+                {
+                    var physical = _inventory.All.Where(x => x.Type == DeviceType.Server && x.IsSimulated).OrderBy(x => x.Id).Select(x => x.Id).ToList();
+                    if (SimulatedHardware.HasGpus(physical.IndexOf(request.Device.Id)))
+                    {
+                        result.Server.Gpus.AddRange(SimulatedHardware.Gpus(request.Device.Id, now, diurnal, d.Rng));
+                    }
+                }
+            }
+        }
+
+        if (request.Hardware is not null && d.Type == DeviceType.Server)
+        {
+            result.Hardware = SimulatedHardware.Controller(request.Device.Id, request.Device.Name, now, d.Rng);
         }
 
         if (request.Dc is { } dcRequest && d.Type == DeviceType.DomainController)

@@ -1,0 +1,11 @@
+{
+  "@odata.id": "/redfish/v1/Chassis/System.Embedded.1/Power",
+  "@odata.type": "#Power.v1_6_0.Power",
+  "Id": "Power",
+  "Name": "Power",
+  "PowerControl": [ { "@odata.id": "/redfish/v1/Chassis/System.Embedded.1/Power#/PowerControl/0", "MemberId": "PowerControl", "Name": "System Power Control", "PowerAllocatedWatts": 1694, "PowerCapacityWatts": 1694, "PowerConsumedWatts": 398, "Status": { "Health": "OK", "State": "Enabled" } } ],
+  "PowerSupplies": [
+    { "@odata.id": "/redfish/v1/Chassis/System.Embedded.1/Power#/PowerSupplies/0", "FirmwareVersion": "00.1B.53", "LastPowerOutputWatts": 201, "LineInputVoltage": 232, "Manufacturer": "DELL", "MemberId": "PSU.Slot.1", "Model": "PWR SPLY,1400W,RDNT,LTON", "Name": "PS1 Status", "PowerCapacityWatts": 1400, "PowerSupplyType": "AC", "SerialNumber": "CNLOD0019T0123", "Status": { "Health": "OK", "State": "Enabled" } },
+    { "@odata.id": "/redfish/v1/Chassis/System.Embedded.1/Power#/PowerSupplies/1", "FirmwareVersion": "00.1B.53", "LastPowerOutputWatts": 197, "MemberId": "PSU.Slot.2", "Model": "PWR SPLY,1400W,RDNT,LTON", "Name": "PS2 Status", "PowerCapacityWatts": 1400, "Status": { "Health": "OK", "State": "Enabled" } }
+  ]
+}

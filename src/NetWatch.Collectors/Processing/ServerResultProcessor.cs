@@ -94,7 +94,9 @@ public sealed class ServerResultProcessor
             s.WinRmHttps,
             s.DcomFallback,
             s.SshPort,
-            TimeSpan.FromSeconds(s.TimeoutSec));
+            TimeSpan.FromSeconds(s.TimeoutSec),
+            _settings.Hardware.ReadGpus && device.Type is DeviceType.Server or DeviceType.VM,
+            _settings.Hardware.RunNvidiaSmi);
     }
 
     /// <summary>Processes the server part of a poll result. Must run before device-level metrics are published.</summary>

@@ -1,0 +1,22 @@
+{
+  "@odata.context": "/redfish/v1/$metadata#ComputerSystem.ComputerSystem",
+  "@odata.etag": "W/\"6A4C3D1E\"",
+  "@odata.id": "/redfish/v1/Systems/1/",
+  "@odata.type": "#ComputerSystem.v1_13_0.ComputerSystem",
+  "Id": "1",
+  "BiosVersion": "U46 v1.62 (11/29/2022)",
+  "HostName": "SRV-APP-01",
+  "IndicatorLED": "Off",
+  "Manufacturer": "HPE",
+  "MemorySummary": { "Status": { "HealthRollup": "OK" }, "TotalSystemMemoryGiB": 512, "TotalSystemPersistentMemoryGiB": 0 },
+  "Model": "ProLiant DL380 Gen10 Plus",
+  "Name": "Computer System",
+  "PowerState": "On",
+  "ProcessorSummary": { "Count": 2, "Model": "Intel(R) Xeon(R) Gold 6338 CPU @ 2.00GHz", "Status": { "HealthRollup": "OK" } },
+  "SKU": "P05172-B21",
+  "SerialNumber": "CZJ2240ABC",
+  "Status": { "Health": "Warning", "HealthRollup": "Warning", "State": "Enabled" },
+  "Storage": { "@odata.id": "/redfish/v1/Systems/1/Storage/" },
+  "SystemType": "Physical",
+  "UUID": "37383150-3234-5A43-4A32-323430414243"
+}

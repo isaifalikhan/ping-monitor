@@ -307,6 +307,31 @@ public sealed class DcSettings
     }
 }
 
+/// <summary>Server hardware (iLO / iDRAC over Redfish or SNMP) and GPU monitoring. Stored under key "hardware".</summary>
+public sealed class HardwareSettings
+{
+    public const string Key = "hardware";
+
+    /// <summary>How often the management controller is read (Redfish is slow; minutes).</summary>
+    public int PollIntervalMin { get; set; } = 5;
+    public int TimeoutSec { get; set; } = 30;
+
+    /// <summary>Pin self-signed iLO/iDRAC certificates on first use (otherwise only CA-trusted certificates are accepted).</summary>
+    public bool TrustOnFirstUse { get; set; } = true;
+
+    /// <summary>Read GPU inventory, utilization and (NVIDIA) temperature/power from servers.</summary>
+    public bool ReadGpus { get; set; } = true;
+
+    /// <summary>Run nvidia-smi over WinRM / SSH for NVIDIA temperature, power and fan (needs remote shell rights).</summary>
+    public bool RunNvidiaSmi { get; set; } = true;
+
+    public void Normalise()
+    {
+        PollIntervalMin = Math.Clamp(PollIntervalMin, 1, 60);
+        TimeoutSec = Math.Clamp(TimeoutSec, 5, 120);
+    }
+}
+
 /// <summary>VMware (vCenter / ESXi) monitoring. Stored under key "vmware".</summary>
 public sealed class VmwareSettings
 {

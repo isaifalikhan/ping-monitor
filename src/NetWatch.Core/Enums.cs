@@ -39,7 +39,10 @@ public enum CredentialKind
     SnmpV3,
     Windows,
     Ssh,
-    VCenter
+    VCenter,
+
+    /// <summary>HPE iLO / Dell iDRAC Redfish API account (read-only role is enough).</summary>
+    Redfish
 }
 
 /// <summary>What a credential is used for on a given device (a device can have one per purpose).</summary>
@@ -47,7 +50,10 @@ public enum CredentialPurpose
 {
     Snmp,
     Management,
-    VCenter
+    VCenter,
+
+    /// <summary>Baseboard management controller (iLO / iDRAC) Redfish account.</summary>
+    Bmc
 }
 
 /// <summary>Roles are ordered: a higher value includes all rights of the lower ones.</summary>

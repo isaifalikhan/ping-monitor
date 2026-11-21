@@ -1,0 +1,12 @@
+{
+  "@odata.id": "/redfish/v1/Systems/System.Embedded.1/Storage/RAID.SL.3-1",
+  "@odata.type": "#Storage.v1_8_0.Storage",
+  "Description": "PERC H755 Front",
+  "Drives": [ { "@odata.id": "/redfish/v1/Systems/System.Embedded.1/Storage/RAID.SL.3-1/Drives/Disk.Bay.0:Enclosure.Internal.0-1:RAID.SL.3-1" } ],
+  "Id": "RAID.SL.3-1",
+  "Name": "PERC H755 Front",
+  "Status": { "Health": "Critical", "HealthRollup": "Critical", "State": "Enabled" },
+  "StorageControllers": [
+    { "@odata.id": "/redfish/v1/Systems/System.Embedded.1/Storage/RAID.SL.3-1#/StorageControllers/0", "FirmwareVersion": "52.16.1-4405", "Manufacturer": "DELL", "MemberId": "RAID.SL.3-1", "Model": "PERC H755 Front", "Name": "PERC H755 Front", "SpeedGbps": 12, "Status": { "Health": "OK", "HealthRollup": "Critical", "State": "Enabled" } }
+  ]
+}

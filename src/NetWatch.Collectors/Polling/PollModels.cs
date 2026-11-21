@@ -25,7 +25,8 @@ public sealed record PollRequest(
     bool SnmpStorage = false,
     Vmware.VmwarePollRequest? Vmware = null,
     DomainControllers.DcPollRequest? Dc = null,
-    bool ReadNeighbors = false);
+    bool ReadNeighbors = false,
+    Hardware.HardwarePollRequest? Hardware = null);
 
 /// <summary>Raw interface counters and status from one poll.</summary>
 public sealed record InterfaceCounters(
@@ -101,6 +102,9 @@ public sealed class DevicePollResult
 
     /// <summary>Domain controller security events, replication and clock, for DCs with a Windows credential.</summary>
     public DomainControllers.DcPollData? Dc { get; set; }
+
+    /// <summary>iLO / iDRAC hardware health (every few minutes for servers with a BMC address).</summary>
+    public Hardware.HardwarePollData? Hardware { get; set; }
     public TimeSpan Duration { get; set; }
 }
 

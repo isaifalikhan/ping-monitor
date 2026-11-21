@@ -421,6 +421,14 @@ namespace NetWatch.Data.Config.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("INTEGER");
 
+                    b.Property<string>("BmcAddress")
+                        .HasMaxLength(255)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("BmcTlsThumbprint")
+                        .HasMaxLength(128)
+                        .HasColumnType("TEXT");
+
                     b.Property<int>("ConsecutiveFailures")
                         .HasColumnType("INTEGER");
 
@@ -600,6 +608,60 @@ namespace NetWatch.Data.Config.Migrations
                     b.HasIndex("Tag");
 
                     b.ToTable("DeviceTags", (string)null);
+                });
+
+            modelBuilder.Entity("NetWatch.Core.Entities.HardwareComponent", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Category")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Details")
+                        .HasMaxLength(1000)
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("DeviceId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Health")
+                        .HasMaxLength(16)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("LastSeenUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("TEXT");
+
+                    b.Property<double?>("Reading")
+                        .HasColumnType("REAL");
+
+                    b.Property<string>("Source")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("State")
+                        .HasMaxLength(32)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Unit")
+                        .HasMaxLength(16)
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("DeviceId", "Category", "Name")
+                        .IsUnique();
+
+                    b.ToTable("HardwareComponents", (string)null);
                 });
 
             modelBuilder.Entity("NetWatch.Core.Entities.MaintenanceWindow", b =>
@@ -950,6 +1012,67 @@ namespace NetWatch.Data.Config.Migrations
                         .IsUnique();
 
                     b.ToTable("Sensors", (string)null);
+                });
+
+            modelBuilder.Entity("NetWatch.Core.Entities.ServerGpu", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("DeviceId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("DriverVersion")
+                        .HasMaxLength(64)
+                        .HasColumnType("TEXT");
+
+                    b.Property<double?>("FanPct")
+                        .HasColumnType("REAL");
+
+                    b.Property<DateTime>("FirstSeenUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("Index")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime>("LastSeenUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<double?>("MemoryTotalMb")
+                        .HasColumnType("REAL");
+
+                    b.Property<double?>("MemoryUsedMb")
+                        .HasColumnType("REAL");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("TEXT");
+
+                    b.Property<double?>("PowerW")
+                        .HasColumnType("REAL");
+
+                    b.Property<string>("Problem")
+                        .HasMaxLength(500)
+                        .HasColumnType("TEXT");
+
+                    b.Property<double?>("TemperatureC")
+                        .HasColumnType("REAL");
+
+                    b.Property<double?>("UtilizationPct")
+                        .HasColumnType("REAL");
+
+                    b.Property<string>("Vendor")
+                        .HasMaxLength(64)
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("DeviceId", "Index")
+                        .IsUnique();
+
+                    b.ToTable("ServerGpus", (string)null);
                 });
 
             modelBuilder.Entity("NetWatch.Core.Entities.ServerInfo", b =>
@@ -1666,6 +1789,15 @@ namespace NetWatch.Data.Config.Migrations
                         .IsRequired();
                 });
 
+            modelBuilder.Entity("NetWatch.Core.Entities.HardwareComponent", b =>
+                {
+                    b.HasOne("NetWatch.Core.Entities.Device", null)
+                        .WithMany()
+                        .HasForeignKey("DeviceId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("NetWatch.Core.Entities.NeighborLink", b =>
                 {
                     b.HasOne("NetWatch.Core.Entities.Device", null)
@@ -1702,6 +1834,15 @@ namespace NetWatch.Data.Config.Migrations
                 });
 
             modelBuilder.Entity("NetWatch.Core.Entities.Sensor", b =>
+                {
+                    b.HasOne("NetWatch.Core.Entities.Device", null)
+                        .WithMany()
+                        .HasForeignKey("DeviceId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("NetWatch.Core.Entities.ServerGpu", b =>
                 {
                     b.HasOne("NetWatch.Core.Entities.Device", null)
                         .WithMany()

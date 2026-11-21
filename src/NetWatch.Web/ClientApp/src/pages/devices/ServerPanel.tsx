@@ -4,6 +4,7 @@ import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api, qs } from '../../api/client';
 import type { DeviceDetail, PagedEvents, Series, SeriesInfo, ServerDetail, ServiceState, WindowsEvent } from '../../api/types';
+import { GpuPanel, HardwarePanel } from './HardwarePanels';
 import { useAuth } from '../../auth/AuthContext';
 import { UtilBar } from '../../components/Badges';
 import { MetricChart, type SeriesSpec } from '../../components/MetricChart';
@@ -322,6 +323,9 @@ export function ServerPanel({ device, range }: { device: DeviceDetail; range: Ti
           </div>
         </div>
       )}
+
+      <GpuPanel gpus={detail.data?.gpus ?? []} />
+      <HardwarePanel components={detail.data?.hardware ?? []} />
 
       {editServices && <ServicesDialog device={device} onClose={() => { setEditServices(false); void qc.invalidateQueries({ queryKey: ['device', device.id, 'server'] }); }} />}
       {resetKey && (

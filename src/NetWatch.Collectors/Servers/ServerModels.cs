@@ -30,7 +30,9 @@ public sealed record ServerPollRequest(
     bool WinRmHttps,
     bool DcomFallback,
     int SshPort,
-    TimeSpan Timeout);
+    TimeSpan Timeout,
+    bool ReadGpus = false,
+    bool RunNvidiaSmi = false);
 
 /// <summary>Everything the server collector produced. Values that could not be read stay null.</summary>
 public sealed class ServerPollData
@@ -69,6 +71,13 @@ public sealed class ServerPollData
 
     /// <summary>SSH: the fingerprint accepted on first use, to be stored on the device.</summary>
     public string? NewSshHostKeyFingerprint { get; set; }
+
+    /// <summary>True when GPUs were looked for this poll (an empty list then means "no GPU", not "unknown").</summary>
+    public bool GpusRead { get; set; }
+    public List<GpuReading> Gpus { get; } = new();
+
+    /// <summary>nvidia-smi or GPU query problem (shown on the GPU panel; per-GPU problems are on the readings).</summary>
+    public string? GpuError { get; set; }
 }
 
 public interface IServerCollector

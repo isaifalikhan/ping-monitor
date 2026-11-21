@@ -36,7 +36,10 @@ public sealed record DeviceSnapshot(
     string? MaintenanceReason = null,
     DateTime? MaintenanceUntilUtc = null,
     int? VcenterCredentialId = null,
-    string? TlsThumbprint = null)
+    string? TlsThumbprint = null,
+    string? BmcAddress = null,
+    int? BmcCredentialId = null,
+    string? BmcTlsThumbprint = null)
 {
     public const string SimulatedTag = "simulated";
 
@@ -230,7 +233,10 @@ public sealed class InventoryCache : BackgroundService, IDeviceContextProvider, 
                 reason,
                 until,
                 d.Credentials.FirstOrDefault(c => c.Purpose == CredentialPurpose.VCenter)?.CredentialProfileId,
-                d.TlsThumbprint);
+                d.TlsThumbprint,
+                d.BmcAddress,
+                d.Credentials.FirstOrDefault(c => c.Purpose == CredentialPurpose.Bmc)?.CredentialProfileId,
+                d.BmcTlsThumbprint);
         }
 
         _devices = result.ToFrozenDictionary();

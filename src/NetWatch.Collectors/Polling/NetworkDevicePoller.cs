@@ -20,10 +20,12 @@ public sealed class NetworkDevicePoller : IDevicePoller
     private readonly TimeProvider _time;
     private readonly ILogger<NetworkDevicePoller> _logger;
     private readonly SnmpHealthProfileStore _profiles;
+    private readonly Hardware.IHardwareCollector? _hardware;
 
     public NetworkDevicePoller(IServerCollector servers, Vmware.IVmwareCollector vmware, DomainControllers.IDcCollector dc, TimeProvider time, ILogger<NetworkDevicePoller> logger,
-        SnmpHealthProfileStore? profiles = null)
+        SnmpHealthProfileStore? profiles = null, Hardware.IHardwareCollector? hardware = null)
     {
+        _hardware = hardware;
         _profiles = profiles ?? new SnmpHealthProfileStore();
         _servers = servers;
         _vmware = vmware;
@@ -46,8 +48,10 @@ public sealed class NetworkDevicePoller : IDevicePoller
         var server = request.Server is null ? Task.FromResult<ServerPollData?>(null) : CollectServerAsync(request.Server, ct);
         var vmware = request.Vmware is null ? Task.FromResult<Vmware.VmwarePollData?>(null) : CollectVmwareAsync(request.Vmware, ct);
         var dc = request.Dc is null ? Task.FromResult<DomainControllers.DcPollData?>(null) : CollectDcAsync(request.Dc, ct);
-        await Task.WhenAll(ping, snmp, server, vmware, dc);
+        var hardware = request.Hardware is null || _hardware is null ? Task.FromResult<Hardware.HardwarePollData?>(null) : CollectHardwareAsync(request.Hardware, ct);
+        await Task.WhenAll(ping, snmp, server, vmware, dc, hardware);
         result.Dc = await dc;
+        result.Hardware = await hardware;
         result.Vmware = await vmware;
 
         var p = await ping;
@@ -72,6 +76,19 @@ public sealed class NetworkDevicePoller : IDevicePoller
         {
             _logger.LogDebug(ex, "Server collection failed for {Host}", request.Host);
             return new ServerPollData { Error = ex.Message };
+        }
+    }
+
+    private async Task<Hardware.HardwarePollData?> CollectHardwareAsync(Hardware.HardwarePollRequest request, CancellationToken ct)
+    {
+        try
+        {
+            return await _hardware!.CollectAsync(request, ct);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException || !ct.IsCancellationRequested)
+        {
+            _logger.LogDebug(ex, "Hardware collection failed for {Host}", request.BmcAddress);
+            return new Hardware.HardwarePollData { Error = ex.Message };
         }
     }
 

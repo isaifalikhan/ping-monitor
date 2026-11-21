@@ -172,7 +172,7 @@ public static class DeviceEndpoints
             d.Credentials.Select(c => new DeviceCredentialDto(c.Purpose, c.CredentialProfileId, c.CredentialProfile?.Name)).ToList(),
             d.CreatedUtc, d.UpdatedUtc,
             d.WatchedServices.Select(s => s.ServiceName).OrderBy(s => s, StringComparer.OrdinalIgnoreCase).ToList(),
-            d.SshHostKeyFingerprint, maintenanceReason, unreachableVia, d.TlsThumbprint));
+            d.SshHostKeyFingerprint, maintenanceReason, unreachableVia, d.TlsThumbprint, d.BmcAddress, d.BmcTlsThumbprint));
     }
 
     private static async Task<IResult> InterfacesAsync(int id, NetWatchDbContext db, LiveStateCache live, CancellationToken ct)
@@ -349,6 +349,25 @@ public static class DeviceEndpoints
             return "Selected Windows/SSH credential does not exist.";
         }
 
+        var bmc = string.IsNullOrWhiteSpace(input.BmcAddress) ? null : input.BmcAddress.Trim();
+        if (bmc is not null && (bmc.Length > 255 || Uri.CheckHostName(bmc) == UriHostNameType.Unknown))
+        {
+            return "The management controller address must be a host name or IP address.";
+        }
+
+        if (input.BmcCredentialId is { } bid &&
+            !await db.CredentialProfiles.AnyAsync(c => c.Id == bid && (c.Kind == CredentialKind.Redfish), ct))
+        {
+            return "Selected iLO/iDRAC credential does not exist or is not a Redfish credential.";
+        }
+
+        if (!string.Equals(device.BmcAddress, bmc, StringComparison.OrdinalIgnoreCase))
+        {
+            device.BmcTlsThumbprint = null; // another controller: pin its certificate again
+        }
+
+        device.BmcAddress = bmc;
+
         if (input.VcenterCredentialId is { } vid &&
             !await db.CredentialProfiles.AnyAsync(c => c.Id == vid && c.Kind == CredentialKind.VCenter, ct))
         {
@@ -424,6 +443,12 @@ public static class DeviceEndpoints
         if (input.VcenterCredentialId is { } vcenterId && !device.Credentials.Any(c => c.Purpose == CredentialPurpose.VCenter))
         {
             device.Credentials.Add(new DeviceCredential { Purpose = CredentialPurpose.VCenter, CredentialProfileId = vcenterId });
+        }
+
+        device.Credentials.RemoveAll(c => c.Purpose == CredentialPurpose.Bmc && c.CredentialProfileId != input.BmcCredentialId);
+        if (input.BmcCredentialId is { } bmcId && !device.Credentials.Any(c => c.Purpose == CredentialPurpose.Bmc))
+        {
+            device.Credentials.Add(new DeviceCredential { Purpose = CredentialPurpose.Bmc, CredentialProfileId = bmcId });
         }
 
         if (input.WatchedServices is not null || (device.Id == 0 && services.Count > 0))

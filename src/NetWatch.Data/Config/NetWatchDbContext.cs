@@ -22,6 +22,8 @@ public class NetWatchDbContext : DbContext
     public DbSet<DeviceCredential> DeviceCredentials => Set<DeviceCredential>();
     public DbSet<NetInterface> Interfaces => Set<NetInterface>();
     public DbSet<NeighborLink> NeighborLinks => Set<NeighborLink>();
+    public DbSet<ServerGpu> ServerGpus => Set<ServerGpu>();
+    public DbSet<HardwareComponent> HardwareComponents => Set<HardwareComponent>();
     public DbSet<Sensor> Sensors => Set<Sensor>();
     public DbSet<AlertRule> AlertRules => Set<AlertRule>();
     public DbSet<Alert> Alerts => Set<Alert>();
@@ -113,6 +115,8 @@ public class NetWatchDbContext : DbContext
             e.HasMany(x => x.WatchedServices).WithOne().HasForeignKey(x => x.DeviceId).OnDelete(DeleteBehavior.Cascade);
             e.Property(x => x.SshHostKeyFingerprint).HasMaxLength(128);
             e.Property(x => x.TlsThumbprint).HasMaxLength(128);
+            e.Property(x => x.BmcAddress).HasMaxLength(255);
+            e.Property(x => x.BmcTlsThumbprint).HasMaxLength(128);
         });
 
         b.Entity<ServerInfo>(e =>
@@ -298,6 +302,31 @@ public class NetWatchDbContext : DbContext
             e.ToTable("Interfaces");
             e.Property(x => x.Name).HasMaxLength(200);
             e.HasIndex(x => new { x.DeviceId, x.IfIndex }).IsUnique();
+        });
+
+        b.Entity<ServerGpu>(e =>
+        {
+            e.ToTable("ServerGpus");
+            e.HasOne<Device>().WithMany().HasForeignKey(x => x.DeviceId).OnDelete(DeleteBehavior.Cascade);
+            e.Property(x => x.Name).HasMaxLength(255);
+            e.Property(x => x.Vendor).HasMaxLength(64);
+            e.Property(x => x.DriverVersion).HasMaxLength(64);
+            e.Property(x => x.Problem).HasMaxLength(500);
+            e.HasIndex(x => new { x.DeviceId, x.Index }).IsUnique();
+        });
+
+        b.Entity<HardwareComponent>(e =>
+        {
+            e.ToTable("HardwareComponents");
+            e.HasOne<Device>().WithMany().HasForeignKey(x => x.DeviceId).OnDelete(DeleteBehavior.Cascade);
+            e.Property(x => x.Source).HasMaxLength(16);
+            e.Property(x => x.Category).HasMaxLength(32);
+            e.Property(x => x.Name).HasMaxLength(255);
+            e.Property(x => x.Health).HasMaxLength(16);
+            e.Property(x => x.State).HasMaxLength(32);
+            e.Property(x => x.Unit).HasMaxLength(16);
+            e.Property(x => x.Details).HasMaxLength(1000);
+            e.HasIndex(x => new { x.DeviceId, x.Category, x.Name }).IsUnique();
         });
 
         b.Entity<NeighborLink>(e =>
