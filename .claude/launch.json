@@ -15,6 +15,14 @@
       "env": { "NETWATCH_SIM_INCIDENT_RATE": "400" },
       "url": "https://localhost:8444",
       "port": 8444
+    },
+    {
+      "name": "netwatch-dev-simulator",
+      "runtimeExecutable": "dotnet",
+      "runtimeArgs": ["src/NetWatch.Service/bin/Debug/net10.0-windows/NetWatch.Service.dll", "--console", "--simulate", "--data-dir", ".data/dev-sim", "--Https:Port=8451"],
+      "env": { "NETWATCH_SIM_INCIDENT_RATE": "400" },
+      "url": "https://localhost:8451",
+      "port": 8451
     }
   ]
 }

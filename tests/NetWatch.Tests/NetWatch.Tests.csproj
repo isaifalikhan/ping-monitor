@@ -21,10 +21,16 @@
     <ProjectReference Include="..\..\src\NetWatch.Collectors\NetWatch.Collectors.csproj" />
     <ProjectReference Include="..\..\src\NetWatch.Alerts\NetWatch.Alerts.csproj" />
     <ProjectReference Include="..\..\src\NetWatch.Web\NetWatch.Web.csproj" />
+    <ProjectReference Include="..\..\src\NetWatch.Service\NetWatch.Service.csproj" />
   </ItemGroup>
 
   <ItemGroup>
     <Using Include="Xunit" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Real-format sample data for parser tests (event XML, SNMP walks, Redfish JSON ...). -->
+    <None Include="Samples\**\*" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
 </Project>

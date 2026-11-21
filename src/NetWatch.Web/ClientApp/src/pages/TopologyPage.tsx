@@ -9,6 +9,7 @@ import { api } from '../api/client';
 import type { DeviceStatus, TopologyNode } from '../api/types';
 import { ErrorBox } from '../components/Modal';
 import { typeLabel } from '../util/format';
+import { TopologyLinksView } from './TopologyLinks';
 
 echarts.use([TreeChart, TooltipComponent, CanvasRenderer]);
 
@@ -96,6 +97,7 @@ export function TopologyPage() {
   const chart = useRef<echarts.ECharts | null>(null);
   const [expandAll, setExpandAll] = useState(false);
   const [orient, setOrient] = useState<'LR' | 'TB'>('LR');
+  const [view, setView] = useState<'tree' | 'links'>('tree');
   const q = useQuery({ queryKey: ['topology'], queryFn: () => api.get<TopologyNode[]>('/api/topology'), refetchInterval: 30000 });
   const tree = useMemo(() => (q.data ? buildTree(q.data, expandAll) : null), [q.data, expandAll]);
   const withoutParent = (q.data ?? []).filter((n) => !n.parentId).length;
@@ -166,7 +168,17 @@ export function TopologyPage() {
     <>
       <div className="page-head">
         <h1>Topology</h1>
+        <div className="tabs" role="tablist" style={{ marginLeft: 16 }}>
+          <button role="tab" className={view === 'tree' ? 'active' : ''} aria-selected={view === 'tree'} onClick={() => setView('tree')}>
+            Upstream tree
+          </button>
+          <button role="tab" className={view === 'links' ? 'active' : ''} aria-selected={view === 'links'} onClick={() => setView('links')}>
+            Discovered links (LLDP/CDP)
+          </button>
+        </div>
       </div>
+      {view === 'links' && <TopologyLinksView />}
+      <div style={{ display: view === 'tree' ? undefined : 'none' }}>
       <ErrorBox error={q.error} />
       <div className="toolbar" style={{ marginBottom: 10, flexWrap: 'wrap' }}>
         {tree && (
@@ -193,6 +205,7 @@ export function TopologyPage() {
         device, scroll to zoom and drag to pan. A collapsed branch takes the colour of the worst device inside it.
         {withoutParent > 1 && ` ${withoutParent} devices have no upstream device and are shown at the top level.`}
       </p>
+      </div>
     </>
   );
 }

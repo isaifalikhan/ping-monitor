@@ -200,6 +200,9 @@ public static class DeviceCsvImporter
                 UpdatedUtc = now,
                 Tags = row.Tags.Select(t => new DeviceTag { Tag = t }).ToList(),
                 Credentials = credentialId is { } cid ? [new DeviceCredential { Purpose = CredentialPurpose.Snmp, CredentialProfileId = cid }] : [],
+                WatchedServices = row.Type == DeviceType.DomainController
+                    ? DcDefaults.WatchedServices.Select(n => new WatchedService { ServiceName = n, LastState = ServiceState.Unknown }).ToList()
+                    : [],
             };
             db.Devices.Add(device);
             created.Add((row, device));

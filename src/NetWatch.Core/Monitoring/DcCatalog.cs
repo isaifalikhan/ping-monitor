@@ -8,7 +8,7 @@ public static class DcDefaults
 
     /// <summary>Groups whose membership changes are critical (matched case-insensitively on the group name).</summary>
     public static readonly IReadOnlyList<string> PrivilegedGroups =
-        ["Domain Admins", "Enterprise Admins", "Schema Admins", "Administrators", "Backup Operators"];
+        ["Domain Admins", "Enterprise Admins", "Schema Admins", "Administrators", "Backup Operators", "Account Operators"];
 }
 
 /// <summary>Category of a collected DC Security-log event.</summary>

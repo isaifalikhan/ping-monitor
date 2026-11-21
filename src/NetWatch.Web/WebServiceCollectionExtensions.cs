@@ -84,6 +84,7 @@ public static class WebServiceCollectionExtensions
         app.MapMaintenanceEndpoints();
         app.MapVmwareEndpoints();
         app.MapDcEndpoints();
+        Topology.TopologyEndpoints.MapTopologyEndpoints(app);
         app.MapBackupEndpoints();
         app.MapReportEndpoints();
         app.MapHub<LiveHub>("/hubs/live");

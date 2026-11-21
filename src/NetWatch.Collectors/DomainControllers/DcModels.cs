@@ -56,7 +56,8 @@ public sealed record DcPollRequest(
     int WinRmPort,
     bool WinRmHttps,
     bool DcomFallback,
-    TimeSpan Timeout);
+    TimeSpan Timeout,
+    bool CheckPorts = false);
 
 /// <summary>Everything the DC collector produced. Parts that failed stay null and carry an error text.</summary>
 public sealed class DcPollData
@@ -82,6 +83,44 @@ public sealed class DcPollData
     /// <summary>DC clock minus the PDC emulator clock (seconds); 0 on the PDC itself.</summary>
     public double? SkewToPdcSec { get; set; }
     public string? TimeError { get; set; }
+
+    /// <summary>TCP reachability of the DC service ports (null when not checked this poll).</summary>
+    public List<DcPortCheck>? Ports { get; set; }
+}
+
+/// <summary>Result of one TCP connect to a DC service port; Error is null when the port answered.</summary>
+public sealed record DcPortCheck(string Service, int Port, string? Error, double? Ms = null);
+
+/// <summary>The DC service ports NetWatch checks.</summary>
+public static class DcPorts
+{
+    public static readonly IReadOnlyList<(string Service, int Port)> All = [("LDAP", 389), ("Kerberos", 88), ("DNS", 53)];
+
+    /// <summary>TCP connect to each port in parallel with a short timeout.</summary>
+    public static async Task<List<DcPortCheck>> CheckAsync(string host, TimeSpan timeout, CancellationToken ct)
+    {
+        var tasks = All.Select(async p =>
+        {
+            var watch = System.Diagnostics.Stopwatch.StartNew();
+            using var client = new System.Net.Sockets.TcpClient();
+            using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            cts.CancelAfter(timeout);
+            try
+            {
+                await client.ConnectAsync(host, p.Port, cts.Token);
+                return new DcPortCheck(p.Service, p.Port, null, Math.Round(watch.Elapsed.TotalMilliseconds, 1));
+            }
+            catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+            {
+                return new DcPortCheck(p.Service, p.Port, $"no answer within {timeout.TotalSeconds:0} s");
+            }
+            catch (System.Net.Sockets.SocketException ex)
+            {
+                return new DcPortCheck(p.Service, p.Port, ex.SocketErrorCode == System.Net.Sockets.SocketError.ConnectionRefused ? "connection refused" : ex.Message);
+            }
+        });
+        return [.. await Task.WhenAll(tasks)];
+    }
 }
 
 public interface IDcCollector

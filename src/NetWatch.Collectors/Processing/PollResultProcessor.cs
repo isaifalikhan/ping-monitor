@@ -5,6 +5,7 @@ using Microsoft.Extensions.Logging;
 using NetWatch.Collectors.Inventory;
 using NetWatch.Collectors.Live;
 using NetWatch.Collectors.Polling;
+using NetWatch.Collectors.Snmp;
 using NetWatch.Core;
 using NetWatch.Core.Abstractions;
 using NetWatch.Core.Alerts;
@@ -112,10 +113,16 @@ public sealed class PollResultProcessor
     {
         public int Id;
         public string Name = string.Empty;
+        public string? Description;
         public long SpeedBps;
         public int OperStatus;
         public int AdminStatus;
         public bool IsMonitored;
+        public int? Duplex;
+        public long? ExpectedSpeedBps;
+        public int PersistedFlaps;
+        public bool FlapFlagged;
+        public FlapTracker Flaps = new();
     }
 
     private sealed class SensorRuntime
@@ -176,8 +183,9 @@ public sealed class PollResultProcessor
         var vmware = await _vmware.PrepareAsync(device, ct);
         var dc = await _dc.PrepareAsync(device, ct);
 
+        var readNeighbors = refreshInterfaces && settings.DiscoverNeighbors && device.Type is DeviceType.Switch or DeviceType.Router or DeviceType.Firewall or DeviceType.Other;
         return new PollRequest(device, snmp, refreshInterfaces, refreshInventory, settings.PingCount, settings.PingTimeoutMs, settings.SnmpTimeoutMs, settings.SnmpRetries,
-            server, hasSnmp && server is null && ServerResultProcessor.WantsSnmpStorage(device), vmware, dc);
+            server, hasSnmp && server is null && ServerResultProcessor.WantsSnmpStorage(device), vmware, dc, readNeighbors);
     }
 
     public async Task ProcessAsync(PollRequest request, DevicePollResult result, CancellationToken ct)
@@ -302,9 +310,16 @@ public sealed class PollResultProcessor
             rt.LastInventoryRefreshUtc = now;
         }
 
+        if (result.Neighbors is { } neighbors)
+        {
+            await SyncNeighborsAsync(db, device.Id, rt, neighbors, now, ct);
+        }
+
         // ---- interfaces -----------------------------------------------------------------
         var interfaceUpdates = new List<InterfaceMetricsUpdate>(result.Interfaces.Count);
         var statusUpdates = new List<(int Id, int Oper, int Admin)>();
+        var portUpdates = new List<(int Id, int? Duplex, int Flaps)>();
+        var flapWindow = TimeSpan.FromMinutes(settings.FlapWindowMin);
         foreach (var c in result.Interfaces)
         {
             if (!rt.ByIfIndex.TryGetValue(c.IfIndex, out var ifr))
@@ -321,6 +336,7 @@ public sealed class PollResultProcessor
             _counters[ifr.Id] = snapshot;
 
             var important = device.ImportantInterfaceIds.Contains(ifr.Id);
+            var cameUp = ifr.OperStatus != 0 && ifr.OperStatus != 1 && c.OperStatus == 1;
             if (c.OperStatus != ifr.OperStatus || c.AdminStatus != ifr.AdminStatus)
             {
                 if (ifr.OperStatus != 0 && important)
@@ -344,6 +360,51 @@ public sealed class PollResultProcessor
             _alerts.Publish(new StateSignal(device.Id, ifr.Id, StateKeys.InterfaceDown, null, problem,
                 problem ? $"Interface {ifr.Name} is {IfStatusText(c.OperStatus)}" : $"Interface {ifr.Name} is up",
                 now, ifr.Name, important));
+
+            // ---- link flapping (ifOperStatus changes plus ifLastChange moves between polls)
+            ifr.Flaps.Observe(now, c.OperStatus, c.LastChangeTicks, rebooted, flapWindow);
+            var flapping = ifr.Flaps.InWindow >= settings.FlapChanges;
+            if (flapping || ifr.FlapFlagged)
+            {
+                _alerts.Publish(new StateSignal(device.Id, ifr.Id, StateKeys.InterfaceFlapping, null, flapping,
+                    flapping
+                        ? $"Interface {ifr.Name} changed state {ifr.Flaps.InWindow} times in {settings.FlapWindowMin} min ({ifr.Flaps.Last24h} in 24 h)"
+                        : $"Interface {ifr.Name} is stable again",
+                    now, ifr.Name, important));
+                ifr.FlapFlagged = flapping;
+            }
+
+            var duplexChanged = c.Duplex is { } dx && dx != ifr.Duplex;
+            if (duplexChanged)
+            {
+                ifr.Duplex = c.Duplex;
+            }
+
+            if (duplexChanged || ifr.Flaps.Last24h != ifr.PersistedFlaps)
+            {
+                portUpdates.Add((ifr.Id, ifr.Duplex, ifr.Flaps.Last24h));
+                ifr.PersistedFlaps = ifr.Flaps.Last24h;
+            }
+
+            // ---- duplex and negotiated speed of important ports
+            if (important)
+            {
+                var half = PortChecks.IsHalfDuplex(c.OperStatus, ifr.Duplex);
+                _alerts.Publish(new StateSignal(device.Id, ifr.Id, StateKeys.InterfaceHalfDuplex, null, half,
+                    half ? $"Interface {ifr.Name} is running half duplex" : $"Interface {ifr.Name} duplex is {PortChecks.DuplexText(ifr.Duplex)}", now, ifr.Name, true));
+                var slow = PortChecks.IsBelowExpectedSpeed(c.OperStatus, ifr.SpeedBps, ifr.ExpectedSpeedBps);
+                _alerts.Publish(new StateSignal(device.Id, ifr.Id, StateKeys.InterfaceSpeedLow, null, slow,
+                    slow
+                        ? $"Interface {ifr.Name} runs at {PortChecks.SpeedText(ifr.SpeedBps)}, expected {PortChecks.SpeedText(ifr.ExpectedSpeedBps!.Value)}"
+                        : $"Interface {ifr.Name} speed is as expected",
+                    now, ifr.Name, true));
+
+                // A link that just came up may have renegotiated: re-read speeds next cycle.
+                if (cameUp)
+                {
+                    rt.ForceInterfaceRefresh = true;
+                }
+            }
 
             if (!ifr.IsMonitored)
             {
@@ -428,6 +489,13 @@ public sealed class PollResultProcessor
             .SetProperty(d => d.ConsecutiveFailures, rt.Failures)
             .SetProperty(d => d.LastUptimeSec, rt.LastUptimeSec), ct);
 
+        foreach (var (id, duplex, flaps) in portUpdates)
+        {
+            await db.Interfaces.Where(i => i.Id == id).ExecuteUpdateAsync(s => s
+                .SetProperty(i => i.Duplex, duplex)
+                .SetProperty(i => i.FlapCount24h, flaps), ct);
+        }
+
         foreach (var (id, oper, admin) in statusUpdates)
         {
             await db.Interfaces.Where(i => i.Id == id).ExecuteUpdateAsync(s => s
@@ -507,11 +575,73 @@ public sealed class PollResultProcessor
         {
             Id = i.Id,
             Name = i.Name,
+            Description = i.Description,
             SpeedBps = i.SpeedBps,
             OperStatus = i.OperStatus,
             AdminStatus = i.AdminStatus,
             IsMonitored = i.IsMonitored,
+            Duplex = i.Duplex,
+            ExpectedSpeedBps = i.ExpectedSpeedBps,
+            PersistedFlaps = i.FlapCount24h,
         });
+
+    /// <summary>
+    /// Stores the LLDP/CDP neighbours of a device: one row per local port and neighbour, matched to monitored
+    /// devices by management IP, then name (short name of an FQDN, or sysName). Rows not seen for a day are removed.
+    /// </summary>
+    private static async Task SyncNeighborsAsync(NetWatchDbContext db, int deviceId, DeviceRuntime rt, IReadOnlyList<NeighborReading> neighbors, DateTime now, CancellationToken ct)
+    {
+        var interfaces = rt.ByIfIndex.ToDictionary(kv => kv.Key, kv => (kv.Value.Name, kv.Value.Description));
+        var ips = neighbors.Select(n => n.RemoteAddress).Where(a => a is not null).Distinct().ToList();
+        var names = neighbors.Select(n => NeighborParser.ShortName(n.RemoteName)).Where(n => n is not null).Distinct().ToList();
+        var candidates = await db.Devices.AsNoTracking()
+            .Where(d => d.Id != deviceId && (ips.Contains(d.IpAddress) || names.Contains(d.Name.ToUpper()) || (d.SysName != null && names.Contains(d.SysName.ToUpper()))))
+            .Select(d => new { d.Id, d.IpAddress, d.Name, d.SysName })
+            .ToListAsync(ct);
+
+        int? Match(NeighborReading n)
+        {
+            if (n.RemoteAddress is { } ip && candidates.FirstOrDefault(c => c.IpAddress == ip) is { } byIp)
+            {
+                return byIp.Id;
+            }
+
+            var shortName = NeighborParser.ShortName(n.RemoteName);
+            return shortName is null ? null : candidates.FirstOrDefault(c => NeighborParser.ShortName(c.Name) == shortName || NeighborParser.ShortName(c.SysName) == shortName)?.Id;
+        }
+
+        var existing = await db.NeighborLinks.Where(l => l.DeviceId == deviceId).ToListAsync(ct);
+        foreach (var n in neighbors)
+        {
+            var ifIndex = NeighborParser.ResolveLocalIfIndex(n, interfaces);
+            var local = ifIndex is { } idx && rt.ByIfIndex.TryGetValue(idx, out var ifr) ? ifr : null;
+            var localPort = local?.Name ?? n.LocalPortId ?? n.LocalPortDesc ?? n.LocalPortNum.ToString(System.Globalization.CultureInfo.InvariantCulture);
+            var remoteKey = NeighborParser.ShortName(n.RemoteName) ?? n.RemoteChassisId ?? n.RemoteAddress;
+            var row = existing.FirstOrDefault(l => l.LocalPort == localPort &&
+                (NeighborParser.ShortName(l.RemoteName) ?? l.RemoteChassisId ?? l.RemoteAddress) == remoteKey);
+            if (row is null)
+            {
+                row = new NeighborLink { DeviceId = deviceId, FirstSeenUtc = now };
+                db.NeighborLinks.Add(row);
+                existing.Add(row);
+            }
+
+            row.LocalInterfaceId = local?.Id;
+            row.LocalPort = localPort.Length > 255 ? localPort[..255] : localPort;
+            row.Protocol = n.Protocol;
+            row.RemoteName = n.RemoteName;
+            row.RemoteChassisId = n.RemoteChassisId;
+            row.RemotePort = n.RemotePort;
+            row.RemotePortDescription = n.RemotePortDesc;
+            row.RemoteAddress = n.RemoteAddress;
+            row.RemotePlatform = n.RemotePlatform;
+            row.RemoteDeviceId = Match(n);
+            row.LastSeenUtc = now;
+        }
+
+        db.NeighborLinks.RemoveRange(existing.Where(l => now - l.LastSeenUtc > TimeSpan.FromDays(1)));
+        await db.SaveChangesAsync(ct);
+    }
 
     private static async Task SyncInterfacesAsync(NetWatchDbContext db, int deviceId, DeviceRuntime rt, IReadOnlyList<InterfaceMetadata> metadata, DateTime now, CancellationToken ct)
     {
@@ -562,6 +692,10 @@ public sealed class PollResultProcessor
             {
                 ifr.OperStatus = old.OperStatus;
                 ifr.AdminStatus = old.AdminStatus;
+                ifr.Flaps = old.Flaps;
+                ifr.FlapFlagged = old.FlapFlagged;
+                ifr.Duplex = old.Duplex ?? ifr.Duplex;
+                ifr.PersistedFlaps = old.PersistedFlaps;
             }
         }
 

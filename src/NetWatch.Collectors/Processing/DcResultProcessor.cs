@@ -62,7 +62,19 @@ public sealed class DcResultProcessor
         public bool Loaded;
         public Dictionary<string, long> Bookmarks = new(StringComparer.OrdinalIgnoreCase);
         public DateTime LastReplicationCheckUtc;
+
+        /// <summary>Security log requested in the current poll (for back-off bookkeeping).</summary>
+        public bool SecurityRequested;
+        public int SecurityFailures;
+        public DateTime NextSecurityReadUtc;
     }
+
+    /// <summary>
+    /// Wait after <paramref name="failures"/> consecutive failed Security-log reads: 1, 2, 4, 8, 16, then 30 minutes.
+    /// The bookmark only advances on success, so events are read later, not lost.
+    /// </summary>
+    internal static TimeSpan SecurityBackoff(int failures) =>
+        failures <= 0 ? TimeSpan.Zero : TimeSpan.FromMinutes(Math.Min(30, Math.Pow(2, Math.Min(failures, 6) - 1)));
 
     /// <summary>Security events stored since start (self-monitoring).</summary>
     public long StoredEvents => Interlocked.Read(ref _stored);
@@ -93,17 +105,20 @@ public sealed class DcResultProcessor
             rt.LastReplicationCheckUtc = now;
         }
 
+        var readSecurity = dc.ReadSecurityLog && !dc.UsesForwarding(device.Name, device.IpAddress) && now >= rt.NextSecurityReadUtc;
+        rt.SecurityRequested = readSecurity;
         return new DcPollRequest(
             device.IpAddress,
             credential,
             new Dictionary<string, long>(rt.Bookmarks, StringComparer.OrdinalIgnoreCase),
-            dc.ReadSecurityLog && !dc.UseForwardedEvents,
+            readSecurity,
             dc.MaxSecurityEventsPerPoll,
             checkReplication,
             servers.WinRmHttps && servers.WinRmPort == 5985 ? 5986 : servers.WinRmPort,
             servers.WinRmHttps,
             servers.DcomFallback,
-            TimeSpan.FromSeconds(servers.TimeoutSec));
+            TimeSpan.FromSeconds(servers.TimeoutSec),
+            dc.CheckServicePorts);
     }
 
     public async Task ProcessAsync(DeviceSnapshot device, DevicePollResult result, NetWatchDbContext db, EventsDbContext events, CancellationToken ct)
@@ -116,12 +131,41 @@ public sealed class DcResultProcessor
         var now = result.TimestampUtc;
         var rt = await GetRuntimeAsync(device.Id, ct);
 
+        if (rt.SecurityRequested)
+        {
+            if (dc.NewBookmarks.ContainsKey(DcLogs.Security))
+            {
+                rt.SecurityFailures = 0;
+                rt.NextSecurityReadUtc = DateTime.MinValue;
+            }
+            else
+            {
+                rt.SecurityFailures++;
+                rt.NextSecurityReadUtc = now + SecurityBackoff(rt.SecurityFailures);
+                if (rt.SecurityFailures is 1 or 6)
+                {
+                    _logger.LogWarning("Security log of {Device} could not be read ({Failures} in a row, next try {Next:u}): {Error}",
+                        device.Name, rt.SecurityFailures, rt.NextSecurityReadUtc, dc.SecurityLogError);
+                }
+            }
+        }
+
         await IngestSecurityAsync(device, dc.SecurityEvents, events, ct);
         await DirectoryEventsAsync(device, rt, dc, events, now, ct);
         await InfoAsync(device, dc, db, now, ct);
         if (dc.ReplicationChecked && dc.Replication is { } links)
         {
-            await ReplicationAsync(device, links, db, now, ct);
+            await ReplicationAsync(device, links, db, now, _settings.Dc.ReplicationStaleHours, ct);
+        }
+
+        if (dc.Ports is { } ports)
+        {
+            foreach (var p in ports)
+            {
+                var instance = string.Create(CultureInfo.InvariantCulture, $"{p.Service} {p.Port}");
+                _alerts.Publish(new StateSignal(device.Id, null, StateKeys.DcPortUnreachable, instance, p.Error is not null,
+                    p.Error is null ? $"{p.Service} (TCP {p.Port}) answers" : $"{p.Service} (TCP {p.Port}) not reachable: {p.Error}", now, instance));
+            }
         }
 
         if (dc.SkewToPdcSec is { } skew)
@@ -238,7 +282,8 @@ public sealed class DcResultProcessor
                 return s.StoreSuccessfulLogons &&
                        (s.SuccessfulLogonTypes.Count == 0 || (r.LogonType is { } t && s.SuccessfulLogonTypes.Contains(t))) &&
                        !(s.ExcludeComputerAccounts && DcEventParser.IsComputerAccount(r.TargetUser)) &&
-                       !DcEventParser.IsServiceIdentity(r.TargetUser);
+                       !DcEventParser.IsServiceIdentity(r.TargetUser) &&
+                       !s.IsIgnoredLogonSource(r.SourceIp, r.Workstation);
             case 4768 or 4776 when !r.Failed:
                 return s.StoreSuccessfulLogons && !(s.ExcludeComputerAccounts && DcEventParser.IsComputerAccount(r.TargetUser));
             case 4625 or 4768 or 4771 or 4776:
@@ -332,6 +377,10 @@ public sealed class DcResultProcessor
 
         info.LastSeenUtc = now;
         info.SecurityLogError = Trim(dc.SecurityLogError);
+        if (dc.Ports is { } ports)
+        {
+            info.ReachabilityJson = System.Text.Json.JsonSerializer.Serialize(ports.Select(p => new { service = p.Service, port = p.Port, error = Trim(p.Error, 200), ms = p.Ms }));
+        }
         if (dc.ReplicationChecked)
         {
             info.LastReplicationCheckUtc = now;
@@ -354,7 +403,7 @@ public sealed class DcResultProcessor
         await db.SaveChangesAsync(ct);
     }
 
-    private async Task ReplicationAsync(DeviceSnapshot device, List<DcReplicationReading> readings, NetWatchDbContext db, DateTime now, CancellationToken ct)
+    private async Task ReplicationAsync(DeviceSnapshot device, List<DcReplicationReading> readings, NetWatchDbContext db, DateTime now, int staleHours, CancellationToken ct)
     {
         var rows = await db.DcReplicationLinks.Where(l => l.DeviceId == device.Id).ToListAsync(ct);
         foreach (var r in readings)
@@ -383,6 +432,13 @@ public sealed class DcResultProcessor
                     ? string.Create(CultureInfo.InvariantCulture, $"Inbound replication of {nc} from {partner} failing: {row.LastMessage} ({r.ConsecutiveFailures} consecutive failures, last success {(r.LastSuccessUtc is { } ls ? LocalTime.ToLocal(ls).ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture) + " PKT" : "never")})")
                     : $"Inbound replication of {nc} from {partner} is working",
                 now, instance));
+
+            var isStale = IsReplicationStale(r, now, staleHours);
+            _alerts.Publish(new StateSignal(device.Id, null, StateKeys.DcReplicationStale, instance, isStale,
+                isStale
+                    ? string.Create(CultureInfo.InvariantCulture, $"No successful inbound replication of {nc} from {partner} for more than {staleHours} h (last success {(r.LastSuccessUtc is { } s ? LocalTime.ToLocal(s).ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture) + " PKT" : "never")})")
+                    : $"Inbound replication of {nc} from {partner} succeeded within {staleHours} h",
+                now, instance));
         }
 
         // Partners removed from the topology disappear after a day.
@@ -390,11 +446,19 @@ public sealed class DcResultProcessor
         foreach (var r in stale)
         {
             _alerts.Publish(new StateSignal(device.Id, null, StateKeys.DcReplicationFailed, $"{r.Partner} / {r.NamingContext}", false, "Replication partner removed", now));
+            _alerts.Publish(new StateSignal(device.Id, null, StateKeys.DcReplicationStale, $"{r.Partner} / {r.NamingContext}", false, "Replication partner removed", now));
         }
 
         db.DcReplicationLinks.RemoveRange(stale);
         await db.SaveChangesAsync(ct);
     }
+
+    /// <summary>
+    /// True when the last successful sync is older than staleHours. A link that has never succeeded counts as
+    /// stale once it has been attempted.
+    /// </summary>
+    internal static bool IsReplicationStale(DcReplicationReading r, DateTime now, int staleHours) =>
+        r.LastSuccessUtc is { } success ? now - success > TimeSpan.FromHours(staleHours) : r.LastAttemptUtc is not null;
 
     internal static string Win32Text(int code)
     {

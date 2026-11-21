@@ -80,6 +80,9 @@ public static class StateKeys
 {
     public const string DeviceDown = "device.down";
     public const string InterfaceDown = "iface.down";
+    public const string InterfaceFlapping = "iface.flapping";
+    public const string InterfaceHalfDuplex = "iface.duplex";
+    public const string InterfaceSpeedLow = "iface.speed";
     public const string SensorProblem = "sensor.problem";
     public const string SnmpUnreachable = "snmp.unreachable";
     public const string ServiceDown = "service.down";
@@ -94,12 +97,17 @@ public static class StateKeys
     public const string VcenterAlarmRed = "vmware.alarm.red";
     public const string VcenterAlarmYellow = "vmware.alarm.yellow";
     public const string DcReplicationFailed = "dc.replication";
+    public const string DcReplicationStale = "dc.replication.stale";
+    public const string DcPortUnreachable = "dc.port";
     public const string SelfCheck = "netwatch.selfcheck";
 
     public static readonly IReadOnlyDictionary<string, string> DisplayNames = new Dictionary<string, string>
     {
         [DeviceDown] = "Device down",
         [InterfaceDown] = "Interface down",
+        [InterfaceFlapping] = "Interface flapping (link up/down changes)",
+        [InterfaceHalfDuplex] = "Interface running half duplex",
+        [InterfaceSpeedLow] = "Interface below its expected speed",
         [SensorProblem] = "Hardware sensor problem",
         [SnmpUnreachable] = "SNMP not responding",
         [ServiceDown] = "Watched service not running",
@@ -114,6 +122,8 @@ public static class StateKeys
         [VcenterAlarmRed] = "vCenter alarm (red)",
         [VcenterAlarmYellow] = "vCenter alarm (yellow)",
         [DcReplicationFailed] = "AD replication failing (partner / naming context)",
+        [DcReplicationStale] = "AD replication not successful for too long (partner / naming context)",
+        [DcPortUnreachable] = "DC service port not reachable (LDAP 389, Kerberos 88, DNS 53)",
         [SelfCheck] = "NetWatch self-check failing (disk, polling, storage, backups, certificate …)",
     };
 }

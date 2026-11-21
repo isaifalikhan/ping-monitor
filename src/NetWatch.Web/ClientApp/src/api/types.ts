@@ -119,6 +119,51 @@ export interface NetInterface {
   inUtilPct?: number | null;
   outUtilPct?: number | null;
   errorsPs?: number | null;
+  /** dot3StatsDuplexStatus: 1 unknown, 2 half, 3 full. */
+  duplex?: number | null;
+  expectedSpeedBps?: number | null;
+  flapCount24h?: number;
+}
+
+export interface TopologyGraphNode {
+  id: number;
+  name: string;
+  ipAddress: string;
+  type: DeviceType;
+  status: DeviceStatus;
+  worstAlert?: Severity | null;
+  parentDeviceId?: number | null;
+}
+
+export interface TopologyLink {
+  id: number;
+  deviceId: number;
+  localPort: string;
+  localInterfaceId?: number | null;
+  remoteDeviceId?: number | null;
+  remoteName?: string | null;
+  remotePort?: string | null;
+  protocol: string;
+  operStatus?: number | null;
+  utilPct?: number | null;
+  speedBps?: number | null;
+  lastSeenUtc: string;
+}
+
+export interface TopologyGraph {
+  nodes: TopologyGraphNode[];
+  links: TopologyLink[];
+  unmatched: string[];
+}
+
+export interface DependencySuggestion {
+  deviceId: number;
+  deviceName: string;
+  currentParentId?: number | null;
+  currentParentName?: string | null;
+  suggestedParentId: number;
+  suggestedParentName: string;
+  via: string;
 }
 
 export interface Sensor {
@@ -765,6 +810,22 @@ export interface DcSummary {
   failedLogons24h: number;
   lockouts24h: number;
   groupChanges24h: number;
+  services?: DcServiceState[];
+  ports?: DcPortState[];
+}
+
+export interface DcServiceState {
+  name: string;
+  displayName?: string | null;
+  state: 'Unknown' | 'Running' | 'Stopped' | 'StartPending' | 'StopPending' | 'Paused' | 'NotFound' | string;
+  lastChangeUtc?: string | null;
+}
+
+export interface DcPortState {
+  service: string;
+  port: number;
+  error?: string | null;
+  ms?: number | null;
 }
 
 export interface DcOverview {
@@ -861,6 +922,10 @@ export interface SavedSearch<Q = Record<string, string>> {
 export interface DcSettings {
   readSecurityLog: boolean;
   useForwardedEvents: boolean;
+  forwardedDcs: string[];
+  replicationStaleHours: number;
+  checkServicePorts: boolean;
+  successfulLogonIgnoreSources: string[];
   storeSuccessfulLogons: boolean;
   successfulLogonTypes: number[];
   excludeComputerAccounts: boolean;

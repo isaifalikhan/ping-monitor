@@ -24,8 +24,10 @@ public static class SimulatedTopology
 
     public static SimVendorSpec VendorFor(DeviceType type, int deviceId) => type switch
     {
-        DeviceType.Switch => (deviceId % 3) switch
+        DeviceType.Switch => (deviceId % 4) switch
         {
+            3 => new SimVendorSpec("HPE Aruba", "Aruba 6300M 48G CL4 PoE 4SFP56 (JL661A)", "FL.10.13.1000", "1.3.6.1.4.1.47196.4.1.1.1.100",
+                "Aruba JL661A 6300M 48G CL4 PoE 4SFP56 Swch FL.10.13.1000"),
             0 => new SimVendorSpec("Cisco", "C9300-48P", "17.9.4a", "1.3.6.1.4.1.9.1.2494",
                 "Cisco IOS Software [Cupertino], Catalyst L3 Switch Software (CAT9K_IOSXE), Version 17.9.4a"),
             1 => new SimVendorSpec("HP", "Aruba 2930F-48G-4SFP+ (JL254A)", "WC.16.11.0012", "1.3.6.1.4.1.11.2.3.7.11.181",

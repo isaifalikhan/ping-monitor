@@ -21,7 +21,7 @@
 #>
 [CmdletBinding()]
 param(
-    [string]$Version = '1.4.0',
+    [string]$Version = '2.0.0-dev',
     [string]$Configuration = 'Release',
     [switch]$Offline,
     [switch]$PrepareOffline,
@@ -148,7 +148,7 @@ if (-not $SkipInstaller) {
     if (-not $iscc) {
         Write-Warning 'Inno Setup 6 (ISCC.exe) not found: installer skipped. Install Inno Setup 6 or pass -InnoSetupCompiler <path>.'
     } else {
-        Invoke-Checked $iscc @("/DAppVersion=$Version", "/DSourceDir=$publishDir", "/DDocsDir=$(Join-Path $root 'docs')", "/O$artifacts", '/Q', $installerScript)
+        Invoke-Checked $iscc @("/DAppVersion=$Version", "/DNumericVersion=$($Version -replace '-.*$', '')", "/DSourceDir=$publishDir", "/DDocsDir=$(Join-Path $root 'docs')", "/O$artifacts", '/Q', $installerScript)
         $setup = Join-Path $artifacts "NetWatch-Setup-$Version.exe"
         Write-Host ("    {0} ({1:N1} MB)" -f $setup, ((Get-Item $setup).Length / 1MB))
     }

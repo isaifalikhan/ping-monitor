@@ -23,6 +23,13 @@ public sealed class MonitoringSettings
     /// <summary>How often vendor/model/serial/firmware are re-read.</summary>
     public int InventoryRefreshHours { get; set; } = 24;
 
+    /// <summary>A port is flapping after this many up/down changes within <see cref="FlapWindowMin"/>.</summary>
+    public int FlapChanges { get; set; } = 4;
+    public int FlapWindowMin { get; set; } = 10;
+
+    /// <summary>Read LLDP and CDP neighbours with the interface table (topology map, dependency suggestions).</summary>
+    public bool DiscoverNeighbors { get; set; } = true;
+
     public void Normalise()
     {
         DefaultPollIntervalSec = Math.Clamp(DefaultPollIntervalSec, 15, 3600);
@@ -34,6 +41,8 @@ public sealed class MonitoringSettings
         MaxConcurrentPolls = Math.Clamp(MaxConcurrentPolls, 1, 512);
         InterfaceMetadataRefreshMin = Math.Clamp(InterfaceMetadataRefreshMin, 5, 1440);
         InventoryRefreshHours = Math.Clamp(InventoryRefreshHours, 1, 168);
+        FlapChanges = Math.Clamp(FlapChanges, 2, 100);
+        FlapWindowMin = Math.Clamp(FlapWindowMin, 2, 240);
     }
 }
 
@@ -167,6 +176,68 @@ public sealed class DcSettings
     /// </summary>
     public bool UseForwardedEvents { get; set; }
 
+    /// <summary>
+    /// DCs (name, short name or IP) that deliver their Security events through Windows Event Forwarding while the
+    /// others are read remotely. Ignored when <see cref="UseForwardedEvents"/> is on (then every DC uses WEF).
+    /// </summary>
+    public List<string> ForwardedDcs { get; set; } = new();
+
+    /// <summary>
+    /// Sources (IP address, IPv4 CIDR such as 10.0.20.0/24, or workstation name) whose successful logons (4624)
+    /// are not stored, e.g. application servers that log on over the network all day.
+    /// </summary>
+    public List<string> SuccessfulLogonIgnoreSources { get; set; } = new();
+
+    /// <summary>True when any DC uses Windows Event Forwarding (the ForwardedEvents reader must run).</summary>
+    [System.Text.Json.Serialization.JsonIgnore]
+    public bool AnyForwarding => UseForwardedEvents || ForwardedDcs.Count > 0;
+
+    /// <summary>True when this DC's Security events come from the ForwardedEvents log instead of remote reads.</summary>
+    public bool UsesForwarding(string? name, string? ip)
+    {
+        if (UseForwardedEvents)
+        {
+            return true;
+        }
+
+        var shortName = name?.Split('.')[0];
+        return ForwardedDcs.Any(d =>
+            (name is not null && d.Equals(name, StringComparison.OrdinalIgnoreCase)) ||
+            (shortName is not null && d.Split('.')[0].Equals(shortName, StringComparison.OrdinalIgnoreCase)) ||
+            (ip is not null && d.Equals(ip, StringComparison.OrdinalIgnoreCase)));
+    }
+
+    /// <summary>True when a successful logon from this source IP or workstation must not be stored.</summary>
+    public bool IsIgnoredLogonSource(string? ip, string? workstation)
+    {
+        foreach (var entry in SuccessfulLogonIgnoreSources)
+        {
+            if (workstation is not null && entry.Equals(workstation, StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+
+            if (ip is null || !System.Net.IPAddress.TryParse(ip, out var address))
+            {
+                continue;
+            }
+
+            if (entry.Contains('/'))
+            {
+                if (System.Net.IPNetwork.TryParse(entry, out var network) && network.Contains(address))
+                {
+                    return true;
+                }
+            }
+            else if (System.Net.IPAddress.TryParse(entry, out var single) && single.Equals(address))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     /// <summary>Store successful logons (4624). They are never alerted on by default.</summary>
     public bool StoreSuccessfulLogons { get; set; } = true;
 
@@ -176,6 +247,12 @@ public sealed class DcSettings
     /// <summary>Skip events about computer accounts (names ending in $) for 4624/4625/4768/4771/4776.</summary>
     public bool ExcludeComputerAccounts { get; set; } = true;
     public int MaxSecurityEventsPerPoll { get; set; } = 5000;
+
+    /// <summary>Alert when a partner / naming context has not replicated successfully for this many hours.</summary>
+    public int ReplicationStaleHours { get; set; } = 3;
+
+    /// <summary>Check that LDAP (389), Kerberos (88) and DNS (53) accept TCP connections on every poll.</summary>
+    public bool CheckServicePorts { get; set; } = true;
 
     /// <summary>How often replication partners are queried (minutes).</summary>
     public int ReplicationCheckMin { get; set; } = 5;
@@ -196,8 +273,12 @@ public sealed class DcSettings
     public void Normalise()
     {
         PrivilegedGroups = PrivilegedGroups.Where(g => !string.IsNullOrWhiteSpace(g)).Select(g => g.Trim()).Distinct(StringComparer.OrdinalIgnoreCase).Take(50).ToList();
+        ForwardedDcs = ForwardedDcs.Where(d => !string.IsNullOrWhiteSpace(d)).Select(d => d.Trim()).Distinct(StringComparer.OrdinalIgnoreCase).Take(100).ToList();
+        SuccessfulLogonIgnoreSources = SuccessfulLogonIgnoreSources.Where(d => !string.IsNullOrWhiteSpace(d)).Select(d => d.Trim())
+            .Distinct(StringComparer.OrdinalIgnoreCase).Take(500).ToList();
         MaxSecurityEventsPerPoll = Math.Clamp(MaxSecurityEventsPerPoll, 100, 50_000);
         ReplicationCheckMin = Math.Clamp(ReplicationCheckMin, 1, 1440);
+        ReplicationStaleHours = Math.Clamp(ReplicationStaleHours, 1, 24 * 14);
         SuccessfulLogonTypes = SuccessfulLogonTypes.Where(t => t is >= 0 and <= 13).Distinct().ToList();
         if (!TimeSpan.TryParseExact(WorkingHoursStart, @"hh\:mm", null, out _))
         {

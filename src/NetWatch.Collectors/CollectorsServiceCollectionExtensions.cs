@@ -47,6 +47,7 @@ public static class CollectorsServiceCollectionExtensions
         services.AddHostedService(sp => sp.GetRequiredService<DomainControllers.ForwardedEventsReader>());
 
         services.AddSingleton<PollResultProcessor>();
+        services.AddSingleton<Snmp.SnmpHealthProfileStore>();
         services.AddSingleton<NetworkDevicePoller>();
         services.AddSingleton<SimulatedDevicePoller>();
         services.AddSingleton<IDevicePoller, RoutingDevicePoller>();

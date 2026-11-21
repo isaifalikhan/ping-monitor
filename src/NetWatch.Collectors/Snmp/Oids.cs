@@ -25,6 +25,29 @@ public static class Oids
     public const string IfOutOctets = "1.3.6.1.2.1.2.2.1.16";
     public const string IfOutDiscards = "1.3.6.1.2.1.2.2.1.19";
     public const string IfOutErrors = "1.3.6.1.2.1.2.2.1.20";
+    public const string IfLastChange = "1.3.6.1.2.1.2.2.1.9";
+
+    // EtherLike-MIB
+    public const string Dot3StatsDuplexStatus = "1.3.6.1.2.1.10.7.2.1.19";
+
+    // LLDP-MIB (IEEE 802.1AB-2005, lldpRemTable / lldpLocPortTable / lldpRemManAddrTable)
+    public const string LldpLocPortId = "1.0.8802.1.1.2.1.3.7.1.3";
+    public const string LldpLocPortDesc = "1.0.8802.1.1.2.1.3.7.1.4";
+    public const string LldpRemChassisIdSubtype = "1.0.8802.1.1.2.1.4.1.1.4";
+    public const string LldpRemChassisId = "1.0.8802.1.1.2.1.4.1.1.5";
+    public const string LldpRemPortIdSubtype = "1.0.8802.1.1.2.1.4.1.1.6";
+    public const string LldpRemPortId = "1.0.8802.1.1.2.1.4.1.1.7";
+    public const string LldpRemPortDesc = "1.0.8802.1.1.2.1.4.1.1.8";
+    public const string LldpRemSysName = "1.0.8802.1.1.2.1.4.1.1.9";
+    public const string LldpRemSysDesc = "1.0.8802.1.1.2.1.4.1.1.10";
+    public const string LldpRemManAddrIfSubtype = "1.0.8802.1.1.2.1.4.2.1.3";
+
+    // CISCO-CDP-MIB cdpCacheTable
+    public const string CdpCacheAddressType = "1.3.6.1.4.1.9.9.23.1.2.1.1.3";
+    public const string CdpCacheAddress = "1.3.6.1.4.1.9.9.23.1.2.1.1.4";
+    public const string CdpCacheDeviceId = "1.3.6.1.4.1.9.9.23.1.2.1.1.6";
+    public const string CdpCacheDevicePort = "1.3.6.1.4.1.9.9.23.1.2.1.1.7";
+    public const string CdpCachePlatform = "1.3.6.1.4.1.9.9.23.1.2.1.1.8";
 
     // IF-MIB ifXTable
     public const string IfName = "1.3.6.1.2.1.31.1.1.1.1";

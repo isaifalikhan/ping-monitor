@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Trash2 } from 'lucide-react';
+import { Download, Trash2 } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { api, qs } from '../api/client';
@@ -126,6 +126,28 @@ function DcCard({ dc }: { dc: DcSummary }) {
           )}
         </span>
         {dc.servicesDown > 0 && <span style={{ color: 'var(--crit)' }}>{dc.servicesDown} AD service(s) not running</span>}
+        {(dc.services?.length ?? 0) > 0 && (
+          <span className="chips" aria-label="Services">
+            {dc.services!.map((s) => (
+              <span
+                key={s.name}
+                className={`badge ${s.state === 'Running' ? 's-up' : s.state === 'Unknown' ? 's-unknown' : 's-down'}`}
+                title={`${s.displayName ?? s.name}: ${s.state}${s.lastChangeUtc ? ` since ${fmtDateTime(s.lastChangeUtc)}` : ''}`}
+              >
+                {s.name}
+              </span>
+            ))}
+          </span>
+        )}
+        {(dc.ports?.length ?? 0) > 0 && (
+          <span className="chips" aria-label="Service ports">
+            {dc.ports!.map((p) => (
+              <span key={p.port} className={`badge ${p.error ? 's-down' : 's-up'}`} title={p.error ? `TCP ${p.port}: ${p.error}` : `TCP ${p.port} answered in ${fmtNum(p.ms ?? 0, 1)} ms`}>
+                {p.service} {p.port}
+              </span>
+            ))}
+          </span>
+        )}
         <span>
           24 h: {dc.events24h} events · <span style={{ color: dc.failedLogons24h > 0 ? 'var(--warn)' : undefined }}>{dc.failedLogons24h} failed logon(s)</span> ·{' '}
           <span style={{ color: dc.lockouts24h > 0 ? 'var(--crit)' : undefined }}>{dc.lockouts24h} lockout(s)</span> · {dc.groupChanges24h} group change(s)
@@ -337,6 +359,14 @@ function EventsTab({ dcs, query, setQuery }: { dcs: DcSummary[]; query: EventQue
           </button>
         )}
         <button onClick={() => setSaving(true)}>Save search…</button>
+        <a
+          className="btn"
+          href={`/api/dc/security-events/export${qs({ ...params, page: undefined, pageSize: undefined })}`}
+          download
+          title="Download the events matching these filters as CSV (newest 100,000)"
+        >
+          <Download size={14} /> Export CSV
+        </a>
         <span className="spacer" style={{ flex: 1 }} />
         <span className="muted">{q.data ? `${q.data.totalCapped ? '10,000+' : q.data.total} event(s)` : ''}</span>
         <button disabled={page <= 1} onClick={() => setPage(page - 1)}>

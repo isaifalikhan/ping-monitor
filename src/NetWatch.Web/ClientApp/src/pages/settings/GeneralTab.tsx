@@ -192,13 +192,17 @@ export function GeneralTab() {
         fields={[
           { key: 'maxSecurityEventsPerPoll', label: 'Max. Security events per DC and poll', min: 100, max: 50000 },
           { key: 'replicationCheckMin', label: 'Check replication and clock every (min)', min: 1, max: 1440 },
+          { key: 'replicationStaleHours', label: 'Alert when a partner has not replicated for (h)', min: 1, max: 336 },
+          { key: 'checkServicePorts', label: 'Check LDAP 389, Kerberos 88 and DNS 53 on every poll', kind: 'bool' },
           { key: 'workingDays', label: 'Working days', kind: 'text', hint: 'Comma-separated: Mon,Tue,Wed,Thu,Fri' },
           { key: 'workingHoursStart', label: 'Working hours start', kind: 'text', pattern: '[0-2][0-9]:[0-5][0-9]', hint: 'HH:mm' },
           { key: 'workingHoursEnd', label: 'Working hours end', kind: 'text', pattern: '[0-2][0-9]:[0-5][0-9]', hint: 'HH:mm' },
           { key: 'successfulLogonTypes', label: 'Logon types of 4624 to store', kind: 'list', numeric: true, hint: '2 interactive, 3 network, 7 unlock, 10 RDP, 11 cached; empty = all' },
           { key: 'privilegedGroups', label: 'Privileged groups (new members = CRITICAL)', kind: 'list' },
           { key: 'readSecurityLog', label: 'Read the Security log of each DC remotely', kind: 'bool' },
-          { key: 'useForwardedEvents', label: 'Use Windows Event Forwarding (ForwardedEvents log on this server) instead', kind: 'bool' },
+          { key: 'useForwardedEvents', label: 'Use Windows Event Forwarding (ForwardedEvents log on this server) for all DCs', kind: 'bool' },
+          { key: 'forwardedDcs', label: 'DCs that use Event Forwarding (when not all)', kind: 'list', hint: 'DC name or IP; the other DCs are read remotely' },
+          { key: 'successfulLogonIgnoreSources', label: 'Do not store successful logons from', kind: 'list', hint: 'IP, CIDR (10.0.20.0/24) or workstation name, e.g. application servers' },
           { key: 'storeSuccessfulLogons', label: 'Store successful logons (4624, 4768, 4776)', kind: 'bool' },
           { key: 'excludeComputerAccounts', label: 'Ignore computer accounts (name$) in logon events', kind: 'bool' },
         ]}

@@ -255,7 +255,7 @@ public class Phase4DcTests
         Assert.Equal(Severity.Critical, R("Audit policy changed").Severity);
         Assert.Contains(4740, EventFilter.Parse(R("Account locked out").FilterJson).EventIds);
         Assert.Equal("true", EventFilter.Parse(R("Admin logon outside working hours").FilterJson).FieldEquals["offHours"]);
-        Assert.Equal(900, R("AD replication failing").DurationSec);
+        Assert.Equal(3600, R("AD replication failing").DurationSec); // 2.0: failures for more than 1 hour
         Assert.Equal(StateKeys.DcReplicationFailed, R("AD replication failing").Key);
         Assert.Equal(MetricKeys.DcTimeSkew, R("DC clock skew").Key);
         Assert.Null(EventFilter.Parse(R("Directory/DFS replication error").FilterJson).Validate());

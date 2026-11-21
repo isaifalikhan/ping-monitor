@@ -19,7 +19,13 @@ function portClass(i: NetInterface): string {
   else if (i.operStatus === 1) cls.push(util >= 80 ? 'hot' : 'up');
   else cls.push(i.isImportant ? 'problem' : 'down');
   if (i.isImportant) cls.push('important');
+  if (i.operStatus === 1 && i.duplex === 2) cls.push('half-duplex');
+  if ((i.flapCount24h ?? 0) >= 4) cls.push('flappy');
   return cls.join(' ');
+}
+
+export function duplexText(d?: number | null): string {
+  return d === 2 ? 'half' : d === 3 ? 'full' : 'unknown';
 }
 
 function shortName(name: string): string {
@@ -69,7 +75,7 @@ function SwitchPorts({ device }: { device: DeviceListItem }) {
               <div
                 key={p.id}
                 className={portClass(p)}
-                title={`${p.name}${p.alias ? ` — ${p.alias}` : ''}\n${p.adminStatus !== 1 ? 'admin down' : ifStatusText(p.operStatus)}, ${fmtSpeed(p.speedBps)}bps\nIn ${fmtBps(p.inBps)} / Out ${fmtBps(p.outBps)}`}
+                title={`${p.name}${p.alias ? ` — ${p.alias}` : ''}\n${p.adminStatus !== 1 ? 'admin down' : ifStatusText(p.operStatus)}, ${fmtSpeed(p.speedBps)}bps, ${duplexText(p.duplex)} duplex\nIn ${fmtBps(p.inBps)} / Out ${fmtBps(p.outBps)}\n${p.flapCount24h ?? 0} up/down change(s) in 24 h`}
               >
                 <div className="pn">{shortName(p.name)}</div>
                 <div className="pu">{p.operStatus === 1 ? `${Math.round(Math.max(p.inUtilPct ?? 0, p.outUtilPct ?? 0))}%` : '·'}</div>

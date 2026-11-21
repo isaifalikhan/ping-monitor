@@ -23,6 +23,8 @@ namespace NetWatch.Service;
 ///   NetWatch.Service.exe --set-certificate F   store the password of a .pfx (asked on the console) and exit
 ///   NetWatch.Service.exe --restore F.zip       restore a backup (service must be stopped) and exit
 ///   NetWatch.Service.exe --version             print the version and exit
+///   NetWatch.Service.exe --self-test           start everything, run a few seconds, stop; exit 0 on success
+///   --Https:Port=8444 (or NETWATCH_Https__Port) overrides any setting of appsettings.json
 /// </code>
 /// </summary>
 public static class Program
@@ -90,7 +92,12 @@ public static class Program
                 Args = cli.Remaining,
                 ContentRootPath = AppContext.BaseDirectory,
             });
+            // Precedence (lowest → highest): built-in defaults, data-folder appsettings.json, NETWATCH_* environment
+            // variables (NETWATCH_Https__Port=8444), command line (--Https:Port=8444). The settings file is added after
+            // the host defaults, so environment and command line are re-added on top of it.
             builder.Configuration.AddJsonFile(paths.SettingsFile, optional: true, reloadOnChange: false);
+            builder.Configuration.AddEnvironmentVariables("NETWATCH_");
+            builder.Configuration.AddCommandLine(cli.Remaining);
             builder.Host.UseWindowsService(o => o.ServiceName = ServiceName);
             builder.Host.UseSerilog();
             builder.Host.ConfigureHostOptions(o =>
@@ -140,6 +147,17 @@ public static class Program
             await Seeder.SeedAsync(app.Services, simulate, startupLogger, CancellationToken.None);
 
             app.UseNetWatchWeb();
+            if (cli.SelfTest)
+            {
+                // Full start-up (databases, seeding, every hosted service, Kestrel), a short run, then a clean stop.
+                // Used by the automated start-up test and after installation to prove the build can boot.
+                await app.StartAsync();
+                await Task.Delay(TimeSpan.FromSeconds(Math.Clamp(builder.Configuration.GetValue("SelfTest:Seconds", 5), 1, 300)));
+                await app.StopAsync();
+                Log.Information("Self-test passed");
+                return 0;
+            }
+
             Log.Information("Web console listening on https://{Host}:{Port}/", Environment.MachineName, port);
             await app.RunAsync();
             Log.Information("NetWatch stopped");
@@ -250,11 +268,11 @@ public static class Program
 }
 
 /// <summary>Parsed command line.</summary>
-internal sealed record CommandLine(bool Simulate, bool ResetAdmin, bool Version, string? DataDir, string? SetCertificate, string[] Remaining, string? Restore = null)
+internal sealed record CommandLine(bool Simulate, bool ResetAdmin, bool Version, string? DataDir, string? SetCertificate, string[] Remaining, string? Restore = null, bool SelfTest = false)
 {
     public static CommandLine Parse(string[] args)
     {
-        bool simulate = false, reset = false, version = false;
+        bool simulate = false, reset = false, version = false, selfTest = false;
         string? dataDir = null, cert = null, restore = null;
         var remaining = new List<string>();
         for (var i = 0; i < args.Length; i++)
@@ -272,6 +290,9 @@ internal sealed record CommandLine(bool Simulate, bool ResetAdmin, bool Version,
                     break;
                 case "--console":
                     break;
+                case "--self-test":
+                    selfTest = true;
+                    break;
                 case "--data-dir" when i + 1 < args.Length:
                     dataDir = args[++i];
                     break;
@@ -287,7 +308,7 @@ internal sealed record CommandLine(bool Simulate, bool ResetAdmin, bool Version,
             }
         }
 
-        return new CommandLine(simulate, reset, version, dataDir, cert, remaining.ToArray(), restore);
+        return new CommandLine(simulate, reset, version, dataDir, cert, remaining.ToArray(), restore, selfTest);
     }
 }
 
