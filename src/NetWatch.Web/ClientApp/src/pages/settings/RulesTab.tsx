@@ -37,6 +37,7 @@ function filterText(f: EventFilter): string {
   if (f.source) parts.push(`source contains “${f.source}”`);
   if (f.eventIds?.length) parts.push(`event ID ${f.eventIds.join(', ')}`);
   if (f.oid) parts.push(`OID ${f.oid}`);
+  for (const [k, v] of Object.entries(f.fieldEquals ?? {})) parts.push(`${k} = ${v}`);
   return parts.length ? ` where ${parts.join(', ')}` : '';
 }
 
@@ -51,7 +52,7 @@ function describe(rule: Rule, keys: RuleKey[]): string {
     case 'StateChange':
       return `${name}${dur}`;
     case 'CountInWindow':
-      return `≥ ${rule.countThreshold} × ${name} in ${span(rule.windowSec)}${filterText(rule.filter)}`;
+      return `≥ ${rule.countThreshold} × ${name} in ${span(rule.windowSec)}${rule.groupByField ? ` per ${rule.groupByField}` : ''}${filterText(rule.filter)}`;
     case 'Absence':
       return `no ${name} data for ${span(rule.durationSec)}`;
     default:
@@ -86,9 +87,11 @@ function RuleDialog({ rule, keys, groups, onClose }: { rule?: Rule; keys: RuleKe
     windowSec: rule?.windowSec || 300,
     countThreshold: rule?.countThreshold || 10,
     escalateAfterMin: rule?.escalateAfterMin ?? null,
+    groupByField: rule?.groupByField ?? '',
   });
   const [filter, setFilter] = useState<EventFilter>(rule?.filter ?? { eventIds: [] });
   const [eventIds, setEventIds] = useState((rule?.filter?.eventIds ?? []).join(', '));
+  const [fields, setFields] = useState(Object.entries(rule?.filter?.fieldEquals ?? {}).map(([k, v]) => `${k}=${v}`).join(', '));
   const [tags, setTags] = useState((rule?.scope.tags ?? []).join(', '));
   const [error, setError] = useState<unknown>(null);
   const builtIn = !!rule?.isBuiltIn;
@@ -109,8 +112,15 @@ function RuleDialog({ rule, keys, groups, onClose }: { rule?: Rule; keys: RuleKe
               source: filter.source?.trim() || null,
               oid: filter.oid?.trim() || null,
               eventIds: eventIds.split(/[,\s]+/).map(Number).filter((n) => Number.isInteger(n) && n > 0),
+              fieldEquals: Object.fromEntries(
+                fields
+                  .split(',')
+                  .map((p) => p.split('=').map((x) => x.trim()))
+                  .filter((p) => p.length === 2 && p[0] && p[1]),
+              ),
             }
           : null,
+        groupByField: r.ruleType === 'CountInWindow' && r.groupByField.trim() ? r.groupByField.trim() : null,
       };
       if (rule) await api.put(`/api/rules/${rule.id}`, body);
       else await api.post('/api/rules', body);
@@ -223,6 +233,11 @@ function RuleDialog({ rule, keys, groups, onClose }: { rule?: Rule; keys: RuleKe
               <input type="number" min={10} max={86400} value={r.windowSec} onChange={(e) => set('windowSec', Number(e.target.value))} />
               <span className="hint">Resolves when no matching event occurred for one window.</span>
             </label>
+            <label className="field">
+              <span>Count separately per (event field, optional)</span>
+              <input className="mono" value={r.groupByField} onChange={(e) => set('groupByField', e.target.value)} placeholder="targetUser, source" />
+              <span className="hint">DC security events: targetUser, source, sourceIp, subjectUser, group. Empty = per device.</span>
+            </label>
           </>
         )}
         <label className="field">
@@ -257,7 +272,14 @@ function RuleDialog({ rule, keys, groups, onClose }: { rule?: Rule; keys: RuleKe
               <span>Source contains (app, provider, trap name)</span>
               <input value={filter.source ?? ''} onChange={(e) => setFilter({ ...filter, source: e.target.value })} />
             </label>
-            {(r.key === 'windows.event' || eventIds) && (
+            {(r.key === 'dc.security' || fields) && (
+              <label className="field">
+                <span>Field values (name=value, …)</span>
+                <input className="mono" value={fields} onChange={(e) => setFields(e.target.value)} placeholder="failed=true, offHours=true" />
+                <span className="hint">DC fields: failed, privileged, offHours (true/false), targetUser, source, group, logonType.</span>
+              </label>
+            )}
+            {(r.key === 'windows.event' || r.key === 'dc.security' || eventIds) && (
               <label className="field">
                 <span>Windows event IDs</span>
                 <input value={eventIds} onChange={(e) => setEventIds(e.target.value)} placeholder="7031, 7034" />

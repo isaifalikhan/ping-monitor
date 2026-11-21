@@ -1,7 +1,7 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
 import { api } from '../../api/client';
-import type { AlertingSettings, MonitoringSettings, ReceiverSettings, RetentionSettings, SecuritySettings, ServerMonitoringSettings, VmwareSettings } from '../../api/types';
+import type { AlertingSettings, MonitoringSettings, ReceiverSettings, RetentionSettings, SecuritySettings, ServerMonitoringSettings, VmwareSettings, DcSettings } from '../../api/types';
 import { ErrorBox } from '../../components/Modal';
 
 interface AllSettings {
@@ -12,11 +12,14 @@ interface AllSettings {
   receivers: ReceiverSettings;
   servers: ServerMonitoringSettings;
   vmware: VmwareSettings;
+  dc: DcSettings;
 }
 
 type Field<T> =
   | { key: keyof T; label: string; hint?: string; min: number; max: number; kind?: 'number' }
-  | { key: keyof T; label: string; hint?: string; kind: 'bool' };
+  | { key: keyof T; label: string; hint?: string; kind: 'bool' }
+  | { key: keyof T; label: string; hint?: string; kind: 'text'; pattern?: string }
+  | { key: keyof T; label: string; hint?: string; kind: 'list'; numeric?: boolean };
 
 function Section<T extends object>({ title, section, fields, initial, note }: { title: string; section: string; fields: Field<T>[]; initial: T; note?: string }) {
   const qc = useQueryClient();
@@ -67,6 +70,14 @@ function Section<T extends object>({ title, section, fields, initial, note }: { 
                 <input type="checkbox" checked={Boolean(value[f.key])} onChange={(e) => change(f.key, e.target.checked)} />
                 {f.label}
               </label>
+            ) : f.kind === 'text' ? (
+              <label key={String(f.key)} className="field">
+                <span>{f.label}</span>
+                <input value={String(value[f.key] ?? '')} pattern={f.pattern} onChange={(e) => change(f.key, e.target.value)} />
+                {f.hint && <span className="hint">{f.hint}</span>}
+              </label>
+            ) : f.kind === 'list' ? (
+              <ListField key={String(f.key)} label={f.label} hint={f.hint} numeric={f.numeric} value={(value[f.key] as unknown as (string | number)[]) ?? []} onChange={(v) => change(f.key, v)} />
             ) : (
               <label key={String(f.key)} className="field">
                 <span>{f.label}</span>
@@ -80,6 +91,30 @@ function Section<T extends object>({ title, section, fields, initial, note }: { 
         </div>
       </div>
     </div>
+  );
+}
+
+/** Comma-separated list editor; keeps the text while typing and parses it on every change. */
+function ListField({ label, hint, numeric, value, onChange }: { label: string; hint?: string; numeric?: boolean; value: (string | number)[]; onChange: (v: (string | number)[]) => void }) {
+  const parse = (t: string) => {
+    const items = t.split(',').map((s) => s.trim()).filter(Boolean);
+    return numeric ? items.map(Number).filter((n) => Number.isFinite(n)) : items;
+  };
+  const [text, setText] = useState(value.join(', '));
+  // Only replace the text when the value changed from outside (load, save), not while typing.
+  useEffect(() => setText((t) => (parse(t).join(',') === value.join(',') ? t : value.join(', '))), [value]); // eslint-disable-line react-hooks/exhaustive-deps
+  return (
+    <label className="field">
+      <span>{label}</span>
+      <input
+        value={text}
+        onChange={(e) => {
+          setText(e.target.value);
+          onChange(parse(e.target.value));
+        }}
+      />
+      {hint && <span className="hint">{hint}</span>}
+    </label>
   );
 }
 
@@ -147,6 +182,25 @@ export function GeneralTab() {
           { key: 'importAlarms', label: 'Import triggered vCenter alarms', kind: 'bool' },
           { key: 'collectCpuReady', label: 'Collect VM CPU ready (performance counter)', kind: 'bool' },
           { key: 'trustOnFirstUse', label: 'Pin self-signed vCenter certificates on first connection', kind: 'bool', hint: 'Off: only CA-trusted certificates are accepted.' },
+        ]}
+      />
+      <Section<DcSettings>
+        title="Domain controllers (Security log, replication)"
+        section="dc"
+        initial={q.data.dc}
+        note="Devices of type Domain controller with a Windows credential are read with that account (member of Event Log Readers). Successful logons (4624) are stored for investigation but never alerted on. Working hours are Asia/Karachi time."
+        fields={[
+          { key: 'maxSecurityEventsPerPoll', label: 'Max. Security events per DC and poll', min: 100, max: 50000 },
+          { key: 'replicationCheckMin', label: 'Check replication and clock every (min)', min: 1, max: 1440 },
+          { key: 'workingDays', label: 'Working days', kind: 'text', hint: 'Comma-separated: Mon,Tue,Wed,Thu,Fri' },
+          { key: 'workingHoursStart', label: 'Working hours start', kind: 'text', pattern: '[0-2][0-9]:[0-5][0-9]', hint: 'HH:mm' },
+          { key: 'workingHoursEnd', label: 'Working hours end', kind: 'text', pattern: '[0-2][0-9]:[0-5][0-9]', hint: 'HH:mm' },
+          { key: 'successfulLogonTypes', label: 'Logon types of 4624 to store', kind: 'list', numeric: true, hint: '2 interactive, 3 network, 7 unlock, 10 RDP, 11 cached; empty = all' },
+          { key: 'privilegedGroups', label: 'Privileged groups (new members = CRITICAL)', kind: 'list' },
+          { key: 'readSecurityLog', label: 'Read the Security log of each DC remotely', kind: 'bool' },
+          { key: 'useForwardedEvents', label: 'Use Windows Event Forwarding (ForwardedEvents log on this server) instead', kind: 'bool' },
+          { key: 'storeSuccessfulLogons', label: 'Store successful logons (4624, 4768, 4776)', kind: 'bool' },
+          { key: 'excludeComputerAccounts', label: 'Ignore computer accounts (name$) in logon events', kind: 'bool' },
         ]}
       />
       <Section<ReceiverSettings>

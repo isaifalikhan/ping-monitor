@@ -560,6 +560,15 @@ table.data tr.selected {
   background: var(--bg-elev-2);
 }
 
+/* Single-line cell content in virtualised tables (rows have a fixed height). */
+.clip {
+  display: block;
+  max-width: 640px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .vtable {
   overflow: auto;
   position: relative;

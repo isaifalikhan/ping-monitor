@@ -76,6 +76,7 @@ public static class WebServiceCollectionExtensions
         app.MapEventEndpoints();
         app.MapMaintenanceEndpoints();
         app.MapVmwareEndpoints();
+        app.MapDcEndpoints();
         app.MapHub<LiveHub>("/hubs/live");
 
         app.UseEmbeddedUi();

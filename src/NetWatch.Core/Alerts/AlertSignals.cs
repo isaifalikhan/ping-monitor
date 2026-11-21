@@ -32,6 +32,7 @@ public sealed record StateSignal(
 /// <param name="Source">Syslog app name, event-log provider or trap name.</param>
 /// <param name="EventId">Windows event ID.</param>
 /// <param name="Oid">SNMP trap OID.</param>
+/// <param name="Fields">Named values (e.g. targetUser, sourceIp, group, offHours) for field filters and per-value counting.</param>
 public sealed record EventSignal(
     int DeviceId,
     string EventKey,
@@ -40,7 +41,8 @@ public sealed record EventSignal(
     Severity Severity = Severity.Info,
     string? Source = null,
     int? EventId = null,
-    string? Oid = null) : AlertSignal(DeviceId, TimestampUtc);
+    string? Oid = null,
+    IReadOnlyDictionary<string, string>? Fields = null) : AlertSignal(DeviceId, TimestampUtc);
 
 /// <summary>Entry point into the alert engine. Non-blocking.</summary>
 public interface IAlertSignalSink

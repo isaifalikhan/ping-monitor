@@ -30,6 +30,9 @@ public class AlertRule
     /// <summary>CountInWindow: the window length in seconds.</summary>
     public int WindowSec { get; set; }
 
+    /// <summary>CountInWindow: count separately per value of this event field (e.g. "targetUser", "sourceIp"); null = per device.</summary>
+    public string? GroupByField { get; set; }
+
     /// <summary>CountInWindow: number of matching events within the window that raises the alert.</summary>
     public int CountThreshold { get; set; }
 

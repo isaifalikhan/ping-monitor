@@ -105,7 +105,7 @@ public static class AlertEndpoints
 
     private static RuleDto ToDto(AlertRule r) => new(r.Id, r.Name, r.Description, r.IsEnabled, r.IsBuiltIn, r.RuleType, r.Severity,
         RuleScope.Parse(r.ScopeJson), r.Key, r.Operator, r.Threshold, r.ClearThreshold, r.DurationSec, r.UpdatedUtc,
-        EventFilter.Parse(r.FilterJson), r.WindowSec, r.CountThreshold, r.EscalateAfterMin);
+        EventFilter.Parse(r.FilterJson), r.WindowSec, r.CountThreshold, r.EscalateAfterMin, r.GroupByField);
 
     /// <summary>Keys an Absence rule can watch: any metric, or syslog/trap reception.</summary>
     private static readonly string[] AbsenceEventKeys = [EventKeys.SyslogMessage, EventKeys.SnmpTrap];
@@ -164,6 +164,11 @@ public static class AlertEndpoints
             return "Count rules need a count of 2–100000 events and a window of 10–86400 seconds.";
         }
 
+        if (input.GroupByField is { Length: > 64 } || (input.GroupByField is { } g && g.Trim().Any(c => !char.IsLetterOrDigit(c) && c != '_')))
+        {
+            return "Group-by field must be a field name (letters and digits, max 64).";
+        }
+
         if (input.EscalateAfterMin is < 0 or > 1440)
         {
             return "Escalation must be between 0 and 1440 minutes (empty = global setting).";
@@ -191,6 +196,7 @@ public static class AlertEndpoints
         rule.FilterJson = input.Filter?.ToJson();
         rule.WindowSec = input.RuleType == AlertRuleType.CountInWindow ? input.WindowSec : 0;
         rule.CountThreshold = input.RuleType == AlertRuleType.CountInWindow ? input.CountThreshold : 0;
+        rule.GroupByField = input.RuleType == AlertRuleType.CountInWindow && !string.IsNullOrWhiteSpace(input.GroupByField) ? input.GroupByField.Trim() : null;
         rule.EscalateAfterMin = input.EscalateAfterMin;
         if (allowStructuralChange)
         {

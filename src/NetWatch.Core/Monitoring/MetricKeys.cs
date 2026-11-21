@@ -47,6 +47,9 @@ public static class MetricKeys
     public const string HostCpu = "vmware.host.cpu.pct";
     public const string HostMemory = "vmware.host.mem.pct";
 
+    /// <summary>Domain controller clock difference to the PDC emulator, in seconds (absolute).</summary>
+    public const string DcTimeSkew = "dc.time.skew.sec";
+
     public static readonly IReadOnlyDictionary<string, string> DisplayNames = new Dictionary<string, string>
     {
         [PingRtt] = "Ping latency (ms)",
@@ -68,6 +71,7 @@ public static class MetricKeys
         [VmBalloonMb] = "VM ballooned memory (MB)",
         [HostCpu] = "ESXi host CPU (%)",
         [HostMemory] = "ESXi host memory (%)",
+        [DcTimeSkew] = "DC clock difference to PDC (s)",
     };
 }
 
@@ -89,6 +93,7 @@ public static class StateKeys
     public const string VmToolsNotRunning = "vmware.vm.tools";
     public const string VcenterAlarmRed = "vmware.alarm.red";
     public const string VcenterAlarmYellow = "vmware.alarm.yellow";
+    public const string DcReplicationFailed = "dc.replication";
 
     public static readonly IReadOnlyDictionary<string, string> DisplayNames = new Dictionary<string, string>
     {
@@ -107,6 +112,7 @@ public static class StateKeys
         [VmToolsNotRunning] = "VMware Tools not running (powered-on VM)",
         [VcenterAlarmRed] = "vCenter alarm (red)",
         [VcenterAlarmYellow] = "vCenter alarm (yellow)",
+        [DcReplicationFailed] = "AD replication failing (partner / naming context)",
     };
 }
 
@@ -118,6 +124,7 @@ public static class EventKeys
     public const string SnmpTrap = "snmp.trap";
     public const string WindowsEvent = "windows.event";
     public const string VmwareEvent = "vmware.event";
+    public const string DcSecurity = "dc.security";
 
     public static readonly IReadOnlyDictionary<string, string> DisplayNames = new Dictionary<string, string>
     {
@@ -126,6 +133,7 @@ public static class EventKeys
         [SnmpTrap] = "SNMP trap",
         [WindowsEvent] = "Windows event log entry",
         [VmwareEvent] = "vCenter event",
+        [DcSecurity] = "DC security event (Security log)",
     };
 }
 

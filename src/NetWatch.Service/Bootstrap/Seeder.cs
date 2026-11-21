@@ -66,6 +66,7 @@ public static class Seeder
             (NotificationSettings.Key, new NotificationSettings()),
             (LdapSettings.Key, new LdapSettings()),
             (VmwareSettings.Key, new VmwareSettings()),
+            (DcSettings.Key, new DcSettings()),
         })
         {
             if (!await db.Settings.AnyAsync(s => s.Key == key, ct))
@@ -82,6 +83,7 @@ public static class Seeder
             // Inventories seeded by an earlier version get the server-monitoring additions.
             await SimulatorSeeder.UpgradeAsync(db, protector, logger, ct);
             await SimulatorSeeder.UpgradeVmwareAsync(db, protector, logger, ct);
+            await SimulatorSeeder.UpgradeDomainControllersAsync(db, logger, ct);
         }
     }
 

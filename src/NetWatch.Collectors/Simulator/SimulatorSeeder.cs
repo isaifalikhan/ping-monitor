@@ -261,4 +261,55 @@ public static class SimulatorSeeder
         await db.SaveChangesAsync(ct);
         logger.LogInformation("Simulator: added a simulated vCenter with 4 ESXi hosts");
     }
+
+    /// <summary>
+    /// Phase 4 additions: two simulated domain controllers (SIM-DC-01 is the PDC emulator) with SNMP and the
+    /// simulated Windows credential, watching the AD core services. Idempotent.
+    /// </summary>
+    public static async Task UpgradeDomainControllersAsync(NetWatchDbContext db, ILogger logger, CancellationToken ct)
+    {
+        if (!await db.DeviceTags.AnyAsync(t => t.Tag == DeviceSnapshot.SimulatedTag, ct) ||
+            await db.Devices.AnyAsync(d => d.Type == DeviceType.DomainController && d.Tags.Any(t => t.Tag == DeviceSnapshot.SimulatedTag), ct))
+        {
+            return;
+        }
+
+        var windows = await db.CredentialProfiles.FirstOrDefaultAsync(p => p.Name == "Simulator Windows", ct);
+        var snmp = await db.CredentialProfiles.FirstOrDefaultAsync(p => p.Name == "Simulator SNMP v2c", ct);
+        if (windows is null || snmp is null)
+        {
+            return;
+        }
+
+        var now = DateTime.UtcNow;
+        var group = await db.Groups.FirstOrDefaultAsync(g => g.Name == "Data Center", ct);
+        var core = await db.Devices.FirstOrDefaultAsync(d => d.Name == "SIM-CORE-SW-01", ct);
+        for (var i = 1; i <= 2; i++)
+        {
+            db.Devices.Add(new Device
+            {
+                Name = $"SIM-DC-{i:D2}",
+                IpAddress = $"10.250.10.{39 + i}",
+                Type = DeviceType.DomainController,
+                Os = OsKind.Windows,
+                GroupId = group?.Id,
+                ParentDeviceId = core?.Id,
+                PollIntervalSec = 60,
+                Status = DeviceStatus.Unknown,
+                StatusSinceUtc = now,
+                CreatedUtc = now,
+                UpdatedUtc = now,
+                Tags = [new DeviceTag { Tag = DeviceSnapshot.SimulatedTag }, new DeviceTag { Tag = "dc" }],
+                Credentials =
+                [
+                    new DeviceCredential { Purpose = CredentialPurpose.Snmp, CredentialProfileId = snmp.Id },
+                    new DeviceCredential { Purpose = CredentialPurpose.Management, CredentialProfileId = windows.Id },
+                ],
+                WatchedServices = DcDefaults.WatchedServices.Select(s => new WatchedService { ServiceName = s, LastState = ServiceState.Unknown }).ToList(),
+            });
+        }
+
+        await db.SaveChangesAsync(ct);
+        logger.LogInformation("Simulator: added two simulated domain controllers (SIM-DC-01 PDC, SIM-DC-02)");
+    }
 }

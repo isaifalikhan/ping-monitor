@@ -199,7 +199,8 @@ public sealed record RuleDto(
     Core.Alerts.EventFilter Filter,
     int WindowSec,
     int CountThreshold,
-    int? EscalateAfterMin);
+    int? EscalateAfterMin,
+    string? GroupByField);
 
 public sealed record RuleInput(
     string? Name,
@@ -216,7 +217,8 @@ public sealed record RuleInput(
     Core.Alerts.EventFilter? Filter = null,
     int WindowSec = 0,
     int CountThreshold = 0,
-    int? EscalateAfterMin = null);
+    int? EscalateAfterMin = null,
+    string? GroupByField = null);
 
 public sealed record RuleKeyDto(AlertRuleType RuleType, string Key, string DisplayName);
 

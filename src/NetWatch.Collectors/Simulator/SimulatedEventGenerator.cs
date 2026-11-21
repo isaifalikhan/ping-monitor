@@ -36,6 +36,10 @@ public sealed class SimulatedEventGenerator : BackgroundService
     {
         await _inventory.Ready.WaitAsync(stoppingToken);
         _logger.LogInformation("Simulator: generating syslog messages and SNMP traps for simulated devices");
+        if (SimulatedDomainController.IncidentRate > 1)
+        {
+            _logger.LogWarning("Simulator: DC incident rate x{Rate} (NETWATCH_SIM_INCIDENT_RATE) - for demonstrations and tests only", SimulatedDomainController.IncidentRate);
+        }
         using var timer = new PeriodicTimer(TimeSpan.FromSeconds(5));
         var tick = 0;
         try

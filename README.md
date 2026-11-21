@@ -15,9 +15,16 @@ formats) with search; full alert lifecycle (event filters, count-in-window and a
 escalation, dependency suppression, scheduled maintenance windows); offline notification channels (Windows Event
 Log, syslog forwarding, script, SMTP); sign-in with Active Directory accounts (LDAPS, group → role mapping).
 
-**Phase 3 (this release, 1.2.0):** VMware monitoring through the vSphere API (vCenter or standalone ESXi): hosts,
+**Phase 3 (1.2.0):** VMware monitoring through the vSphere API (vCenter or standalone ESXi): hosts,
 VMs, datastores and snapshots (age and size), CPU ready, VMware Tools, triggered vCenter alarms and events, VM →
 host → datastore mapping, a VMware page, VMware alert rules, and certificate pinning for self-signed vCenters.
+
+**Phase 4 (this release, 1.3.0):** Active Directory domain controller monitoring: Security-log collection (remote
+reads with an Event Log Readers account, or Windows Event Forwarding) for logons, failures, lockouts, account and
+group changes, admin logons, audit policy and log clearing; replication status per partner, DS/DFSR errors, AD
+services and clock skew to the PDC; brute-force, lockout, privileged-group, off-hours and replication alerts; a
+Domain controllers page with event viewer and saved searches, lockout tracker, group change log, replication
+matrix and audit-policy guidance.
 
 The earlier cloud version (Next.js + Supabase) is preserved at git tag `legacy-cloud-netwatch`.
 

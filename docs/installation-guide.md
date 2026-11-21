@@ -45,6 +45,8 @@ Interfaces you mark as not monitored are not stored. You can shorten retention u
 | Outbound | TCP 22 | NetWatch server → Linux servers | SSH |
 | Outbound | TCP 443 | NetWatch server → vCenter / ESXi | vSphere API (read-only) |
 | Outbound | TCP 636 (or 389) | NetWatch server → domain controllers | Optional: sign-in with AD accounts (LDAPS) |
+| Outbound | TCP 389, 5985 (or 135 + RPC) | NetWatch server → domain controllers | DC monitoring: replication status over signed/sealed LDAP, Security/Directory Service logs, clock (WMI) |
+| Inbound | TCP 5985 | domain controllers → NetWatch server | Optional: Windows Event Forwarding (WinRM) when DC events are pushed instead of read |
 | Outbound | as configured | NetWatch server → SMTP relay / SIEM | Optional notification channels |
 
 The receiver ports can be changed under *Settings → General → Syslog and SNMP trap receivers* (service restart
@@ -119,6 +121,7 @@ Use dedicated, read-only accounts for monitoring:
 |---|---|
 | Switches, routers | SNMP v2c read-only community, or (recommended) an SNMPv3 user with authPriv (SHA-256 + AES) and a read-only view. Restrict SNMP to the NetWatch server's address. Send traps (v2c or v3) and syslog to the NetWatch server |
 | Windows servers | A domain user (e.g. `svc-netwatch`), **not** a domain admin. On each server (or by GPO): member of **Event Log Readers** and **Distributed COM Users**; WMI namespace `root\cimv2` and `root\default` (for pending-reboot checks): *Enable Account* + *Remote Enable* (wmimgmt.msc → WMI Control → Security). For WinRM add the account to **Remote Management Users** and enable WinRM (`winrm quickconfig` or GPO). Windows firewall rules: *Windows Remote Management (HTTP-In)*, *Remote Event Log Management*, and for the DCOM fallback *Windows Management Instrumentation (WMI-In)* |
+| Domain controllers | A domain user (e.g. `svc-netwatch-dc`), **not** a domain admin, member of the built-in domain local groups **Event Log Readers** (remote Security log) and **Remote Management Users** (WinRM; or **Distributed COM Users** for DCOM), with WMI *Remote Enable* on `root\cimv2` of the DCs (GPO or wmimgmt.msc). Replication status is read over LDAP, which every authenticated user may do. Configure the advanced audit policy shown on the *Recommended audit policy* tab of the DC page and set the Security log to at least 1 GB |
 | Linux servers | An unprivileged user (e.g. `netwatch`) with SSH access; password or key. No sudo is needed: NetWatch only reads `/proc`, runs `df` and `systemctl show`. The host key is recorded on first contact and verified afterwards |
 | vCenter / ESXi | A vCenter user (e.g. `netwatch-ro@vsphere.local` or an AD account) with the built-in **Read-only** role assigned at the vCenter root object, *propagate to children* ticked. For a standalone ESXi host, a local user with the Read-only role. Self-signed (VMCA) certificates are pinned on first connection unless the VMCA root is trusted on the NetWatch server |
 | Active Directory sign-in | None stored: users bind with their own account. Use LDAPS (636) with the DC certificate trusted on the NetWatch server |

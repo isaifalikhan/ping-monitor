@@ -355,7 +355,14 @@ public static class DeviceEndpoints
             return "Selected vCenter credential does not exist.";
         }
 
-        var services = (input.WatchedServices ?? Array.Empty<string>())
+        IReadOnlyList<string> requested = input.WatchedServices ?? Array.Empty<string>();
+        if (device.Id == 0 && input.Type == DeviceType.DomainController && requested.Count == 0)
+        {
+            // New domain controllers watch the AD core services unless the operator chose others.
+            requested = DcDefaults.WatchedServices;
+        }
+
+        var services = requested
             .Select(s => s.Trim())
             .Where(s => s.Length > 0)
             .Distinct(StringComparer.OrdinalIgnoreCase)
@@ -419,7 +426,7 @@ public static class DeviceEndpoints
             device.Credentials.Add(new DeviceCredential { Purpose = CredentialPurpose.VCenter, CredentialProfileId = vcenterId });
         }
 
-        if (input.WatchedServices is not null)
+        if (input.WatchedServices is not null || (device.Id == 0 && services.Count > 0))
         {
             device.WatchedServices.RemoveAll(w => !services.Contains(w.ServiceName, StringComparer.OrdinalIgnoreCase));
             foreach (var name2 in services.Where(s => !device.WatchedServices.Any(w => string.Equals(w.ServiceName, s, StringComparison.OrdinalIgnoreCase))))

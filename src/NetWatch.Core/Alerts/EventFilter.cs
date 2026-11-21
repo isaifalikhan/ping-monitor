@@ -35,9 +35,12 @@ public sealed class EventFilter
     /// <summary>Trap OID prefix (e.g. "1.3.6.1.6.3.1.1.5.5" for authenticationFailure).</summary>
     public string? Oid { get; set; }
 
+    /// <summary>Event fields that must have these values (case-insensitive), e.g. {"offHours": "true"}.</summary>
+    public Dictionary<string, string> FieldEquals { get; set; } = new();
+
     public bool IsEmpty =>
         string.IsNullOrWhiteSpace(Pattern) && MinSeverity is null && EventIds.Count == 0 &&
-        string.IsNullOrWhiteSpace(Source) && string.IsNullOrWhiteSpace(Oid);
+        string.IsNullOrWhiteSpace(Source) && string.IsNullOrWhiteSpace(Oid) && FieldEquals.Count == 0;
 
     public static EventFilter Parse(string? json)
     {
@@ -61,6 +64,16 @@ public sealed class EventFilter
 
     /// <summary>Returns an error message if the pattern is not a valid regular expression, otherwise null.</summary>
     public string? Validate()
+    {
+        if (FieldEquals.Count > 20 || FieldEquals.Any(kv => string.IsNullOrWhiteSpace(kv.Key) || kv.Key.Length > 64 || kv.Value is null || kv.Value.Length > 200))
+        {
+            return "Field filters need a field name and value (max 20 entries, 64 / 200 characters).";
+        }
+
+        return ValidatePattern();
+    }
+
+    private string? ValidatePattern()
     {
         if (string.IsNullOrWhiteSpace(Pattern))
         {
@@ -93,6 +106,14 @@ public sealed class EventFilter
         if (EventIds.Count > 0 && (e.EventId is not { } id || !EventIds.Contains(id)))
         {
             return false;
+        }
+
+        foreach (var (field, expected) in FieldEquals)
+        {
+            if (e.Fields is null || !e.Fields.TryGetValue(field, out var actual) || !string.Equals(actual, expected, StringComparison.OrdinalIgnoreCase))
+            {
+                return false;
+            }
         }
 
         if (!string.IsNullOrWhiteSpace(Source) && (e.Source is null || !e.Source.Contains(Source.Trim(), StringComparison.OrdinalIgnoreCase)))
