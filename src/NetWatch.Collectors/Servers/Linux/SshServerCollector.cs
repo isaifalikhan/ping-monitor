@@ -26,7 +26,7 @@ public sealed partial class SshServerCollector : IServerCollector
     internal static partial Regex SafeUnitName();
 
     /// <summary>The command run on the server. Only reads files and queries systemd; unit names are validated.</summary>
-    internal static string BuildScript(IReadOnlyList<string> units)
+    internal static string BuildScript(IReadOnlyList<string> units, bool gpus = false, bool nvidiaSmi = false)
     {
         var sb = new StringBuilder();
         sb.Append("export LC_ALL=C; ");
@@ -44,6 +44,16 @@ public sealed partial class SshServerCollector : IServerCollector
             sb.Append("echo '##SVC'; systemctl show -p Id -p LoadState -p ActiveState -p Description ");
             sb.Append(string.Join(' ', safe.Select(u => $"'{u}'")));
             sb.Append(" 2>/dev/null; ");
+        }
+
+        if (gpus)
+        {
+            // lspci names the GPUs (also when the driver is broken); nvidia-smi adds the values for NVIDIA cards.
+            sb.Append("echo '##LSPCI'; (lspci 2>/dev/null | grep -iE 'vga|3d controller|display controller'); ");
+            if (nvidiaSmi)
+            {
+                sb.Append("echo '##NVSMI'; if command -v nvidia-smi >/dev/null 2>&1; then ").Append(GpuParsers.NvidiaSmiCommand).Append(" 2>&1; fi; ");
+            }
         }
 
         sb.Append("echo '##REBOOT'; if [ -f /var/run/reboot-required ]; then echo yes; else echo no; fi");
@@ -85,7 +95,7 @@ public sealed partial class SshServerCollector : IServerCollector
             };
 
             await client.ConnectAsync(ct).WaitAsync(request.Timeout + TimeSpan.FromSeconds(5), ct);
-            using var command = client.CreateCommand(BuildScript(request.WatchedServices));
+            using var command = client.CreateCommand(BuildScript(request.WatchedServices, request.ReadGpus, request.RunNvidiaSmi));
             command.CommandTimeout = request.Timeout;
             await command.ExecuteAsync(ct).WaitAsync(request.Timeout + TimeSpan.FromSeconds(5), ct);
             var output = command.Result;
@@ -248,6 +258,16 @@ public static class LinuxStatsParser
         if (sections.TryGetValue("REBOOT", out var reboot) && reboot.FirstOrDefault()?.Trim() is { } r2)
         {
             data.PendingReboot = r2 == "yes";
+        }
+
+        if (sections.TryGetValue("LSPCI", out var pci))
+        {
+            data.GpusRead = true;
+            var listed = GpuParsers.FromLspci(pci);
+            var (smi, error) = GpuParsers.ParseNvidiaSmi(sections.TryGetValue("NVSMI", out var nv) ? string.Join("\n", nv) : null);
+            var merged = GpuParsers.MergeNvidia(listed, smi, error ?? (listed.Any(g => g.Vendor == "NVIDIA") && smi.Count == 0 && sections.ContainsKey("NVSMI") ? "nvidia-smi not installed or reported no GPU" : null));
+            data.Gpus.AddRange(merged);
+            data.GpuError = error is null ? null : $"nvidia-smi: {error}";
         }
     }
 

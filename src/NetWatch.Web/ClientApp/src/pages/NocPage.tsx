@@ -1,10 +1,12 @@
 import { useQuery } from '@tanstack/react-query';
-import { Maximize, Minimize, X } from 'lucide-react';
+import { Maximize, Minimize, Volume2, VolumeX, X } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api, qs } from '../api/client';
-import type { Alert, DcOverview, Overview, Paged, Severity } from '../api/types';
-import { severityRank } from '../api/types';
+import type { Alert, DcOverview, DcSecurityEvent, Overview, PagedEvents, Severity } from '../api/types';
+import type { Paged } from '../api/types';
+import { useAuth } from '../auth/AuthContext';
+import { groupState, sortOpenAlerts } from '../util/logic';
 import { SeverityBadge } from '../components/Badges';
 import { useLive } from '../live/LiveContext';
 import { fmtAgo, fmtBps, fmtNum, TIME_ZONE } from '../util/format';
@@ -41,7 +43,9 @@ function Tile({ label, value, color }: { label: string; value: number | string; 
  * Regular polling keeps the session active (sessions still end after the maximum session length).
  */
 export function NocPage() {
-  const { summary, connected } = useLive();
+  const { summary, connected, soundOn, toggleSound } = useLive();
+  const { user } = useAuth();
+  const kiosk = user?.authSource === 'Kiosk';
   const [panel, setPanel] = useState(0);
   const [paused, setPaused] = useState(false);
   const [fullscreen, setFullscreen] = useState(!!document.fullscreenElement);
@@ -53,6 +57,11 @@ export function NocPage() {
     refetchInterval: 15000,
   });
   const dc = useQuery({ queryKey: ['dc', 'summary'], queryFn: () => api.get<DcOverview>('/api/dc/summary'), refetchInterval: 60000 });
+  const ticker = useQuery({
+    queryKey: ['noc', 'dc-ticker'],
+    queryFn: () => api.get<PagedEvents<DcSecurityEvent>>(`/api/dc/security-events${qs({ minSeverity: 'Warning', pageSize: 25, from: new Date(Date.now() - 24 * 3600_000).toISOString() })}`),
+    refetchInterval: 30000,
+  });
 
   useEffect(() => {
     const onChange = () => setFullscreen(!!document.fullscreenElement);
@@ -76,9 +85,7 @@ export function NocPage() {
 
   const devices = summary?.devices ?? o?.totals;
   const counts = summary?.alerts ?? o?.alerts;
-  const open = (alerts.data?.items ?? [])
-    .slice()
-    .sort((a, b) => (a.state === b.state ? 0 : a.state === 'Active' ? -1 : 1) || severityRank[b.severity] - severityRank[a.severity] || b.firstSeenUtc.localeCompare(a.firstSeenUtc));
+  const open = sortOpenAlerts(alerts.data?.items ?? []);
 
   const toggleFullscreen = () => {
     if (document.fullscreenElement) void document.exitFullscreen();
@@ -94,12 +101,17 @@ export function NocPage() {
         <span className={connected ? 'noc-live' : 'noc-live off'}>{connected ? '● live' : '● reconnecting'}</span>
         <span style={{ flex: 1 }} />
         <Clock />
+        <button className="noc-btn" title={soundOn ? 'Sound on for new critical/major alerts — click to mute' : 'Enable sound for new alerts (browsers need one click)'} onClick={() => void toggleSound()}>
+          {soundOn ? <Volume2 size={18} /> : <VolumeX size={18} />}
+        </button>
         <button className="noc-btn" title={fullscreen ? 'Leave full screen' : 'Full screen'} onClick={toggleFullscreen}>
           {fullscreen ? <Minimize size={18} /> : <Maximize size={18} />}
         </button>
-        <Link className="noc-btn" to="/" title="Leave NOC mode">
-          <X size={18} />
-        </Link>
+        {!kiosk && (
+          <Link className="noc-btn" to="/" title="Leave NOC mode">
+            <X size={18} />
+          </Link>
+        )}
       </header>
 
       <section className="noc-tiles">
@@ -111,6 +123,22 @@ export function NocPage() {
         <Tile label="Major alerts" value={counts?.Major ?? '–'} color="var(--major)" />
         <Tile label="Warnings" value={counts?.Warning ?? '–'} color="var(--warn)" />
       </section>
+
+      {(o?.groups.length ?? 0) > 0 && (
+        <section className="noc-groups" aria-label="Sites and groups">
+          {o!.groups.map((g) => {
+            const state = groupState(g.counts);
+            return (
+              <div key={g.groupId} className={`noc-group s-${state}`} title={g.path}>
+                <span className="noc-group-name">{g.name}</span>
+                <span className="noc-group-count">
+                  {g.counts.down > 0 ? `${g.counts.down} down` : g.counts.warning > 0 ? `${g.counts.warning} warning` : `${g.counts.up}/${g.counts.total} up`}
+                </span>
+              </div>
+            );
+          })}
+        </section>
+      )}
 
       <section className="noc-body">
         <div className="noc-panel">
@@ -190,6 +218,21 @@ export function NocPage() {
           </div>
         </div>
       </section>
+
+      {(ticker.data?.items.length ?? 0) > 0 && (
+        <footer className="noc-ticker" aria-label="Domain controller security events">
+          <span className="noc-ticker-label">DC security</span>
+          <div className="noc-ticker-track">
+            <div className="noc-ticker-items">
+              {[...ticker.data!.items, ...ticker.data!.items].map((e, i) => (
+                <span key={i} className="noc-ticker-item" style={{ color: sevColor(e.severity) }}>
+                  {fmtAgo(e.timestampUtc)} · {e.deviceName} · {e.message}
+                </span>
+              ))}
+            </div>
+          </div>
+        </footer>
+      )}
     </div>
   );
 }

@@ -6,6 +6,7 @@ import type { Role, User } from '../../api/types';
 import { useAuth } from '../../auth/AuthContext';
 import { Confirm, ErrorBox, Modal } from '../../components/Modal';
 import { fmtDateTime } from '../../util/format';
+import { KioskPanel } from './KioskPanel';
 
 const ROLES: { value: Role; label: string }[] = [
   { value: 'Admin', label: 'Admin — everything' },
@@ -235,6 +236,7 @@ export function UsersTab() {
           }}
         />
       )}
+      <KioskPanel />
     </>
   );
 }

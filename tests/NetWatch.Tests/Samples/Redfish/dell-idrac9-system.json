@@ -1,0 +1,20 @@
+{
+  "@odata.context": "/redfish/v1/$metadata#ComputerSystem.ComputerSystem",
+  "@odata.id": "/redfish/v1/Systems/System.Embedded.1",
+  "@odata.type": "#ComputerSystem.v1_12_0.ComputerSystem",
+  "AssetTag": "",
+  "BiosVersion": "1.10.2",
+  "HostName": "srv-db-02",
+  "Id": "System.Embedded.1",
+  "Manufacturer": "Dell Inc.",
+  "MemorySummary": { "MemoryMirroring": "System", "Status": { "Health": "OK", "HealthRollup": "OK", "State": "Enabled" }, "TotalSystemMemoryGiB": 256 },
+  "Model": "PowerEdge R750",
+  "Name": "System",
+  "PowerState": "On",
+  "ProcessorSummary": { "Count": 2, "LogicalProcessorCount": 112, "Model": "Intel(R) Xeon(R) Gold 6330 CPU @ 2.00GHz", "Status": { "Health": "OK", "HealthRollup": "OK", "State": "Enabled" } },
+  "SKU": "8XJ4KQ3",
+  "SerialNumber": "CNIVC0021C0123",
+  "Status": { "Health": "OK", "HealthRollup": "OK", "State": "Enabled" },
+  "Storage": { "@odata.id": "/redfish/v1/Systems/System.Embedded.1/Storage" },
+  "SystemType": "Physical"
+}

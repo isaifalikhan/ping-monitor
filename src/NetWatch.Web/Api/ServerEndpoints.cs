@@ -46,7 +46,13 @@ public sealed record ServerInfoDto(
     string? LastError,
     string? EventLogError);
 
-public sealed record ServerDetailDto(ServerInfoDto? Info, IReadOnlyList<VolumeDto> Volumes, IReadOnlyList<WatchedServiceDto> Services);
+public sealed record ServerDetailDto(ServerInfoDto? Info, IReadOnlyList<VolumeDto> Volumes, IReadOnlyList<WatchedServiceDto> Services,
+    IReadOnlyList<GpuDto>? Gpus = null, IReadOnlyList<HardwareComponentDto>? Hardware = null);
+
+public sealed record GpuDto(int Index, string Name, string? Vendor, string? DriverVersion, double? UtilizationPct, double? MemoryUsedMb, double? MemoryTotalMb,
+    double? TemperatureC, double? PowerW, double? FanPct, string? Problem, DateTime LastSeenUtc);
+
+public sealed record HardwareComponentDto(string Source, string Category, string Name, string? Health, string? State, double? Reading, string? Unit, string? Details, DateTime LastSeenUtc);
 
 public sealed record ServerListItem(
     int Id,
@@ -95,6 +101,18 @@ public static class ServerEndpoints
         var admin = app.MapGroup("/api").RequireAuthorization(Policies.Admin);
         admin.MapPut("/devices/{id:int}/services", UpdateServicesAsync);
         admin.MapPost("/devices/{id:int}/ssh-host-key/reset", ResetHostKeyAsync);
+        admin.MapPost("/devices/{id:int}/bmc-thumbprint/reset", async (int id, HttpContext http, NetWatchDbContext db, IInventoryChangeNotifier notifier, AuditWriter audit, CancellationToken ct) =>
+        {
+            var n = await db.Devices.Where(d => d.Id == id).ExecuteUpdateAsync(u => u.SetProperty(d => d.BmcTlsThumbprint, (string?)null), ct);
+            if (n == 0)
+            {
+                return Results.NotFound();
+            }
+
+            notifier.NotifyInventoryChanged();
+            await audit.WriteAsync(http.Actor(), "BmcCertificateReset", "Device", id.ToString(System.Globalization.CultureInfo.InvariantCulture));
+            return Results.NoContent();
+        });
     }
 
     private static async Task<IResult> ListAsync(NetWatchDbContext db, LiveStateCache live, IActiveAlertIndex alerts, InventoryCache inventory, CancellationToken ct)
@@ -140,11 +158,15 @@ public static class ServerEndpoints
         var info = await db.ServerInfos.AsNoTracking().FirstOrDefaultAsync(i => i.DeviceId == id, ct);
         var volumes = await db.Volumes.AsNoTracking().Where(v => v.DeviceId == id).OrderBy(v => v.Name).ToListAsync(ct);
         var services = await db.WatchedServices.AsNoTracking().Where(s => s.DeviceId == id).OrderBy(s => s.ServiceName).ToListAsync(ct);
+        var gpus = await db.ServerGpus.AsNoTracking().Where(g => g.DeviceId == id).OrderBy(g => g.Index).ToListAsync(ct);
+        var hardware = await db.HardwareComponents.AsNoTracking().Where(c => c.DeviceId == id).OrderBy(c => c.Category).ThenBy(c => c.Name).ToListAsync(ct);
         return Results.Ok(new ServerDetailDto(
             info is null ? null : new ServerInfoDto(info.Method, info.OsName, info.OsVersion, info.LastBootUtc, info.PendingReboot, info.LastPatchUtc, info.LastPatchId,
                 info.CpuCount, info.TotalMemoryBytes, info.Load1, info.Load5, info.Load15, info.LastSuccessUtc, info.LastAttemptUtc, info.LastError, info.EventLogError),
             volumes.Select(v => new VolumeDto(v.Id, v.Name, v.Label, v.FileSystem, v.TotalBytes, v.FreeBytes, v.UsedPct, v.LastSeenUtc)).ToList(),
-            services.Select(s => new WatchedServiceDto(s.Id, s.ServiceName, s.DisplayName, s.LastState, s.StartMode, s.LastSeenUtc, s.LastChangeUtc)).ToList()));
+            services.Select(s => new WatchedServiceDto(s.Id, s.ServiceName, s.DisplayName, s.LastState, s.StartMode, s.LastSeenUtc, s.LastChangeUtc)).ToList(),
+            gpus.Select(g => new GpuDto(g.Index, g.Name, g.Vendor, g.DriverVersion, g.UtilizationPct, g.MemoryUsedMb, g.MemoryTotalMb, g.TemperatureC, g.PowerW, g.FanPct, g.Problem, g.LastSeenUtc)).ToList(),
+            hardware.Select(c => new HardwareComponentDto(c.Source, c.Category, c.Name, c.Health, c.State, c.Reading, c.Unit, c.Details, c.LastSeenUtc)).ToList()));
     }
 
     private static async Task<IResult> SeriesMetricsAsync(int id, DateTime? from, DateTime? to, IMetricStore metrics, CancellationToken ct)

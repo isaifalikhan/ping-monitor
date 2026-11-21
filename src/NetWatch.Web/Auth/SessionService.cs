@@ -34,6 +34,9 @@ public sealed class SessionService
         public DateTime PersistedLastSeenUtc;
         public DateTime ExpiresUtc;
         public DateTime LoadedUtc;
+
+        /// <summary>NOC kiosk session: no idle timeout (still revocable).</summary>
+        public bool IsKiosk;
     }
 
     public SessionService(IServiceScopeFactory scopeFactory, SettingsService settings, TimeProvider time)
@@ -47,7 +50,7 @@ public sealed class SessionService
         Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(token)));
 
     /// <summary>Creates a session and returns the raw token for the cookie.</summary>
-    public async Task<string> CreateAsync(User user, string? clientIp, string? userAgent, CancellationToken ct)
+    public async Task<string> CreateAsync(User user, string? clientIp, string? userAgent, CancellationToken ct, bool kiosk = false)
     {
         var token = Convert.ToBase64String(RandomNumberGenerator.GetBytes(32)).TrimEnd('=').Replace('+', '-').Replace('/', '_');
         var now = _time.GetUtcNow().UtcDateTime;
@@ -59,7 +62,7 @@ public sealed class SessionService
             UserId = user.Id,
             CreatedUtc = now,
             LastSeenUtc = now,
-            ExpiresUtc = now.AddHours(_settings.Security.SessionAbsoluteTimeoutHours),
+            ExpiresUtc = kiosk ? now.AddYears(10) : now.AddHours(_settings.Security.SessionAbsoluteTimeoutHours),
             ClientIp = clientIp,
             UserAgent = userAgent is { Length: > 300 } ? userAgent[..300] : userAgent,
         });
@@ -86,7 +89,7 @@ public sealed class SessionService
             _cache[id] = cached;
         }
 
-        if (now - cached.LastSeenUtc > idle || now >= cached.ExpiresUtc)
+        if ((!cached.IsKiosk && now - cached.LastSeenUtc > idle) || now >= cached.ExpiresUtc)
         {
             await RevokeAsync(token, ct);
             return null;
@@ -122,6 +125,7 @@ public sealed class SessionService
             PersistedLastSeenUtc = row.LastSeenUtc,
             ExpiresUtc = row.ExpiresUtc,
             LoadedUtc = now,
+            IsKiosk = row.User.AuthSource == AuthSource.Kiosk,
         };
     }
 

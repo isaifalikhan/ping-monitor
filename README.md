@@ -33,6 +33,12 @@ polling backlog, storage, certificate expiry, backups, reports and notification 
 
 The earlier cloud version (Next.js + Supabase) is preserved at git tag `legacy-cloud-netwatch`.
 
+**2.0.0:** DC Security-log collection for all required events with remote/WEF per DC, DC health (replication,
+clock, ports), duplex/flap/expected-speed checks, LLDP/CDP topology and dependency suggestions, ArubaOS-CX and
+data-driven SNMP profiles, GPU and iLO/iDRAC hardware health, VMware and capacity-prediction reports, portable
+backups and console restore, NOC kiosk displays, pilot connection tests and diagnostic bundle, air-gap TLS policy,
+certificate import, locked packages. See [docs/CHANGELOG.md](docs/CHANGELOG.md).
+
 ## Documentation
 
 | Document | For |
@@ -40,6 +46,14 @@ The earlier cloud version (Next.js + Supabase) is preserved at git tag `legacy-c
 | [docs/installation-guide.md](docs/installation-guide.md) | Installing, upgrading and uninstalling on the monitoring server; certificate; firewall |
 | [docs/admin-guide.md](docs/admin-guide.md) | Daily administration: devices, credentials, alerts, users, retention, backup/restore, troubleshooting |
 | [docs/netwatch-offline-design.md](docs/netwatch-offline-design.md) | Architecture, database schema, technology choices, phase plan |
+| [docs/dc-guide.md](docs/dc-guide.md) | Domain controllers: account, audit policy GPO, remote reads vs WEF, firewall, rules |
+| [docs/reports-guide.md](docs/reports-guide.md) | Reports and schedules |
+| [docs/backup-restore-guide.md](docs/backup-restore-guide.md) | Backups, portable credentials, restore, moving servers |
+| [docs/pilot-checklist.md](docs/pilot-checklist.md) | Step-by-step pilot test on the real network |
+| [docs/troubleshooting.md](docs/troubleshooting.md) | Connection-test errors and fixes |
+| [docs/security-review.md](docs/security-review.md) | Security review and performance test |
+| [docs/decisions.md](docs/decisions.md) | Decisions taken during 2.0 |
+| [docs/CHANGELOG.md](docs/CHANGELOG.md) | Release history |
 
 ## Repository layout
 
@@ -61,7 +75,7 @@ build.ps1              one-command build: UI, tests, single-file exe, installer
 Requirements on the build PC: .NET 10 SDK, Node.js 20+, Inno Setup 6.
 
 ```powershell
-.\build.ps1                 # online build -> artifacts\NetWatch-Setup-2.0.0-dev.exe (version from -Version)
+.\build.ps1                 # online build -> artifacts\NetWatch-Setup-2.0.0.exe (version from -Version)
 .\build.ps1 -PrepareOffline # fill offline\ with every NuGet/npm package (internet-connected PC)
 .\build.ps1 -Offline        # build inside the air-gapped network from offline\
 ```

@@ -57,8 +57,13 @@ public sealed class SecuritySettings
     public int LockoutMinutes { get; set; } = 15;
     public int MinPasswordLength { get; set; } = 10;
 
+    /// <summary>Revocation checks for outgoing TLS (vCenter, iLO/iDRAC, LDAPS, SMTP); never online in an air gap.</summary>
+    [System.Text.Json.Serialization.JsonConverter(typeof(System.Text.Json.Serialization.JsonStringEnumConverter))]
+    public RevocationCheck CertificateRevocation { get; set; } = RevocationCheck.NoCheck;
+
     public void Normalise()
     {
+        TlsPolicy.Revocation = CertificateRevocation;
         SessionIdleTimeoutMin = Math.Clamp(SessionIdleTimeoutMin, 5, 24 * 60);
         SessionAbsoluteTimeoutHours = Math.Clamp(SessionAbsoluteTimeoutHours, 1, 24 * 7);
         MaxFailedLogins = Math.Clamp(MaxFailedLogins, 3, 50);
@@ -307,6 +312,31 @@ public sealed class DcSettings
     }
 }
 
+/// <summary>Server hardware (iLO / iDRAC over Redfish or SNMP) and GPU monitoring. Stored under key "hardware".</summary>
+public sealed class HardwareSettings
+{
+    public const string Key = "hardware";
+
+    /// <summary>How often the management controller is read (Redfish is slow; minutes).</summary>
+    public int PollIntervalMin { get; set; } = 5;
+    public int TimeoutSec { get; set; } = 30;
+
+    /// <summary>Pin self-signed iLO/iDRAC certificates on first use (otherwise only CA-trusted certificates are accepted).</summary>
+    public bool TrustOnFirstUse { get; set; } = true;
+
+    /// <summary>Read GPU inventory, utilization and (NVIDIA) temperature/power from servers.</summary>
+    public bool ReadGpus { get; set; } = true;
+
+    /// <summary>Run nvidia-smi over WinRM / SSH for NVIDIA temperature, power and fan (needs remote shell rights).</summary>
+    public bool RunNvidiaSmi { get; set; } = true;
+
+    public void Normalise()
+    {
+        PollIntervalMin = Math.Clamp(PollIntervalMin, 1, 60);
+        TimeoutSec = Math.Clamp(TimeoutSec, 5, 120);
+    }
+}
+
 /// <summary>VMware (vCenter / ESXi) monitoring. Stored under key "vmware".</summary>
 public sealed class VmwareSettings
 {
@@ -525,7 +555,7 @@ public sealed class BackupSettings
     public bool Enabled { get; set; } = true;
 
     /// <summary>Daily backup time, local (PKT) "HH:mm".</summary>
-    public string DailyAt { get; set; } = "01:30";
+    public string DailyAt { get; set; } = "02:00";
 
     /// <summary>Include the performance history (metrics.db, usually the largest file).</summary>
     public bool IncludeMetrics { get; set; } = true;
@@ -541,7 +571,7 @@ public sealed class BackupSettings
         KeepCount = Math.Clamp(KeepCount, 1, 365);
         if (!TimeSpan.TryParseExact(DailyAt, @"hh\:mm", null, out _))
         {
-            DailyAt = "01:30";
+            DailyAt = "02:00";
         }
 
         Folder = string.IsNullOrWhiteSpace(Folder) ? null : Folder.Trim();

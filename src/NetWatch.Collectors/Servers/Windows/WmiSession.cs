@@ -273,13 +273,18 @@ public sealed class WinRmWmiSession : IWmiSession
     private const string WqlDialect = "http://schemas.microsoft.com/wbem/wsman/1/WQL";
     private const string WmiBase = "http://schemas.microsoft.com/wbem/wsman/1/wmi/";
 
+    private const string ShellUri = "http://schemas.microsoft.com/wbem/wsman/1/windows/shell/cmd";
+    private const string ShellNs = "http://schemas.microsoft.com/wbem/wsman/1/windows/shell";
+
     private readonly dynamic _session;
+    private readonly dynamic _wsman;
 
     public WinRmWmiSession(string host, int port, bool https, WindowsAccount? account, TimeSpan timeout)
     {
         var type = Type.GetTypeFromProgID("WSMan.Automation", throwOnError: false)
                    ?? throw new InvalidOperationException("The WinRM client (WSMan.Automation) is not available on this server.");
         dynamic wsman = Activator.CreateInstance(type)!;
+        _wsman = wsman;
         int flags = wsman.SessionFlagUTF8();
         dynamic? options = null;
         if (account is { } a && !LocalHost.Is(host))
@@ -322,6 +327,57 @@ public sealed class WinRmWmiSession : IWmiSession
             parameters.Select(x => new XElement(p + x.Name, WmiValue.FromObject(x.Value))));
         string output = _session.Invoke(method, uri, input.ToString(SaveOptions.DisableFormatting));
         return WmiValue.FromXml(output);
+    }
+
+    /// <summary>
+    /// Runs one command in a WinRM remote shell (Create shell → Command → Receive until done → Delete) and returns
+    /// stdout + stderr. Needs the right to open a remote shell (Remote Management Users or local Administrators).
+    /// </summary>
+    public string RunCommand(string command, string arguments, TimeSpan timeout)
+    {
+        XNamespace rsp = ShellNs;
+        var shell = new XElement(rsp + "Shell", new XAttribute(XNamespace.Xmlns + "rsp", ShellNs),
+            new XElement(rsp + "InputStreams", "stdin"), new XElement(rsp + "OutputStreams", "stdout stderr"));
+        string created = _session.Create(ShellUri, shell.ToString(SaveOptions.DisableFormatting));
+        var shellId = XDocument.Parse(created).Descendants().FirstOrDefault(e => e.Name.LocalName == "Selector" && (string?)e.Attribute("Name") == "ShellId")?.Value
+                      ?? XDocument.Parse(created).Descendants().FirstOrDefault(e => e.Name.LocalName == "ShellId")?.Value
+                      ?? throw new InvalidOperationException("WinRM did not return a shell ID.");
+        dynamic locator = _wsman.CreateResourceLocator(ShellUri);
+        locator.AddSelector("ShellId", shellId);
+        try
+        {
+            var line = new XElement(rsp + "CommandLine", new XAttribute(XNamespace.Xmlns + "rsp", ShellNs),
+                new XElement(rsp + "Command", command), new XElement(rsp + "Arguments", arguments));
+            string started = _session.Invoke($"{ShellNs}/Command", locator, line.ToString(SaveOptions.DisableFormatting));
+            var commandId = XDocument.Parse(started).Descendants().First(e => e.Name.LocalName == "CommandId").Value;
+
+            var output = new System.Text.StringBuilder();
+            var deadline = DateTime.UtcNow + timeout;
+            while (DateTime.UtcNow < deadline)
+            {
+                var receive = new XElement(rsp + "Receive", new XAttribute(XNamespace.Xmlns + "rsp", ShellNs),
+                    new XElement(rsp + "DesiredStream", new XAttribute("CommandId", commandId), "stdout stderr"));
+                string received = _session.Invoke($"{ShellNs}/Receive", locator, receive.ToString(SaveOptions.DisableFormatting));
+                var done = WinRmShell.ParseReceive(received, output);
+                if (done)
+                {
+                    return output.ToString();
+                }
+            }
+
+            throw new TimeoutException($"{command} did not finish within {timeout.TotalSeconds:0} s");
+        }
+        finally
+        {
+            try
+            {
+                _session.Delete(locator);
+            }
+            catch (System.Runtime.InteropServices.COMException)
+            {
+                // The shell times out on the server anyway.
+            }
+        }
     }
 
     public void Dispose()

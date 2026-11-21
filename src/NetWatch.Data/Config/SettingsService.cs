@@ -38,6 +38,8 @@ public sealed class SettingsService
 
     public VmwareSettings Vmware => Get<VmwareSettings>(VmwareSettings.Key, s => s.Normalise());
 
+    public HardwareSettings Hardware => Get<HardwareSettings>(HardwareSettings.Key, s => s.Normalise());
+
     public DcSettings Dc => Get<DcSettings>(DcSettings.Key, s => s.Normalise());
 
     public BackupSettings Backup => Get<BackupSettings>(BackupSettings.Key, s => s.Normalise());

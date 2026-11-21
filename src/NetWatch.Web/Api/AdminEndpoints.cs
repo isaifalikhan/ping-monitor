@@ -28,6 +28,15 @@ public static class AdminEndpoints
         admin.MapDelete("/users/{id:int}", DeleteUserAsync);
 
         admin.MapGet("/audit", AuditAsync);
+        admin.MapGet("/settings/certificate", (ServerCertificateInfo current, NetWatchPaths paths) => Results.Ok(new
+        {
+            current.Subject,
+            current.NotAfterUtc,
+            current.Thumbprint,
+            imported = File.Exists(Data.Security.ConsoleCertificateStore.PathIn(paths)),
+        }));
+        admin.MapPost("/settings/certificate", ImportCertificateAsync).DisableAntiforgery();
+        admin.MapDelete("/settings/certificate", RemoveCertificateAsync);
 
         admin.MapGet("/settings", GetSettings);
         admin.MapPut("/settings/monitoring", (MonitoringSettings s, HttpContext h, SettingsService svc, AuditWriter a, CancellationToken ct) =>
@@ -193,8 +202,64 @@ public static class AdminEndpoints
     private static UserDto ToDto(User u) => new(u.Id, u.Username, u.DisplayName, u.Email, u.Role, u.AuthSource, u.IsEnabled,
         u.LockedUntilUtc > DateTime.UtcNow, u.LastLoginUtc, u.MustChangePassword, u.CreatedUtc);
 
+    /// <summary>Uploads a PFX (internal CA) for the HTTPS console; used from the next start (optionally restarts now).</summary>
+    private static async Task<IResult> ImportCertificateAsync(HttpRequest request, NetWatchPaths paths, HttpContext http, AuditWriter audit,
+        Microsoft.Extensions.Hosting.IHostApplicationLifetime lifetime, CancellationToken ct)
+    {
+        if (!request.HasFormContentType)
+        {
+            return HttpExtensions.Error("Send the .pfx file and its password as a form.");
+        }
+
+        var form = await request.ReadFormAsync(ct);
+        var file = form.Files.GetFile("file");
+        if (file is null || file.Length is 0 or > 100_000)
+        {
+            return HttpExtensions.Error("Choose a .pfx file (at most 100 KB).");
+        }
+
+        using var buffer = new MemoryStream();
+        await file.CopyToAsync(buffer, ct);
+        var hosts = new List<string> { Environment.MachineName, System.Net.Dns.GetHostName() };
+        try
+        {
+            hosts.Add(System.Net.Dns.GetHostEntry(System.Net.Dns.GetHostName()).HostName);
+        }
+        catch (System.Net.Sockets.SocketException)
+        {
+        }
+
+        try
+        {
+            var check = Data.Security.ConsoleCertificateStore.Import(buffer.ToArray(), form["password"].ToString(), paths, hosts);
+            await audit.WriteAsync(http.Actor(), "CertificateImported", "Certificate", check.Thumbprint, $"{check.Subject}, issued by {check.Issuer}, valid until {check.NotAfterUtc:u}");
+            if (form["restart"] == "true")
+            {
+                _ = Task.Run(async () =>
+                {
+                    await Task.Delay(TimeSpan.FromSeconds(2));
+                    Environment.ExitCode = 75; // the service manager restarts NetWatch (failure flag set by the installer)
+                    lifetime.StopApplication();
+                });
+            }
+
+            return Results.Ok(check);
+        }
+        catch (ArgumentException ex)
+        {
+            return HttpExtensions.Error(ex.Message);
+        }
+    }
+
+    private static async Task<IResult> RemoveCertificateAsync(NetWatchPaths paths, HttpContext http, AuditWriter audit)
+    {
+        var removed = Data.Security.ConsoleCertificateStore.Remove(paths);
+        await audit.WriteAsync(http.Actor(), "CertificateRemoved", "Certificate", null, removed ? "back to the self-signed certificate at the next start" : "nothing imported");
+        return Results.NoContent();
+    }
+
     private static async Task<IResult> ListUsersAsync(NetWatchDbContext db, CancellationToken ct) =>
-        Results.Ok((await db.Users.AsNoTracking().OrderBy(u => u.Username).ToListAsync(ct)).Select(ToDto));
+        Results.Ok((await db.Users.AsNoTracking().Where(u => u.AuthSource != AuthSource.Kiosk).OrderBy(u => u.Username).ToListAsync(ct)).Select(ToDto));
 
     private static async Task<IResult> CreateUserAsync(UserCreate input, HttpContext http, NetWatchDbContext db, PasswordService passwords, SettingsService settings, AuditWriter audit, CancellationToken ct)
     {

@@ -163,7 +163,8 @@ public static class InterfaceCollector
         return result;
     }
 
-    internal static async Task<Dictionary<string, ISnmpData>> SafeWalk(SnmpClient client, string column, CancellationToken ct)
+    /// <summary>Walks a column; an agent error (e.g. MIB not supported) returns an empty result instead of throwing.</summary>
+    public static async Task<Dictionary<string, ISnmpData>> SafeWalk(SnmpClient client, string column, CancellationToken ct)
     {
         try
         {

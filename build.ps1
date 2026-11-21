@@ -21,14 +21,21 @@
 #>
 [CmdletBinding()]
 param(
-    [string]$Version = '2.0.0-dev',
+    [string]$Version = '2.0.0',
     [string]$Configuration = 'Release',
     [switch]$Offline,
     [switch]$PrepareOffline,
     [switch]$SkipTests,
     [switch]$SkipUi,
     [switch]$SkipInstaller,
-    [string]$InnoSetupCompiler
+    [string]$InnoSetupCompiler,
+
+    # Optional Authenticode signing of NetWatch.Service.exe and the installer (signtool from the Windows SDK).
+    # Password: environment variable NETWATCH_SIGN_PASSWORD (never on the command line).
+    [string]$SignCertificate,
+
+    # RFC 3161 time-stamp server inside the network (optional; without it the signature ends with the certificate).
+    [string]$SignTimestampUrl
 )
 
 $ErrorActionPreference = 'Stop'
@@ -55,6 +62,26 @@ $env:npm_config_fund = 'false'
 $env:npm_config_audit = 'false'
 
 function Step([string]$name) { Write-Host "`n==> $name" -ForegroundColor Cyan }
+
+function Find-SignTool {
+    $kits = Join-Path ${env:ProgramFiles(x86)} 'Windows Kits\10\bin'
+    if (-not (Test-Path $kits)) { return $null }
+    Get-ChildItem $kits -Recurse -Filter signtool.exe -ErrorAction SilentlyContinue |
+        Where-Object { $_.FullName -match '\\x64\\' } | Sort-Object FullName -Descending | Select-Object -First 1 -ExpandProperty FullName
+}
+
+function Invoke-Sign([string]$file) {
+    if (-not $SignCertificate) { return }
+    $signtool = Find-SignTool
+    if (-not $signtool) { throw 'signtool.exe not found: install the Windows SDK "Signing Tools" or omit -SignCertificate.' }
+    $signArgs = @('sign', '/fd', 'SHA256', '/f', $SignCertificate)
+    if ($env:NETWATCH_SIGN_PASSWORD) { $signArgs += @('/p', $env:NETWATCH_SIGN_PASSWORD) }
+    if ($SignTimestampUrl) { $signArgs += @('/tr', $SignTimestampUrl, '/td', 'SHA256') }
+    $signArgs += $file
+    & $signtool @signArgs | Out-Host
+    if ($LASTEXITCODE -ne 0) { throw "Signing $file failed (signtool exit code $LASTEXITCODE)." }
+    Write-Host "    signed $file"
+}
 
 function Invoke-Checked([string]$exe, [string[]]$arguments) {
     Write-Host "    $exe $($arguments -join ' ')" -ForegroundColor DarkGray
@@ -109,6 +136,7 @@ if (-not $SkipUi) {
         } else {
             Invoke-Checked 'npm' @('ci')
         }
+        if (-not $SkipTests) { Invoke-Checked 'npm' @('test') }
         Invoke-Checked 'npm' @('run', 'build')
     } finally { Pop-Location }
 } elseif (-not (Test-Path (Join-Path $clientApp 'dist\index.html'))) {
@@ -118,21 +146,22 @@ if (-not $SkipUi) {
 # ---------------------------------------------------------------------------------------------- tests
 if (-not $SkipTests) {
     Step 'Running unit tests'
-    Invoke-Checked 'dotnet' (@('test', $solution, '-c', $Configuration, "-p:Version=$Version", '--nologo') + $restoreSource)
+    Invoke-Checked 'dotnet' (@('test', $solution, '-c', $Configuration, "-p:Version=$Version", '-p:NetWatchLockedRestore=true', '--nologo') + $restoreSource)
 }
 
 # ---------------------------------------------------------------------------------------------- publish
 Step "Publishing self-contained single-file service ($Version)"
 if (Test-Path $publishDir) { Remove-Item -Recurse -Force $publishDir }
+# PublishSingleFile, IncludeNativeLibrariesForSelfExtract and EnableCompressionInSingleFile are set in
+# NetWatch.Service.csproj. Do not pass them here: command-line properties are global, reach the library projects
+# too, turn on the single-file analyzer there (adds Microsoft.NET.ILLink.Tasks) and break the locked restore (NU1004).
 Invoke-Checked 'dotnet' (@(
     'publish', $serviceProject,
     '-c', $Configuration,
     '-r', 'win-x64',
     '--self-contained', 'true',
-    '-p:PublishSingleFile=true',
-    '-p:IncludeNativeLibrariesForSelfExtract=true',
-    '-p:EnableCompressionInSingleFile=true',
     "-p:Version=$Version",
+    '-p:NetWatchLockedRestore=true',
     '-o', $publishDir,
     '--nologo') + $restoreSource)
 
@@ -140,6 +169,7 @@ $exe = Join-Path $publishDir 'NetWatch.Service.exe'
 if (-not (Test-Path $exe)) { throw "Publish did not produce $exe" }
 Get-ChildItem $publishDir -Exclude 'NetWatch.Service.exe' | Remove-Item -Recurse -Force
 Write-Host ("    {0} ({1:N1} MB)" -f $exe, ((Get-Item $exe).Length / 1MB))
+Invoke-Sign $exe
 
 # ---------------------------------------------------------------------------------------------- installer
 if (-not $SkipInstaller) {
@@ -150,6 +180,7 @@ if (-not $SkipInstaller) {
     } else {
         Invoke-Checked $iscc @("/DAppVersion=$Version", "/DNumericVersion=$($Version -replace '-.*$', '')", "/DSourceDir=$publishDir", "/DDocsDir=$(Join-Path $root 'docs')", "/O$artifacts", '/Q', $installerScript)
         $setup = Join-Path $artifacts "NetWatch-Setup-$Version.exe"
+        Invoke-Sign $setup
         Write-Host ("    {0} ({1:N1} MB)" -f $setup, ((Get-Item $setup).Length / 1MB))
     }
 }

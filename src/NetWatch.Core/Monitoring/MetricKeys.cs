@@ -47,6 +47,12 @@ public static class MetricKeys
     public const string HostCpu = "vmware.host.cpu.pct";
     public const string HostMemory = "vmware.host.mem.pct";
 
+    public const string GpuUtilization = "gpu.util.pct";
+    public const string GpuMemory = "gpu.mem.pct";
+    public const string GpuTemperature = "gpu.temp.c";
+    public const string GpuPower = "gpu.power.w";
+    public const string ServerPower = "hw.power.w";
+
     /// <summary>Domain controller clock difference to the PDC emulator, in seconds (absolute).</summary>
     public const string DcTimeSkew = "dc.time.skew.sec";
 
@@ -71,6 +77,11 @@ public static class MetricKeys
         [VmBalloonMb] = "VM ballooned memory (MB)",
         [HostCpu] = "ESXi host CPU (%)",
         [HostMemory] = "ESXi host memory (%)",
+        [GpuUtilization] = "GPU utilization (%)",
+        [GpuMemory] = "GPU memory used (%)",
+        [GpuTemperature] = "GPU temperature (°C)",
+        [GpuPower] = "GPU power draw (W)",
+        [ServerPower] = "Server power consumption (W)",
         [DcTimeSkew] = "DC clock difference to PDC (s)",
     };
 }
@@ -100,6 +111,9 @@ public static class StateKeys
     public const string DcReplicationStale = "dc.replication.stale";
     public const string DcPortUnreachable = "dc.port";
     public const string SelfCheck = "netwatch.selfcheck";
+    public const string GpuProblem = "gpu.problem";
+    public const string HardwareComponent = "hw.component";
+    public const string HardwareUnreachable = "hw.unreachable";
 
     public static readonly IReadOnlyDictionary<string, string> DisplayNames = new Dictionary<string, string>
     {
@@ -125,6 +139,9 @@ public static class StateKeys
         [DcReplicationStale] = "AD replication not successful for too long (partner / naming context)",
         [DcPortUnreachable] = "DC service port not reachable (LDAP 389, Kerberos 88, DNS 53)",
         [SelfCheck] = "NetWatch self-check failing (disk, polling, storage, backups, certificate …)",
+        [GpuProblem] = "GPU missing or driver error",
+        [HardwareComponent] = "Server hardware component not OK (iLO / iDRAC)",
+        [HardwareUnreachable] = "Management controller (iLO / iDRAC) not reachable",
     };
 }
 

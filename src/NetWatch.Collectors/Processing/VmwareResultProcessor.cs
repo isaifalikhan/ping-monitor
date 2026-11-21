@@ -347,10 +347,12 @@ public sealed class VmwareResultProcessor
 
     private async Task EventsAsync(DeviceSnapshot source, VmwarePollData data, EventsDbContext events, DateTime now, CancellationToken ct)
     {
+        // The minimum is computed here: inside the query EF would try (and fail) to translate the in-memory list.
+        var minKey = data.Events.Count == 0 ? 0 : data.Events.Min(x => x.Key);
         var known = data.Events.Count == 0
             ? new HashSet<long>()
             : (await events.VmwareEvents.AsNoTracking()
-                .Where(e => e.SourceDeviceId == source.Id && e.EventKey >= data.Events.Min(x => x.Key))
+                .Where(e => e.SourceDeviceId == source.Id && e.EventKey >= minKey)
                 .Select(e => e.EventKey).ToListAsync(ct)).ToHashSet();
 
         foreach (var e in data.Events.Where(e => !known.Contains(e.Key)).OrderBy(e => e.Key))

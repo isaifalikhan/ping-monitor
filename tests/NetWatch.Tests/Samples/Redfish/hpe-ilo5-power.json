@@ -1,0 +1,12 @@
+{
+  "@odata.context": "/redfish/v1/$metadata#Power.Power",
+  "@odata.id": "/redfish/v1/Chassis/1/Power/",
+  "@odata.type": "#Power.v1_3_0.Power",
+  "Id": "Power",
+  "Name": "PowerMetrics",
+  "PowerControl": [ { "@odata.id": "/redfish/v1/Chassis/1/Power/#PowerControl/0", "MemberId": "0", "PowerCapacityWatts": 1600, "PowerConsumedWatts": 312, "PowerMetrics": { "AverageConsumedWatts": 305, "IntervalInMin": 20, "MaxConsumedWatts": 388, "MinConsumedWatts": 287 } } ],
+  "PowerSupplies": [
+    { "@odata.id": "/redfish/v1/Chassis/1/Power/#PowerSupplies/0", "FirmwareVersion": "1.02", "LastPowerOutputWatts": 156, "LineInputVoltage": 230, "LineInputVoltageType": "ACHighLine", "Manufacturer": "DELTA", "MemberId": "0", "Model": "865414-B21", "Name": "HpeServerPowerSupply", "PowerCapacityWatts": 800, "PowerSupplyType": "AC", "SerialNumber": "5WBXK0FLLDQ4SP", "SparePartNumber": "866730-001", "Status": { "Health": "OK", "State": "Enabled" } },
+    { "@odata.id": "/redfish/v1/Chassis/1/Power/#PowerSupplies/1", "FirmwareVersion": "1.02", "LastPowerOutputWatts": 0, "MemberId": "1", "Model": "865414-B21", "Name": "HpeServerPowerSupply 2", "PowerCapacityWatts": 800, "Status": { "Health": "Critical", "State": "Enabled" } }
+  ]
+}

@@ -79,7 +79,7 @@ public sealed class VimClient : IDisposable
             UseProxy = false,
             ConnectTimeout = TimeSpan.FromSeconds(15),
             AutomaticDecompression = DecompressionMethods.GZip | DecompressionMethods.Deflate,
-            SslOptions = new SslClientAuthenticationOptions { RemoteCertificateValidationCallback = Validate },
+            SslOptions = Core.Configuration.TlsPolicy.Apply(new SslClientAuthenticationOptions { RemoteCertificateValidationCallback = Validate }),
         };
         _http = new HttpClient(handler) { Timeout = timeout };
     }

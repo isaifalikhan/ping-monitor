@@ -56,6 +56,25 @@ public static class CertificateManager
             logger.LogError("Certificate file {Path} not found; falling back to the self-signed certificate", pfxPath);
         }
 
+        // Imported from the web console (Settings → System status → HTTPS certificate).
+        try
+        {
+            if (Data.Security.ConsoleCertificateStore.Load(paths, ServerKeyFlags) is { } imported)
+            {
+                if (imported.NotAfter > DateTime.Now)
+                {
+                    logger.LogInformation("Using the imported certificate {Subject}, valid until {NotAfter:u}", imported.Subject, imported.NotAfter);
+                    return imported;
+                }
+
+                logger.LogError("The imported certificate {Subject} expired {NotAfter:u}; falling back to the self-signed certificate", imported.Subject, imported.NotAfter);
+            }
+        }
+        catch (CryptographicException ex)
+        {
+            logger.LogError(ex, "The imported certificate cannot be loaded; falling back to the self-signed certificate");
+        }
+
         return LoadOrCreateSelfSigned(paths, logger);
     }
 

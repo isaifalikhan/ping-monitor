@@ -69,6 +69,9 @@ public sealed class ReportBuilder
             case ReportType.Inventory:
                 await InventoryAsync(ctx, ct);
                 break;
+            case ReportType.Vmware:
+                await VmwareAsync(ctx, ct);
+                break;
         }
 
         return doc;
@@ -263,6 +266,21 @@ public sealed class ReportBuilder
             });
         }
 
+        var withErrors = rows.Where(r => r.Errors > 0.01).OrderByDescending(r => r.Errors).Take(15).ToList();
+        if (withErrors.Count > 0)
+        {
+            c.Doc.Sections.Add(new ReportSection
+            {
+                Heading = "Most errors (average errors per second)",
+                Table = new ReportTable(["Device", "Interface", "Alias", "Errors/s", "Avg in", "Avg out"],
+                    withErrors.Select(r => new[]
+                    {
+                        names.GetValueOrDefault(r.If.DeviceId, string.Empty), r.If.Name, r.If.Alias ?? string.Empty, r.Errors!.Value.ToString("0.##", Inv), Opt(r.AvgIn), Opt(r.AvgOut),
+                    }).ToList(),
+                    new HashSet<int> { 3, 4, 5 }),
+            });
+        }
+
         c.Doc.Sections.Add(new ReportSection
         {
             Heading = "Important interfaces",
@@ -318,17 +336,34 @@ public sealed class ReportBuilder
             dsRows.Add((d.Name, d.CapacityBytes, d.FreeBytes, used, await GrowthAsync(d.SourceDeviceId, MetricKeys.DatastoreUsed, d.Name)));
         }
 
-        string DaysToFull(double used, double? growth)
+        string DaysToFull(double used, double? growth) =>
+            CapacityMath.DaysUntilFull(used, growth, days) is not { } remaining ? "stable"
+            : remaining > 3650 ? "> 10 years" : remaining.ToString("0", Inv) + " days";
+
+        // CPU and memory per server: average, peak and the trend (second half of the period minus the first).
+        var serverRows = new List<(Device Device, double? CpuAvg, double? CpuPeak, double? CpuTrend, double? MemAvg, double? MemPeak, double? MemTrend)>();
+        foreach (var d in c.Devices.Where(d => d.Type is DeviceType.Server or DeviceType.VM or DeviceType.DomainController or DeviceType.Hypervisor))
         {
-            if (growth is not { } g || g <= 0.01)
+            var data = await _metrics.QueryDeviceAsync(d.Id, from, to, ct);
+            int cpu = Column(data, "CpuPct"), mem = Column(data, "MemPct");
+            if (data.Points.Count == 0 || cpu < 0 || mem < 0)
             {
-                return "stable";
+                continue;
             }
 
-            var perDay = g / days;
-            var remaining = (100 - used) / perDay;
-            return remaining > 3650 ? "> 10 years" : remaining.ToString("0", Inv) + " days";
+            var cpuValues = Values(data, cpu, max: false);
+            var memValues = Values(data, mem, max: false);
+            if (cpuValues.Count == 0 && memValues.Count == 0)
+            {
+                continue;
+            }
+
+            serverRows.Add((d, Mean(cpuValues), Values(data, cpu, max: true) is { Count: > 0 } cp ? cp.Max() : null, CapacityMath.Trend(cpuValues),
+                Mean(memValues), Values(data, mem, max: true) is { Count: > 0 } mp ? mp.Max() : null, CapacityMath.Trend(memValues)));
         }
+
+        static double? Mean(List<double> v) => v.Count == 0 ? null : v.Average();
+        static string Trend(double? t) => t is { } x ? (x >= 0 ? "+" : string.Empty) + x.ToString("0.0", Inv) + " pt" : "–";
 
         var summary = new ReportSection
         {
@@ -339,7 +374,38 @@ public sealed class ReportBuilder
         summary.Summary.Add(("Above 85 %", rows.Count(r => r.Used > 85).ToString(Inv)));
         summary.Summary.Add(("Above 95 %", rows.Count(r => r.Used > 95).ToString(Inv)));
         summary.Summary.Add(("Datastores", dsRows.Count.ToString(Inv)));
+        var soon = rows.Select(r => (Device: r.Device, r.Name, r.Used, r.Growth, Days: CapacityMath.DaysUntilFull(r.Used, r.Growth, days)))
+            .Concat(dsRows.Select(r => (Device: "datastore", r.Name, r.Used, r.Growth, Days: CapacityMath.DaysUntilFull(r.Used, r.Growth, days))))
+            .Where(r => r.Days is <= 30)
+            .OrderBy(r => r.Days)
+            .ToList();
+        summary.Summary.Add(("Full within 30 days", soon.Count.ToString(Inv)));
+        summary.Summary.Add(("Servers with CPU peak > 90 %", serverRows.Count(r => r.CpuPeak > 90).ToString(Inv)));
         c.Doc.Sections.Add(summary);
+
+        c.Doc.Sections.Add(new ReportSection
+        {
+            Heading = "Predicted to fill within 30 days",
+            Table = new ReportTable(["Device", "Volume / datastore", "Used", "Growth in period", "Days until full"],
+                soon.Select(r => new[] { r.Device, r.Name, Pct(r.Used, 1), Trend(r.Growth), r.Days!.Value.ToString("0", Inv) }).ToList(),
+                new HashSet<int> { 2, 3, 4 }, "No volume or datastore is predicted to fill within 30 days."),
+        });
+
+        if (serverRows.Count > 0)
+        {
+            c.Doc.Sections.Add(new ReportSection
+            {
+                Heading = "Server CPU and memory",
+                Note = "Trend = average of the second half of the period minus the first half (percentage points).",
+                Table = new ReportTable(["Server", "Group", "CPU avg", "CPU peak", "CPU trend", "Memory avg", "Memory peak", "Memory trend"],
+                    serverRows.OrderByDescending(r => r.CpuPeak ?? 0).Select(r => new[]
+                    {
+                        r.Device.Name, c.Group(r.Device), r.CpuAvg is { } a ? Pct(a, 1) : "–", r.CpuPeak is { } p ? Pct(p, 1) : "–", Trend(r.CpuTrend),
+                        r.MemAvg is { } m ? Pct(m, 1) : "–", r.MemPeak is { } mp ? Pct(mp, 1) : "–", Trend(r.MemTrend),
+                    }).ToList(),
+                    new HashSet<int> { 2, 3, 4, 5, 6, 7 }),
+            });
+        }
 
         var fullest = rows.Concat(dsRows.Select(d => ("datastore", d.Name, (string?)null, d.Total, d.Free, d.Used, d.Growth)))
             .OrderByDescending(r => r.Item6).Take(15).ToList();
@@ -458,12 +524,102 @@ public sealed class ReportBuilder
                 null, "No lockouts."),
         });
 
+        var adminLogons = await q.Where(e => e.EventId == 4672).OrderByDescending(e => e.TimestampUtc).Take(20_000).ToListAsync(ct);
+        var offHours = adminLogons.Where(e => !dc.IsWorkingTime(e.TimestampUtc)).Take(1000).ToList();
+        c.Doc.Sections.Add(new ReportSection
+        {
+            Heading = "Admin logons outside working hours",
+            Note = $"Special privileges assigned to a logon (4672) outside {dc.WorkingDays} {dc.WorkingHoursStart}–{dc.WorkingHoursEnd} PKT.",
+            Table = new ReportTable(["Time (PKT)", "Account", "DC"],
+                offHours.Select(e => new[] { Local(e.TimestampUtc), e.SubjectDomain is null ? e.SubjectUser ?? string.Empty : $"{e.SubjectDomain}\\{e.SubjectUser}", dcs.GetValueOrDefault(e.DeviceId, string.Empty) }).ToList(),
+                null, "No admin logons outside working hours."),
+        });
+
+        var cleared = notable.Where(e => e.EventId is 1102 or 4719).ToList();
+        c.Doc.Sections.Add(new ReportSection
+        {
+            Heading = "Security log cleared / audit policy changed",
+            Table = new ReportTable(["Time (PKT)", "Event", "By", "DC"],
+                cleared.Select(e => new[] { Local(e.TimestampUtc), $"{e.EventId} {DcEventCatalog.NameOf(e.EventId)}", e.SubjectUser ?? string.Empty, dcs.GetValueOrDefault(e.DeviceId, string.Empty) }).ToList(),
+                null, "The Security log was not cleared and the audit policy was not changed."),
+        });
+
         c.Doc.Sections.Add(new ReportSection
         {
             Heading = "Account and policy changes",
             Table = new ReportTable(["Time (PKT)", "Event", "Details", "DC"],
                 notable.Select(e => new[] { Local(e.TimestampUtc), $"{e.EventId} {DcEventCatalog.NameOf(e.EventId)}", e.Message, dcs.GetValueOrDefault(e.DeviceId, string.Empty) }).ToList(),
                 null, "No account creations, deletions, audit policy changes or log clearing."),
+        });
+    }
+
+    // ------------------------------------------------------------------ VMware
+
+    private async Task VmwareAsync(Context c, CancellationToken ct)
+    {
+        var hosts = await _db.VmwareHosts.AsNoTracking().OrderBy(h => h.Name).ToListAsync(ct);
+        var datastores = await _db.VmwareDatastores.AsNoTracking().OrderBy(d => d.Name).ToListAsync(ct);
+        var snapshots = await _db.VmwareSnapshots.AsNoTracking().OrderBy(s => s.CreatedUtc).ToListAsync(ct);
+        var vms = await _db.VmwareVms.AsNoTracking().OrderBy(v => v.Name).ToListAsync(ct);
+        var now = DateTime.UtcNow;
+        var off = vms.Where(v => !v.PowerState.Equals("poweredOn", StringComparison.OrdinalIgnoreCase)).ToList();
+
+        var summary = new ReportSection { Heading = "Summary" };
+        summary.Summary.Add(("ESXi hosts", hosts.Count.ToString(Inv)));
+        summary.Summary.Add(("Hosts not connected", hosts.Count(h => !h.ConnectionState.Equals("connected", StringComparison.OrdinalIgnoreCase)).ToString(Inv)));
+        summary.Summary.Add(("VMs", vms.Count.ToString(Inv)));
+        summary.Summary.Add(("Powered off", off.Count.ToString(Inv)));
+        summary.Summary.Add(("Datastores", datastores.Count.ToString(Inv)));
+        summary.Summary.Add(("Snapshots", snapshots.Count.ToString(Inv)));
+        summary.Summary.Add(("Snapshots older than 7 days", snapshots.Count(s => now - s.CreatedUtc > TimeSpan.FromDays(7)).ToString(Inv)));
+        c.Doc.Sections.Add(summary);
+
+        static string P(long? used, long? total) => used is { } u && total is { } t && t > 0 ? Pct(100.0 * u / t, 1) : "–";
+        c.Doc.Sections.Add(new ReportSection
+        {
+            Heading = "ESXi hosts",
+            Table = new ReportTable(["Host", "Cluster", "State", "Maintenance", "Model", "CPU", "Memory", "VMs", "Status"],
+                hosts.Select(h => new[]
+                {
+                    h.Name, h.Cluster ?? string.Empty, h.ConnectionState, h.InMaintenance ? "yes" : "no", h.Model ?? string.Empty,
+                    P(h.CpuUsageMhz, h.CpuTotalMhz), P(h.MemUsageBytes, h.MemTotalBytes),
+                    vms.Count(v => v.SourceDeviceId == h.SourceDeviceId && v.HostMoRef == h.MoRef).ToString(Inv), h.OverallStatus ?? string.Empty,
+                }).ToList(),
+                new HashSet<int> { 5, 6, 7 }, "No ESXi hosts (add a vCenter device with a vCenter credential)."),
+        });
+
+        c.Doc.Sections.Add(new ReportSection
+        {
+            Heading = "Datastore capacity",
+            Bars = datastores.Count == 0 ? null : new ReportBars(datastores.OrderByDescending(d => d.CapacityBytes <= 0 ? 0 : 1.0 * (d.CapacityBytes - d.FreeBytes) / d.CapacityBytes).Take(15)
+                .Select(d => (d.Name, d.CapacityBytes <= 0 ? 0 : 100.0 * (d.CapacityBytes - d.FreeBytes) / d.CapacityBytes, Pct(d.CapacityBytes <= 0 ? 0 : 100.0 * (d.CapacityBytes - d.FreeBytes) / d.CapacityBytes, 1))).ToList(), 100),
+            Table = new ReportTable(["Datastore", "Type", "Capacity", "Free", "Used", "Provisioned", "Hosts", "Accessible"],
+                datastores.Select(d => new[]
+                {
+                    d.Name, d.Type ?? string.Empty, Bytes(d.CapacityBytes), Bytes(d.FreeBytes), P(d.CapacityBytes - d.FreeBytes, d.CapacityBytes),
+                    d.UncommittedBytes is { } u ? P(d.CapacityBytes - d.FreeBytes + u, d.CapacityBytes) : "–", d.HostCount.ToString(Inv), d.Accessible ? "yes" : "NO",
+                }).ToList(),
+                new HashSet<int> { 2, 3, 4, 5, 6 }, "No datastores."),
+        });
+
+        c.Doc.Sections.Add(new ReportSection
+        {
+            Heading = "Snapshots (oldest first)",
+            Table = new ReportTable(["VM", "Snapshot", "Created (PKT)", "Age (days)", "Size"],
+                snapshots.Select(s => new[] { s.VmName, s.Name, Local(s.CreatedUtc), ((now - s.CreatedUtc).TotalDays).ToString("0", Inv), s.SizeBytes is { } b ? Bytes(b) : "–" }).ToList(),
+                new HashSet<int> { 3, 4 }, "No snapshots."),
+        });
+
+        c.Doc.Sections.Add(new ReportSection
+        {
+            Heading = "Powered-off and suspended VMs",
+            Table = new ReportTable(["VM", "State", "Host", "Guest OS", "vCPU", "Memory", "Datastores"],
+                off.Select(v => new[]
+                {
+                    v.Name, v.PowerState, v.HostName ?? string.Empty, v.GuestOs ?? string.Empty, v.NumCpu?.ToString(Inv) ?? string.Empty,
+                    v.MemoryMb is { } m ? $"{m / 1024.0:0.#} GB" : string.Empty, v.Datastores ?? string.Empty,
+                }).ToList(),
+                new HashSet<int> { 4, 5 }, "All VMs are powered on."),
         });
     }
 

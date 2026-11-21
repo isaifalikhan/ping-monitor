@@ -1,6 +1,8 @@
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
+using Microsoft.Extensions.Hosting;
+using NetWatch.Core.Abstractions;
 using NetWatch.Core.Configuration;
 using NetWatch.Data.Backup;
 using NetWatch.Data.Config;
@@ -19,6 +21,8 @@ public static class BackupEndpoints
         admin.MapPost("/backups", CreateAsync).RequireRateLimiting(RateLimits.Heavy);
         admin.MapGet("/backups/{name}", DownloadAsync);
         admin.MapDelete("/backups/{name}", DeleteAsync);
+        admin.MapPost("/backups/portable", CreatePortableAsync).RequireRateLimiting(RateLimits.Heavy);
+        admin.MapPost("/backups/{name}/restore", RestoreAsync).RequireRateLimiting(RateLimits.Heavy);
         admin.MapPut("/settings/backup", SaveBackupSettingsAsync);
         admin.MapPut("/settings/selfmonitor", SaveSelfMonitorAsync);
     }
@@ -54,6 +58,75 @@ public static class BackupEndpoints
         {
             return Results.Problem($"The backup failed: {ex.Message}", statusCode: 500);
         }
+    }
+
+    public sealed record PortableBackupInput(string? Password);
+
+    public sealed record RestoreInput(string? Confirm, string? Password);
+
+    /// <summary>A backup whose credentials are also exported re-encrypted with a password, so it can be restored on another server.</summary>
+    private static async Task<IResult> CreatePortableAsync(PortableBackupInput input, BackupService backups, HttpContext http, AuditWriter audit, CancellationToken ct)
+    {
+        try
+        {
+            var info = await backups.CreateAsync("portable", ct, input.Password ?? string.Empty);
+            await audit.WriteAsync(http.Actor(), "BackupCreated", "Backup", info.Name, "portable credential export");
+            return Results.Ok(info);
+        }
+        catch (ArgumentException ex)
+        {
+            return Results.BadRequest(new { error = ex.Message });
+        }
+        catch (InvalidOperationException ex)
+        {
+            return Results.Conflict(new { error = ex.Message });
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or Microsoft.Data.Sqlite.SqliteException or System.Security.Cryptography.CryptographicException)
+        {
+            return Results.Problem($"The backup failed: {ex.Message}", statusCode: 500);
+        }
+    }
+
+    /// <summary>
+    /// Restore from the console: validates the backup now (manifest, checksums, password), records the request and
+    /// stops the service. The restore itself runs at the next start, before any database is opened; the installed
+    /// service restarts by itself (recovery options), a console run must be started again.
+    /// </summary>
+    private static async Task<IResult> RestoreAsync(string name, RestoreInput input, BackupService backups, NetWatchPaths paths, ISecretProtector protector,
+        IHostApplicationLifetime lifetime, HttpContext http, AuditWriter audit)
+    {
+        if (!string.Equals(input.Confirm, "RESTORE", StringComparison.Ordinal))
+        {
+            return Results.BadRequest(new { error = "Type RESTORE to confirm: all current data is replaced by the backup." });
+        }
+
+        if (backups.PathOf(name) is not { } path)
+        {
+            return Results.NotFound();
+        }
+
+        var password = string.IsNullOrEmpty(input.Password) ? null : input.Password;
+        try
+        {
+            var manifest = BackupRestore.Validate(path, password);
+            new PendingRestore(path, http.Actor().Username, DateTime.UtcNow,
+                password is null ? null : Convert.ToBase64String(protector.Protect(password))).Save(paths);
+            await audit.WriteAsync(http.Actor(), "RestoreRequested", "Backup", name,
+                $"backup of {manifest.CreatedUtc:u} from {manifest.MachineName}{(password is null ? string.Empty : ", with portable credentials")}");
+        }
+        catch (Exception ex) when (ex is InvalidDataException or IOException or System.Security.Cryptography.CryptographicException or System.Text.Json.JsonException)
+        {
+            return Results.BadRequest(new { error = $"The backup cannot be restored, nothing was changed: {ex.Message}" });
+        }
+
+        // Answer first, then stop: a non-zero exit code makes the service manager restart NetWatch (installer: failureflag 1).
+        _ = Task.Run(async () =>
+        {
+            await Task.Delay(TimeSpan.FromSeconds(2));
+            Environment.ExitCode = 75;
+            lifetime.StopApplication();
+        });
+        return Results.Accepted(value: new { message = "Restore scheduled. NetWatch stops now and restores the backup when it starts again (the Windows service restarts by itself within a minute)." });
     }
 
     private static async Task<IResult> DownloadAsync(string name, BackupService backups, HttpContext http, AuditWriter audit)

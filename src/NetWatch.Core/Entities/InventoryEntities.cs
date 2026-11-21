@@ -75,6 +75,12 @@ public class Device
     /// trusted CA (typical for VMCA self-signed certificates). A different certificate is refused until cleared.
     /// </summary>
     public string? TlsThumbprint { get; set; }
+
+    /// <summary>Address of the server's baseboard management controller (HPE iLO, Dell iDRAC) for hardware health.</summary>
+    public string? BmcAddress { get; set; }
+
+    /// <summary>Pinned SHA-256 thumbprint of the BMC's TLS certificate (self-signed by default on iLO/iDRAC).</summary>
+    public string? BmcTlsThumbprint { get; set; }
     public DateTime CreatedUtc { get; set; }
     public DateTime UpdatedUtc { get; set; }
 

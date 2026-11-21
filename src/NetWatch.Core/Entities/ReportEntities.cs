@@ -7,7 +7,8 @@ public enum ReportType
     Interfaces,
     Capacity,
     Security,
-    Inventory
+    Inventory,
+    Vmware
 }
 
 public enum ReportFormat

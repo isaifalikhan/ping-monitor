@@ -47,6 +47,12 @@ public sealed class CredentialResolver
             ? new ManagementCredential(c.Kind, c.Secret)
             : null;
 
+    /// <summary>iLO / iDRAC Redfish credential.</summary>
+    public async Task<ManagementCredential?> GetRedfishAsync(int profileId, CancellationToken ct) =>
+        await GetAsync(profileId, ct) is { } c && c.Kind == CredentialKind.Redfish
+            ? new ManagementCredential(c.Kind, c.Secret)
+            : null;
+
     /// <summary>All SNMPv3 credentials (used by the trap receiver to decrypt v3 traps).</summary>
     public async Task<IReadOnlyList<CredentialSecret>> GetAllSnmpV3Async(CancellationToken ct)
     {

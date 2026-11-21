@@ -28,6 +28,8 @@ export function DeviceForm({ device, onClose, onSaved }: { device?: DeviceDetail
     snmpCredentialId: device?.credentials.find((c) => c.purpose === 'Snmp')?.credentialProfileId ?? null,
     managementCredentialId: device?.credentials.find((c) => c.purpose === 'Management')?.credentialProfileId ?? null,
     vcenterCredentialId: device?.credentials.find((c) => c.purpose === 'VCenter')?.credentialProfileId ?? null,
+    bmcAddress: device?.bmcAddress ?? '',
+    bmcCredentialId: device?.credentials.find((c) => c.purpose === 'Bmc')?.credentialProfileId ?? null,
     notes: device?.notes ?? '',
     tags: device?.tags ?? [],
   }));
@@ -70,6 +72,7 @@ export function DeviceForm({ device, onClose, onSaved }: { device?: DeviceDetail
   const snmpCreds = (creds.data ?? []).filter((c) => c.kind === 'SnmpV2c' || c.kind === 'SnmpV3');
   const managementCreds = (creds.data ?? []).filter((c) => c.kind === 'Windows' || c.kind === 'Ssh');
   const vcenterCreds = (creds.data ?? []).filter((c) => c.kind === 'VCenter');
+  const redfishCreds = (creds.data ?? []).filter((c) => c.kind === 'Redfish');
   const vmwareType = form.type === 'VCenter' || form.type === 'Hypervisor';
   const serverType = ['Server', 'VM', 'DomainController', 'Hypervisor'].includes(form.type);
 
@@ -160,6 +163,27 @@ export function DeviceForm({ device, onClose, onSaved }: { device?: DeviceDetail
             </select>
             <span className="hint">Collects hosts, VMs, datastores, snapshots, alarms and events through the vSphere API (read-only role).</span>
           </label>
+        )}
+        {(form.type === 'Server' || form.type === 'Hypervisor' || form.bmcAddress) && (
+          <>
+            <label className="field">
+              <span>iLO / iDRAC address</span>
+              <input className="mono" value={form.bmcAddress ?? ''} onChange={(e) => set('bmcAddress', e.target.value)} placeholder="10.0.200.21" maxLength={255} />
+              <span className="hint">Hardware health (fans, PSUs, temperatures, memory, RAID, drives) through Redfish; without a Redfish credential the HPE/Dell SNMP agent is asked instead.</span>
+            </label>
+            <label className="field">
+              <span>iLO / iDRAC credential</span>
+              <select value={form.bmcCredentialId ?? ''} onChange={(e) => set('bmcCredentialId', e.target.value ? Number(e.target.value) : null)}>
+                <option value="">— none (SNMP fallback) —</option>
+                {redfishCreds.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name}
+                  </option>
+                ))}
+              </select>
+              <span className="hint">A read-only iLO / iDRAC account (Settings → Credentials → iLO / iDRAC).</span>
+            </label>
+          </>
         )}
         {(serverType || form.managementCredentialId) && (
           <label className="field">

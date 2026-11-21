@@ -1,0 +1,15 @@
+{
+  "@odata.context": "/redfish/v1/$metadata#Thermal.Thermal",
+  "@odata.id": "/redfish/v1/Chassis/System.Embedded.1/Thermal",
+  "@odata.type": "#Thermal.v1_7_0.Thermal",
+  "Fans": [
+    { "@odata.id": "/redfish/v1/Chassis/System.Embedded.1/Thermal#/Fans/0", "FanName": "System Board Fan1A", "LowerThresholdCritical": 600, "MemberId": "0x17||Fan.Embedded.1A", "Name": "System Board Fan1A", "PhysicalContext": "SystemBoard", "Reading": 7080, "ReadingUnits": "RPM", "Status": { "Health": "OK", "State": "Enabled" } },
+    { "@odata.id": "/redfish/v1/Chassis/System.Embedded.1/Thermal#/Fans/1", "FanName": "System Board Fan1B", "MemberId": "0x17||Fan.Embedded.1B", "Name": "System Board Fan1B", "Reading": 6840, "ReadingUnits": "RPM", "Status": { "Health": "OK", "State": "Enabled" } }
+  ],
+  "Id": "Thermal",
+  "Name": "Thermal",
+  "Temperatures": [
+    { "@odata.id": "/redfish/v1/Chassis/System.Embedded.1/Thermal#/Temperatures/0", "LowerThresholdCritical": 3, "MemberId": "iDRAC.Embedded.1#SystemBoardInletTemp", "Name": "System Board Inlet Temp", "PhysicalContext": "SystemBoard", "ReadingCelsius": 21, "Status": { "Health": "OK", "State": "Enabled" }, "UpperThresholdCritical": 47, "UpperThresholdNonCritical": 42 },
+    { "@odata.id": "/redfish/v1/Chassis/System.Embedded.1/Thermal#/Temperatures/1", "MemberId": "iDRAC.Embedded.1#CPU1Temp", "Name": "CPU1 Temp", "PhysicalContext": "CPU", "ReadingCelsius": 91, "Status": { "Health": "Warning", "State": "Enabled" }, "UpperThresholdCritical": 100, "UpperThresholdNonCritical": 90 }
+  ]
+}

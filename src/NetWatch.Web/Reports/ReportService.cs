@@ -43,6 +43,26 @@ public sealed partial class ReportService
     [GeneratedRegex(@"^\d{4}-\d{2}/[a-z0-9_\-]{1,120}\.(pdf|csv)$", RegexOptions.CultureInvariant)]
     private static partial Regex FilePattern();
 
+    /// <summary>Builds the format-neutral document (the on-screen preview uses it directly).</summary>
+    public async Task<ReportDocument> BuildAsync(ReportRequest request, CancellationToken ct)
+    {
+        await _concurrency.WaitAsync(ct);
+        try
+        {
+            using var scope = _scopeFactory.CreateScope();
+            var builder = new ReportBuilder(
+                scope.ServiceProvider.GetRequiredService<NetWatchDbContext>(),
+                scope.ServiceProvider.GetRequiredService<EventsDbContext>(),
+                scope.ServiceProvider.GetRequiredService<IMetricStore>(),
+                scope.ServiceProvider.GetRequiredService<SettingsService>());
+            return await builder.BuildAsync(request, ct);
+        }
+        finally
+        {
+            _concurrency.Release();
+        }
+    }
+
     public async Task<(byte[] Content, string FileName, string MimeType)> GenerateAsync(ReportRequest request, ReportFormat format, CancellationToken ct)
     {
         await _concurrency.WaitAsync(ct);

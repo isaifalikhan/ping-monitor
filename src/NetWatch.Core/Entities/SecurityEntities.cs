@@ -23,6 +23,23 @@ public class User
 }
 
 /// <summary>Server-side session record. The browser cookie only carries an opaque token whose SHA-256 is <see cref="Id"/>.</summary>
+/// <summary>A NOC wall display: a revocable link that signs a browser in as a read-only kiosk account.</summary>
+public class KioskDisplay
+{
+    public int Id { get; set; }
+    public string Name { get; set; } = string.Empty;
+
+    /// <summary>SHA-256 (hex) of the link token; the token itself is shown once and never stored.</summary>
+    public string TokenHash { get; set; } = string.Empty;
+
+    /// <summary>The kiosk account (AuthSource Kiosk, role Viewer) the display signs in as.</summary>
+    public int UserId { get; set; }
+    public string? CreatedBy { get; set; }
+    public DateTime CreatedUtc { get; set; }
+    public DateTime? LastUsedUtc { get; set; }
+    public DateTime? RevokedUtc { get; set; }
+}
+
 public class UserSession
 {
     public string Id { get; set; } = string.Empty;

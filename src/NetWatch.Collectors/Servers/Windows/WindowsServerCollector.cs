@@ -113,6 +113,11 @@ public sealed partial class WindowsServerCollector : IServerCollector
 
         Try(() => WindowsStatsParser.ApplyHotfixes(session.Query(Cimv2, "SELECT * FROM Win32_QuickFixEngineering"), data));
         Try(() => data.PendingReboot = PendingReboot(session));
+        if (request.ReadGpus)
+        {
+            Try(() => ReadGpus(session, request, data));
+        }
+
         return data;
 
         void Try(Action action)
@@ -126,6 +131,49 @@ public sealed partial class WindowsServerCollector : IServerCollector
                 _logger.LogDebug(ex, "WMI query failed for {Host}", request.Host);
             }
         }
+    }
+
+    /// <summary>
+    /// GPU inventory (Win32_VideoController), utilization and memory (GPU performance counters, Windows Server
+    /// 2019 / WDDM 2.x and later) and, for NVIDIA over WinRM, temperature/power/fan from nvidia-smi.
+    /// </summary>
+    private void ReadGpus(IWmiSession session, ServerPollRequest request, ServerPollData data)
+    {
+        var gpus = GpuParsers.FromVideoControllers(session.Query(Cimv2, "SELECT Name, PNPDeviceID, DriverVersion, AdapterRAM, Status, ConfigManagerErrorCode FROM Win32_VideoController"));
+        data.GpusRead = true;
+        if (gpus.Count == 0)
+        {
+            return;
+        }
+
+        try
+        {
+            gpus = GpuParsers.ApplyPerfCounters(gpus,
+                session.Query(Cimv2, "SELECT Name, UtilizationPercentage FROM Win32_PerfFormattedData_GPUPerformanceCounters_GPUEngine"),
+                session.Query(Cimv2, "SELECT Name, DedicatedUsage FROM Win32_PerfFormattedData_GPUPerformanceCounters_GPUAdapterMemory"));
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException)
+        {
+            data.GpuError = "GPU performance counters not available (needs Windows Server 2019 or later and a WDDM 2 driver)";
+            _logger.LogDebug(ex, "GPU counters failed for {Host}", request.Host);
+        }
+
+        if (request.RunNvidiaSmi && gpus.Any(g => g.Vendor == "NVIDIA") && session is WinRmWmiSession winrm)
+        {
+            try
+            {
+                var (smi, error) = GpuParsers.ParseNvidiaSmi(winrm.RunCommand("nvidia-smi", GpuParsers.NvidiaSmiCommand["nvidia-smi ".Length..], TimeSpan.FromSeconds(20)));
+                gpus = GpuParsers.MergeNvidia(gpus, smi, error);
+                data.GpuError ??= error is null ? null : $"nvidia-smi: {error}";
+            }
+            catch (Exception ex) when (ex is not OutOfMemoryException)
+            {
+                data.GpuError ??= $"nvidia-smi over WinRM failed: {Describe(ex)}";
+                _logger.LogDebug(ex, "nvidia-smi failed for {Host}", request.Host);
+            }
+        }
+
+        data.Gpus.AddRange(gpus);
     }
 
     /// <summary>Checks the registry keys Windows sets when a reboot is required (servicing stack, Windows Update).</summary>

@@ -9,7 +9,7 @@ export type Severity = 'Info' | 'Warning' | 'Major' | 'Critical';
 export const SEVERITIES: Severity[] = ['Info', 'Warning', 'Major', 'Critical'];
 export type AlertState = 'Active' | 'Acknowledged' | 'Resolved' | 'Closed';
 export type Role = 'Admin' | 'Operator' | 'Viewer';
-export type CredentialKind = 'SnmpV2c' | 'SnmpV3' | 'Windows' | 'Ssh' | 'VCenter';
+export type CredentialKind = 'SnmpV2c' | 'SnmpV3' | 'Windows' | 'Ssh' | 'VCenter' | 'Redfish';
 export type GroupKind = 'Site' | 'Building' | 'Floor' | 'Rack' | 'Logical';
 export const GROUP_KINDS: GroupKind[] = ['Site', 'Building', 'Floor', 'Rack', 'Logical'];
 export type RuleType = 'Threshold' | 'StateChange' | 'EventMatch' | 'CountInWindow' | 'Absence';
@@ -26,6 +26,7 @@ export interface CurrentUser {
   role: Role;
   mustChangePassword: boolean;
   sessionIdleTimeoutMin: number;
+  authSource?: 'Local' | 'Ldap' | 'Kiosk';
 }
 
 export interface DeviceListItem {
@@ -78,6 +79,8 @@ export interface DeviceDetail extends Omit<DeviceListItem, 'tags' | 'os'> {
   watchedServices: string[];
   sshHostKeyFingerprint?: string | null;
   tlsThumbprint?: string | null;
+  bmcAddress?: string | null;
+  bmcTlsThumbprint?: string | null;
 }
 
 export interface DeviceInput {
@@ -97,6 +100,8 @@ export interface DeviceInput {
   managementCredentialId?: number | null;
   watchedServices?: string[];
   vcenterCredentialId?: number | null;
+  bmcAddress?: string | null;
+  bmcCredentialId?: number | null;
 }
 
 export interface NetInterface {
@@ -302,7 +307,7 @@ export interface User {
   displayName: string;
   email?: string | null;
   role: Role;
-  authSource: 'Local' | 'Ldap';
+  authSource: 'Local' | 'Ldap' | 'Kiosk';
   isEnabled: boolean;
   isLocked: boolean;
   lastLoginUtc?: string | null;
@@ -373,6 +378,7 @@ export interface SecuritySettings {
   maxFailedLogins: number;
   lockoutMinutes: number;
   minPasswordLength: number;
+  certificateRevocation: 'NoCheck' | 'Offline';
 }
 
 export interface RetentionSettings {
@@ -485,6 +491,35 @@ export interface ServerDetail {
   info?: ServerInfo | null;
   volumes: Volume[];
   services: WatchedService[];
+  gpus?: GpuInfo[];
+  hardware?: HardwareComponentInfo[];
+}
+
+export interface GpuInfo {
+  index: number;
+  name: string;
+  vendor?: string | null;
+  driverVersion?: string | null;
+  utilizationPct?: number | null;
+  memoryUsedMb?: number | null;
+  memoryTotalMb?: number | null;
+  temperatureC?: number | null;
+  powerW?: number | null;
+  fanPct?: number | null;
+  problem?: string | null;
+  lastSeenUtc: string;
+}
+
+export interface HardwareComponentInfo {
+  source: string;
+  category: string;
+  name: string;
+  health?: string | null;
+  state?: string | null;
+  reading?: number | null;
+  unit?: string | null;
+  details?: string | null;
+  lastSeenUtc: string;
 }
 
 export interface SeriesInfo {
@@ -939,7 +974,19 @@ export interface DcSettings {
 
 // ---- Phase 5: reports, backups, self-monitoring, topology
 
-export type ReportTypeName = 'Availability' | 'Alerts' | 'Interfaces' | 'Capacity' | 'Security' | 'Inventory';
+export type ReportTypeName = 'Availability' | 'Alerts' | 'Interfaces' | 'Capacity' | 'Security' | 'Inventory' | 'Vmware';
+
+export interface ReportPreview {
+  title: string;
+  subtitle: string;
+  sections: {
+    heading: string;
+    note?: string | null;
+    summary: { label: string; value: string }[];
+    bars?: { max: number; items: { label: string; value: number; text: string }[] } | null;
+    table?: { headers: string[]; rows: string[][]; totalRows: number; numeric: number[]; empty?: string | null } | null;
+  }[];
+}
 export type ReportFormatName = 'Pdf' | 'Csv';
 export type ReportFrequency = 'Daily' | 'Weekly' | 'Monthly';
 

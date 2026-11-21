@@ -97,6 +97,14 @@ public static class DefaultRules
             Threshold("DC clock skew", MetricKeys.DcTimeSkew, ComparisonOperator.GreaterThan, 30, 20, 300, Severity.Warning, all),
             Threshold("DC clock skew critical", MetricKeys.DcTimeSkew, ComparisonOperator.GreaterThan, 120, 100, 0, Severity.Critical, all),
 
+            // ---- 2.0: GPUs and server hardware (iLO / iDRAC)
+            Threshold("GPU utilization high", MetricKeys.GpuUtilization, ComparisonOperator.GreaterThan, 95, 85, 600, Severity.Warning, all),
+            Threshold("GPU temperature high", MetricKeys.GpuTemperature, ComparisonOperator.GreaterThan, 85, 80, 120, Severity.Major, all),
+            Threshold("GPU memory high", MetricKeys.GpuMemory, ComparisonOperator.GreaterThan, 90, 85, 300, Severity.Warning, all),
+            State("GPU missing or driver error", "A GPU is no longer detected, or its driver reports an error (device problem code, nvidia-smi failure).", StateKeys.GpuProblem, Severity.Major, 0, all),
+            State("Server hardware component not OK", "iLO / iDRAC reports a component (fan, power supply, temperature, memory, processor, controller, drive) as Warning or Critical.", StateKeys.HardwareComponent, Severity.Major, 0, all),
+            State("Management controller unreachable", "The server's iLO / iDRAC did not answer Redfish (or SNMP) for 15 minutes.", StateKeys.HardwareUnreachable, Severity.Warning, 900, all),
+
             // ---- Phase 5: self-monitoring
             State("NetWatch self-check failing", "A NetWatch self-check fails: data disk space, polling backlog, dropped samples or signals, message storm, certificate expiry, backups, scheduled reports, notifications or event forwarding.", StateKeys.SelfCheck, Severity.Major, 120, all),
         ];

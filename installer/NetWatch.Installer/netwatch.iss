@@ -1,5 +1,5 @@
 ﻿; NetWatch installer (Inno Setup 6).
-; Built by build.ps1:  ISCC /DAppVersion=2.0.0-dev /DNumericVersion=2.0.0 /DSourceDir=..\..\artifacts\publish /DDocsDir=..\..\docs netwatch.iss
+; Built by build.ps1:  ISCC /DAppVersion=2.0.0 /DNumericVersion=2.0.0 /DSourceDir=..\..\artifacts\publish /DDocsDir=..\..\docs netwatch.iss
 ;
 ; Install:    copies NetWatch.Service.exe, creates the "NetWatch" Windows service (delayed auto-start, restart on
 ;             failure), inbound firewall rules for the web console (TCP 8443), SNMP traps (UDP 162) and syslog
@@ -11,7 +11,7 @@
 ;             chooses to delete it.
 
 #ifndef AppVersion
-  #define AppVersion "2.0.0-dev"
+  #define AppVersion "2.0.0"
 #endif
 #ifndef NumericVersion
   #define NumericVersion "2.0.0"
@@ -162,6 +162,8 @@ begin
     Sc('create {#ServiceName} ' + BinPath + ' start= delayed-auto DisplayName= "{#ServiceDisplayName}"');
   Sc('description {#ServiceName} "NetWatch infrastructure monitoring: collectors, alerting and the web console (HTTPS port {#HttpsPort})."');
   Sc('failure {#ServiceName} reset= 86400 actions= restart/60000/restart/60000/restart/300000');
+  // Also restart after a clean stop with a non-zero exit code (used by "restore from the web console").
+  Sc('failureflag {#ServiceName} 1');
 end;
 
 function PrepareToInstall(var NeedsRestart: Boolean): String;

@@ -63,6 +63,7 @@ public sealed class PollResultProcessor
     private readonly ServerResultProcessor _servers;
     private readonly VmwareResultProcessor _vmware;
     private readonly DcResultProcessor _dc;
+    private readonly HardwareResultProcessor? _hardware;
     private readonly TimeProvider _time;
     private readonly ILogger<PollResultProcessor> _logger;
     private readonly ConcurrentDictionary<int, DeviceRuntime> _runtime = new();
@@ -79,6 +80,7 @@ public sealed class PollResultProcessor
         ServerResultProcessor servers,
         VmwareResultProcessor vmware,
         DcResultProcessor dc,
+        HardwareResultProcessor? hardware,
         TimeProvider time,
         ILogger<PollResultProcessor> logger)
     {
@@ -92,6 +94,7 @@ public sealed class PollResultProcessor
         _servers = servers;
         _vmware = vmware;
         _dc = dc;
+        _hardware = hardware;
         _time = time;
         _logger = logger;
     }
@@ -159,6 +162,7 @@ public sealed class PollResultProcessor
         _liveCache.RemoveDevice(deviceId);
         _servers.Forget(deviceId);
         _dc.Forget(deviceId);
+        _hardware?.Forget(deviceId);
         try
         {
             _metrics.ForgetDevice(deviceId);
@@ -182,10 +186,11 @@ public sealed class PollResultProcessor
         var server = await _servers.PrepareAsync(device, ct);
         var vmware = await _vmware.PrepareAsync(device, ct);
         var dc = await _dc.PrepareAsync(device, ct);
+        var hardware = _hardware is null ? null : await _hardware.PrepareAsync(device, ct);
 
         var readNeighbors = refreshInterfaces && settings.DiscoverNeighbors && device.Type is DeviceType.Switch or DeviceType.Router or DeviceType.Firewall or DeviceType.Other;
         return new PollRequest(device, snmp, refreshInterfaces, refreshInventory, settings.PingCount, settings.PingTimeoutMs, settings.SnmpTimeoutMs, settings.SnmpRetries,
-            server, hasSnmp && server is null && ServerResultProcessor.WantsSnmpStorage(device), vmware, dc, readNeighbors);
+            server, hasSnmp && server is null && ServerResultProcessor.WantsSnmpStorage(device), vmware, dc, readNeighbors, hardware);
     }
 
     public async Task ProcessAsync(PollRequest request, DevicePollResult result, CancellationToken ct)
@@ -262,6 +267,28 @@ public sealed class PollResultProcessor
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
                 _logger.LogWarning(ex, "Processing VMware data of {Device} failed", device.Name);
+                db.ChangeTracker.Clear();
+            }
+        }
+
+        // ---- GPUs and server hardware (iLO / iDRAC) ------------------------------------------
+        if (_hardware is not null && (result.Hardware is not null || result.Server is { GpusRead: true }))
+        {
+            try
+            {
+                if (result.Server is { } srv)
+                {
+                    await _hardware.ProcessGpusAsync(device, srv, db, now, ct);
+                }
+
+                if (result.Hardware is { } hw)
+                {
+                    await _hardware.ProcessHardwareAsync(device, hw, db, now, ct);
+                }
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                _logger.LogWarning(ex, "Processing hardware/GPU data of {Device} failed", device.Name);
                 db.ChangeTracker.Clear();
             }
         }

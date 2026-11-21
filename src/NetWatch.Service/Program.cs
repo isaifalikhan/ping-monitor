@@ -22,6 +22,7 @@ namespace NetWatch.Service;
 ///   NetWatch.Service.exe --reset-admin         generate a new password for 'admin' and exit
 ///   NetWatch.Service.exe --set-certificate F   store the password of a .pfx (asked on the console) and exit
 ///   NetWatch.Service.exe --restore F.zip       restore a backup (service must be stopped) and exit
+///                        [--restore-password]  ... re-encrypting its portable credential export for this server
 ///   NetWatch.Service.exe --version             print the version and exit
 ///   NetWatch.Service.exe --self-test           start everything, run a few seconds, stop; exit 0 on success
 ///   --Https:Port=8444 (or NETWATCH_Https__Port) overrides any setting of appsettings.json
@@ -68,7 +69,16 @@ public static class Program
 
                 try
                 {
-                    Console.WriteLine(Data.Backup.BackupRestore.Restore(Path.GetFullPath(backupFile), paths));
+                    // --restore-password asks for the portable-credential password (backups made with "Back up for another server").
+                    string? password = null;
+                    if (cli.Remaining.Contains("--restore-password", StringComparer.OrdinalIgnoreCase))
+                    {
+                        Console.Write("Portable credential password: ");
+                        password = ReadHidden();
+                        Console.WriteLine();
+                    }
+
+                    Console.WriteLine(Data.Backup.BackupRestore.Restore(Path.GetFullPath(backupFile), paths, password, new Data.Security.DpapiSecretProtector()));
                     Console.WriteLine("Start the service again: Start-Service NetWatch");
                     return 0;
                 }
@@ -86,6 +96,13 @@ public static class Program
             }
 
             Log.Information("NetWatch {Version} starting (data folder {DataDir}, PID {Pid})", version, paths.Root, Environment.ProcessId);
+
+            // A restore requested from the web console runs now, before any database is opened.
+            var restoreOutcome = Data.Backup.PendingRestore.RunIfPending(paths, new Data.Security.DpapiSecretProtector());
+            if (restoreOutcome is not null)
+            {
+                Log.Warning("Restore from the web console: {Outcome}", restoreOutcome);
+            }
 
             var builder = WebApplication.CreateBuilder(new WebApplicationOptions
             {
@@ -133,6 +150,9 @@ public static class Program
             var app = builder.Build();
             await app.Services.InitialiseDatabasesAsync(startupLogger);
 
+            // Outgoing TLS revocation policy (never online); re-applied whenever the security settings are saved.
+            _ = app.Services.GetRequiredService<Data.Config.SettingsService>().Security;
+
             if (cli.ResetAdmin)
             {
                 var password = await Seeder.ResetAdminAsync(app.Services, CancellationToken.None);
@@ -145,6 +165,12 @@ public static class Program
             }
 
             await Seeder.SeedAsync(app.Services, simulate, startupLogger, CancellationToken.None);
+            if (restoreOutcome is not null)
+            {
+                await app.Services.GetRequiredService<Data.Config.AuditWriter>().WriteAsync(
+                    Data.Config.AuditActor.System, restoreOutcome.StartsWith("FAILED", StringComparison.Ordinal) ? "RestoreFailed" : "BackupRestored",
+                    "Backup", null, restoreOutcome.Length > 1000 ? restoreOutcome[..1000] : restoreOutcome);
+            }
 
             app.UseNetWatchWeb();
             if (cli.SelfTest)

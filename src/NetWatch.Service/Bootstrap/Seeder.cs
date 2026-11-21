@@ -86,6 +86,7 @@ public static class Seeder
             await SimulatorSeeder.UpgradeAsync(db, protector, logger, ct);
             await SimulatorSeeder.UpgradeVmwareAsync(db, protector, logger, ct);
             await SimulatorSeeder.UpgradeDomainControllersAsync(db, logger, ct);
+            await SimulatedHardware.UpgradeAsync(db, protector, logger, ct);
         }
     }
 

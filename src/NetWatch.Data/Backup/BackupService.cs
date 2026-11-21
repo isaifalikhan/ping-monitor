@@ -43,8 +43,11 @@ public sealed partial class BackupService : BackgroundService
     private readonly ILogger<BackupService> _logger;
     private readonly SemaphoreSlim _gate = new(1, 1);
 
-    public BackupService(NetWatchPaths paths, SettingsService settings, TimeProvider time, ILogger<BackupService> logger)
+    private readonly NetWatch.Core.Abstractions.ISecretProtector? _protector;
+
+    public BackupService(NetWatchPaths paths, SettingsService settings, TimeProvider time, ILogger<BackupService> logger, NetWatch.Core.Abstractions.ISecretProtector? protector = null)
     {
+        _protector = protector;
         _paths = paths;
         _settings = settings;
         _time = time;
@@ -116,8 +119,18 @@ public sealed partial class BackupService : BackgroundService
     }
 
     /// <summary>Creates a backup now. Only one runs at a time; a second call fails fast.</summary>
-    public async Task<BackupInfo> CreateAsync(string reason, CancellationToken ct)
+    /// <param name="exportPassword">When set, credentials are also exported re-encrypted with this password (restorable on another server).</param>
+    public async Task<BackupInfo> CreateAsync(string reason, CancellationToken ct, string? exportPassword = null)
     {
+        if (exportPassword is not null)
+        {
+            PortableSecrets.Validate(exportPassword);
+            if (_protector is null)
+            {
+                throw new InvalidOperationException("Credential export is not available.");
+            }
+        }
+
         if (!await _gate.WaitAsync(0, ct))
         {
             throw new InvalidOperationException("A backup is already running.");
@@ -128,7 +141,7 @@ public sealed partial class BackupService : BackgroundService
         LastAttemptUtc = started;
         var folder = TargetFolder;
         var stamp = LocalTime.ToLocal(started).ToString("yyyyMMdd-HHmmss", CultureInfo.InvariantCulture);
-        var name = $"{FilePrefix}{stamp}{(reason == "manual" ? "-manual" : reason == "pre-restore" ? "-prerestore" : string.Empty)}.zip";
+        var name = $"{FilePrefix}{stamp}{(reason == "manual" ? "-manual" : reason == "pre-restore" ? "-prerestore" : reason == "portable" ? "-portable" : string.Empty)}.zip";
         var work = Path.Combine(folder, $".tmp-{stamp}-{Guid.NewGuid():N}");
         try
         {
@@ -153,6 +166,11 @@ public sealed partial class BackupService : BackgroundService
                 if (File.Exists(_paths.SettingsFile))
                 {
                     File.Copy(_paths.SettingsFile, Path.Combine(work, "appsettings.json"));
+                }
+
+                if (exportPassword is not null)
+                {
+                    File.WriteAllText(Path.Combine(work, PortableSecrets.FileName), PortableSecrets.Export(_paths.ConfigDb, _protector!, exportPassword));
                 }
 
                 if (Directory.Exists(_paths.CertsDir))
@@ -345,9 +363,49 @@ public sealed partial class BackupService : BackgroundService
 /// </summary>
 public static class BackupRestore
 {
-    private static readonly string[] Allowed = ["data/netwatch.db", "data/events.db", "data/metrics.db", "appsettings.json", "manifest.json"];
+    private static readonly string[] Allowed = ["data/netwatch.db", "data/events.db", "data/metrics.db", "appsettings.json", "manifest.json", PortableSecrets.FileName];
 
-    public static string Restore(string zipPath, NetWatchPaths paths)
+    /// <summary>Checks a backup (manifest, checksums, allow-list, optional portable-credential password) without changing anything.</summary>
+    public static BackupManifest Validate(string zipPath, string? password = null)
+    {
+        using var zip = ZipFile.OpenRead(zipPath);
+        var manifestEntry = zip.GetEntry("manifest.json") ?? throw new InvalidDataException("Not a NetWatch backup (manifest.json missing).");
+        BackupManifest manifest;
+        using (var s = manifestEntry.Open())
+        {
+            manifest = JsonSerializer.Deserialize<BackupManifest>(s, new JsonSerializerOptions(JsonSerializerDefaults.Web))
+                       ?? throw new InvalidDataException("The backup manifest is unreadable.");
+        }
+
+        if (manifest.Product != "NetWatch" || manifest.Files.All(f => f.Path != "data/netwatch.db"))
+        {
+            throw new InvalidDataException("Not a NetWatch backup (configuration database missing).");
+        }
+
+        foreach (var f in manifest.Files)
+        {
+            var entry = zip.GetEntry(f.Path) ?? throw new InvalidDataException($"The backup is incomplete: {f.Path} is missing.");
+            using var stream = entry.Open();
+            if (!string.Equals(Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(stream)), f.Sha256, StringComparison.OrdinalIgnoreCase))
+            {
+                throw new InvalidDataException($"Checksum mismatch for {f.Path}: the backup is damaged.");
+            }
+        }
+
+        if (password is not null)
+        {
+            var portable = zip.GetEntry(PortableSecrets.FileName) ?? throw new InvalidDataException("This backup has no portable credential export.");
+            using var reader = new StreamReader(portable.Open());
+            _ = PortableSecrets.Decrypt(reader.ReadToEnd(), password);
+        }
+
+        return manifest;
+    }
+
+    public static string Restore(string zipPath, NetWatchPaths paths) => Restore(zipPath, paths, null, null);
+
+    /// <param name="password">Portable-credential password: the exported secrets are re-protected for this machine.</param>
+    public static string Restore(string zipPath, NetWatchPaths paths, string? password, NetWatch.Core.Abstractions.ISecretProtector? protector)
     {
         if (!File.Exists(zipPath))
         {
@@ -402,6 +460,22 @@ public static class BackupRestore
                 }
             }
 
+            // Decrypt the portable credentials before anything is moved: a wrong password changes nothing.
+            Dictionary<int, string>? portableSecrets = null;
+            var portableFile = Path.Combine(stage, PortableSecrets.FileName);
+            if (password is not null)
+            {
+                if (!File.Exists(portableFile) || protector is null)
+                {
+                    throw new InvalidDataException("This backup has no portable credential export.");
+                }
+
+                portableSecrets = PortableSecrets.Decrypt(File.ReadAllText(portableFile), password);
+            }
+
+            // Pooled connections of this process would keep the files open (and checkpoint into them later).
+            SqliteConnection.ClearAllPools();
+
             // Keep the current state next to the data folder, then move the backup in.
             var keep = Path.Combine(paths.Root, $"before-restore-{DateTime.Now:yyyyMMdd-HHmmss}");
             Directory.CreateDirectory(Path.Combine(keep, "data"));
@@ -423,6 +497,13 @@ public static class BackupRestore
                 }
 
                 File.Move(staged, Path.Combine(paths.DataDir, db));
+            }
+
+            var credentialNote = string.Empty;
+            if (portableSecrets is not null)
+            {
+                var n = PortableSecrets.Apply(paths.ConfigDb, portableSecrets, protector!);
+                credentialNote = string.Create(CultureInfo.InvariantCulture, $" {n} credential(s) were re-encrypted for this server.");
             }
 
             var stagedSettings = Path.Combine(stage, "appsettings.json");
@@ -449,7 +530,8 @@ public static class BackupRestore
 
             return string.Create(CultureInfo.InvariantCulture,
                 $"Restored backup of {LocalTime.ToLocal(manifest.CreatedUtc):yyyy-MM-dd HH:mm} PKT (NetWatch {manifest.Version}, from {manifest.MachineName}{(manifest.IncludesMetrics ? string.Empty : ", without performance history")}). The previous files were moved to {keep}.")
-                + (string.Equals(manifest.MachineName, Environment.MachineName, StringComparison.OrdinalIgnoreCase)
+                + credentialNote
+                + (portableSecrets is not null || string.Equals(manifest.MachineName, Environment.MachineName, StringComparison.OrdinalIgnoreCase)
                     ? string.Empty
                     : " The backup comes from another server: delete the certs folder to get a new certificate, and re-enter all credential secrets (they are encrypted for the original server).");
         }

@@ -12,6 +12,7 @@ const KINDS: { value: CredentialKind; label: string }[] = [
   { value: 'Windows', label: 'Windows / WinRM' },
   { value: 'Ssh', label: 'SSH (Linux)' },
   { value: 'VCenter', label: 'vCenter' },
+  { value: 'Redfish', label: 'iLO / iDRAC (Redfish)' },
 ];
 
 interface FormState {
@@ -67,6 +68,9 @@ function CredentialDialog({ credential, onClose }: { credential?: Credential; on
         <label className="field">
           <span>Community string</span>
           <input type="password" autoComplete="off" value={f.community} onChange={(e) => set('community', e.target.value)} />
+          <span className="hint" style={{ color: 'var(--warn)' }}>
+            SNMP v2c sends the community string unencrypted on the network. Prefer SNMP v3 (authPriv, SHA + AES) where the device supports it; use v2c read-only and limit it by an ACL to this server.
+          </span>
         </label>
       )}
       {f.kind === 'SnmpV3' && (
@@ -105,7 +109,7 @@ function CredentialDialog({ credential, onClose }: { credential?: Credential; on
           </label>
         </>
       )}
-      {(f.kind === 'Windows' || f.kind === 'Ssh' || f.kind === 'VCenter') && (
+      {(f.kind === 'Windows' || f.kind === 'Ssh' || f.kind === 'VCenter' || f.kind === 'Redfish') && (
         <>
           <label className="field">
             <span>User name</span>

@@ -309,6 +309,11 @@ internal static class SmtpChannel
         message.Body = builder.ToMessageBody();
 
         using var client = new SmtpClient { Timeout = 30_000 };
+
+        // MailKit's own revocation check is online; the shared policy decides (no check, or offline CRL cache only).
+        client.CheckCertificateRevocation = false;
+        client.ServerCertificateValidationCallback = (_, certificate, _, errors) =>
+            certificate is not null && (errors == System.Net.Security.SslPolicyErrors.None || NetWatch.Core.Configuration.TlsPolicy.Verify(certificate, s.SmtpHost ?? string.Empty, out _));
         var options = s.SmtpSecurity switch
         {
             SmtpSecurity.SslOnConnect => SecureSocketOptions.SslOnConnect,
