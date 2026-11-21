@@ -435,3 +435,76 @@ public sealed class RetentionSettings
         ClosedAlertDays = Math.Clamp(ClosedAlertDays, 7, 3650);
     }
 }
+
+/// <summary>Automatic backups of the databases and configuration. Stored under key "backup".</summary>
+public sealed class BackupSettings
+{
+    public const string Key = "backup";
+
+    public bool Enabled { get; set; } = true;
+
+    /// <summary>Daily backup time, local (PKT) "HH:mm".</summary>
+    public string DailyAt { get; set; } = "01:30";
+
+    /// <summary>Include the performance history (metrics.db, usually the largest file).</summary>
+    public bool IncludeMetrics { get; set; } = true;
+
+    /// <summary>Number of backup files kept; older ones are deleted after each successful backup.</summary>
+    public int KeepCount { get; set; } = 14;
+
+    /// <summary>Target folder (local path or UNC share); empty = the data folder's "backups" subfolder.</summary>
+    public string? Folder { get; set; }
+
+    public void Normalise()
+    {
+        KeepCount = Math.Clamp(KeepCount, 1, 365);
+        if (!TimeSpan.TryParseExact(DailyAt, @"hh\:mm", null, out _))
+        {
+            DailyAt = "01:30";
+        }
+
+        Folder = string.IsNullOrWhiteSpace(Folder) ? null : Folder.Trim();
+    }
+
+    /// <summary>Null when valid, otherwise an error text. Only absolute local or UNC paths are accepted.</summary>
+    public string? ValidateFolder()
+    {
+        if (Folder is null)
+        {
+            return null;
+        }
+
+        if (Folder.Length > 240 || Folder.IndexOfAny(Path.GetInvalidPathChars()) >= 0 || !Path.IsPathFullyQualified(Folder) || Folder.Contains("..", StringComparison.Ordinal))
+        {
+            return @"The backup folder must be an absolute local path (D:\Backups\NetWatch) or a UNC share (\\server\share\netwatch).";
+        }
+
+        return null;
+    }
+}
+
+/// <summary>Thresholds of NetWatch's self-monitoring. Stored under key "selfmonitor".</summary>
+public sealed class SelfMonitorSettings
+{
+    public const string Key = "selfmonitor";
+
+    /// <summary>Alert when free space on the data drive falls below this percentage …</summary>
+    public int MinFreeDiskPct { get; set; } = 10;
+
+    /// <summary>… or below this many GB.</summary>
+    public int MinFreeDiskGb { get; set; } = 5;
+
+    /// <summary>Alert when the server certificate expires within this many days.</summary>
+    public int CertificateWarnDays { get; set; } = 30;
+
+    /// <summary>Alert when the newest successful backup is older than this many hours (automatic backups on).</summary>
+    public int MaxBackupAgeHours { get; set; } = 36;
+
+    public void Normalise()
+    {
+        MinFreeDiskPct = Math.Clamp(MinFreeDiskPct, 1, 50);
+        MinFreeDiskGb = Math.Clamp(MinFreeDiskGb, 1, 1000);
+        CertificateWarnDays = Math.Clamp(CertificateWarnDays, 1, 365);
+        MaxBackupAgeHours = Math.Clamp(MaxBackupAgeHours, 2, 24 * 31);
+    }
+}

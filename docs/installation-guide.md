@@ -152,4 +152,5 @@ Run from an elevated prompt in `C:\Program Files\NetWatch`:
 | `NetWatch.Service.exe --version` | Print the version |
 | `NetWatch.Service.exe --reset-admin` | Give `admin` a new one-time password (printed and written to `initial-admin-password.txt`), unlock it, and require a password change. Restart the service afterwards |
 | `NetWatch.Service.exe --set-certificate <pfx>` | Store the password of a PFX certificate (see section 4) |
+| `NetWatch.Service.exe --restore <backup.zip>` | Restore a backup (stop the service first). Verifies all checksums, keeps the current files in `before-restore-<date>`; see the admin guide, *Backup and restore* |
 | `NetWatch.Service.exe --console --data-dir D:\NWTest --simulate` | Run interactively against a separate data folder with ~180 simulated devices, e.g. for training. Stop the service first if both would use port 8443 |

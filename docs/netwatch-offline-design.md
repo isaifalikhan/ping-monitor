@@ -1,6 +1,6 @@
 # NetWatch (Offline Edition): Phase 0 design for review
 
-Status: **Approved.** Phase 1 delivered (1.0.0); Phase 2 delivered (1.1.0, section 5); Phase 3 delivered (1.2.0, section 6); Phase 4 delivered (1.3.0, section 7).
+Status: **Approved.** Phase 1 delivered (1.0.0); Phase 2 delivered (1.1.0, section 5); Phase 3 delivered (1.2.0, section 6); Phase 4 delivered (1.3.0, section 7); Phase 5 delivered (1.4.0, section 8).
 Date: 2026-11-18
 
 ---
@@ -264,3 +264,16 @@ Decisions made while building Phase 2 (they refine sections 0–3):
 | Rules | 13 built-in DC rules (failed logons per account ≥ 5 / per source ≥ 20 in 5 min, lockout, privileged group add, log cleared, audit policy change, off-hours admin logon, new user/computer account, replication failing 15 min, DS/DFSR replication events, clock skew > 30 s / > 240 s). |
 | UI | `/dc` page: overview, security event viewer with saved searches (own; shared by operators), lockout tracker, privileged group change log, replication matrix, recommended audit policy. Settings → General → Domain controllers. |
 | Simulator | SIM-DC-01 (PDC) and SIM-DC-02 with office-hours logon traffic, brute force → lockout, password spray, rare account/group changes, admin logons at odd hours, replication failures (1722) and clock drift on the non-PDC. |
+
+## 8. Phase 5 scope (delivered in 1.4.0)
+
+| Topic | Decision |
+|---|---|
+| Reports | Six types (availability, alert history, interface utilization, capacity, DC security, inventory). `ReportBuilder` produces a format-neutral document (sections with key figures, bar lists and tables); renderers write PDF or CSV. Availability is the mean of the stored `Up` series (raw/5-minute/hourly by period). At most two reports are built at once; on-demand runs are limited to 10 per minute per user. |
+| PDF | Own minimal PDF 1.4 writer (`PdfWriter`): A4, the standard Helvetica/Helvetica-Bold Type 1 fonts with their AFM widths for layout (no font embedding, no third-party library, nothing to license or download), WinAnsi text, Flate-compressed content streams, page breaks with repeated table headers, "page n of N" footers. |
+| CSV | CsvHelper, UTF-8 with BOM, one block per section; values starting with = + - @ (non-numeric) are prefixed with ' against spreadsheet formula injection. |
+| Schedules | `ReportSchedules` table (netwatch.db, Phase5 migration): daily/weekly/monthly at a PKT time, covering the previous day / 7 days / calendar month. `ReportScheduler` checks every minute, saves to `reports\YYYY-MM\` (400-day retention) and e-mails through the existing SMTP channel (MailKit, attachment up to 15 MB). |
+| Backups | `BackupService`: `VACUUM INTO` per database (consistent online snapshot), appsettings.json, certs, manifest with SHA-256 per file, one zip; daily at a PKT time, newest N kept, optional external folder (write-tested on save). Restore is offline only (`--restore`): manifest and checksums verified, entries allow-listed (no zip slip), current files moved to `before-restore-…`. A named mutex per data folder prevents two instances and restoring under a running service. |
+| Self-monitoring | `SelfMonitorService` evaluates pure `SelfChecks` every minute (disk, polling backlog for 3 min, dropped samples/signals, receiver drops, certificate expiry, backup age/failure, report failures, notification errors, WEF) and publishes them as `netwatch.selfcheck` states of an auto-created "<server> (NetWatch)" device (127.0.0.1), so the normal alert/notification path applies (rule "NetWatch self-check failing", Major, 2 min). |
+| NOC / topology | `/noc` renders outside the normal layout: live counts, open alerts, rotating panels (problems, sites, busiest links, DCs). `/topology` uses the ECharts tree series on the parent links (`/api/topology`), collapsed large branches coloured by their worst status. |
+| Hardening | Rate limit for heavy endpoints, `Cross-Origin-Resource-Policy`, backup downloads audited, report/backup file access by strict name patterns and path checks, report e-mail recipients validated, saved-search page length aligned with the schema. |

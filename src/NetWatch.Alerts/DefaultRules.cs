@@ -85,6 +85,9 @@ public static class DefaultRules
                 EventKeys.WindowsEvent, Severity.Major, all, new EventFilter { EventIds = [1311, 1864, 2042, 2087, 2088, 2213, 4012] }),
             Threshold("DC clock skew", MetricKeys.DcTimeSkew, ComparisonOperator.GreaterThan, 30, 20, 300, Severity.Warning, all),
             Threshold("DC clock skew critical", MetricKeys.DcTimeSkew, ComparisonOperator.GreaterThan, 240, 200, 0, Severity.Critical, all),
+
+            // ---- Phase 5: self-monitoring
+            State("NetWatch self-check failing", "A NetWatch self-check fails: data disk space, polling backlog, dropped samples or signals, message storm, certificate expiry, backups, scheduled reports, notifications or event forwarding.", StateKeys.SelfCheck, Severity.Major, 120, all),
         ];
 
         AlertRule Threshold(string name, string key, ComparisonOperator op, double threshold, double? clear, int durationSec, Severity severity, string scope) => new()

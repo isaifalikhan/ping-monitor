@@ -67,6 +67,8 @@ public static class Seeder
             (LdapSettings.Key, new LdapSettings()),
             (VmwareSettings.Key, new VmwareSettings()),
             (DcSettings.Key, new DcSettings()),
+            (BackupSettings.Key, new BackupSettings()),
+            (SelfMonitorSettings.Key, new SelfMonitorSettings()),
         })
         {
             if (!await db.Settings.AnyAsync(s => s.Key == key, ct))

@@ -278,14 +278,14 @@ internal static class SmtpChannel
             .Select(m => m!)
             .ToList();
 
-    public static async Task SendAsync(string subject, string body, NotificationSettings s, ISecretProtector protector, CancellationToken ct)
+    public static async Task SendAsync(string subject, string body, NotificationSettings s, ISecretProtector protector, CancellationToken ct, string? toOverride = null, IReadOnlyList<(string Name, byte[] Content, string MimeType)>? attachments = null)
     {
         if (string.IsNullOrWhiteSpace(s.SmtpHost))
         {
             throw new InvalidOperationException("No SMTP server configured.");
         }
 
-        var to = Recipients(s.SmtpTo);
+        var to = Recipients(toOverride ?? s.SmtpTo);
         if (to.Count == 0)
         {
             throw new InvalidOperationException("No valid recipient address configured.");
@@ -300,7 +300,13 @@ internal static class SmtpChannel
         message.From.Add(from);
         message.To.AddRange(to);
         message.Subject = subject;
-        message.Body = new TextPart("plain") { Text = body };
+        var builder = new BodyBuilder { TextBody = body };
+        foreach (var (name, content, mime) in attachments ?? [])
+        {
+            builder.Attachments.Add(name, content, ContentType.Parse(mime));
+        }
+
+        message.Body = builder.ToMessageBody();
 
         using var client = new SmtpClient { Timeout = 30_000 };
         var options = s.SmtpSecurity switch
@@ -321,4 +327,30 @@ internal static class SmtpChannel
         await client.SendAsync(message, ct);
         await client.DisconnectAsync(true, ct);
     }
+}
+
+/// <summary>Sends e-mail with attachments (scheduled reports) through the configured SMTP relay.</summary>
+public sealed class MailSender
+{
+    private readonly NetWatch.Data.Config.SettingsService _settings;
+    private readonly ISecretProtector _protector;
+
+    public MailSender(NetWatch.Data.Config.SettingsService settings, ISecretProtector protector)
+    {
+        _settings = settings;
+        _protector = protector;
+    }
+
+    /// <summary>True when an SMTP server and sender are configured.</summary>
+    public bool IsConfigured => !string.IsNullOrWhiteSpace(_settings.Notifications.SmtpHost) && !string.IsNullOrWhiteSpace(_settings.Notifications.SmtpFrom);
+
+    public static bool ValidRecipients(string? to, out int count)
+    {
+        var parts = (to ?? string.Empty).Split([',', ';'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        count = SmtpChannel.Recipients(to).Count;
+        return parts.Length == count && count is > 0 and <= 20;
+    }
+
+    public Task SendAsync(string to, string subject, string body, IReadOnlyList<(string Name, byte[] Content, string MimeType)> attachments, CancellationToken ct) =>
+        SmtpChannel.SendAsync(subject, body, _settings.Notifications, _protector, ct, to, attachments);
 }
