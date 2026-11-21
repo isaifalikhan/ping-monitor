@@ -11,7 +11,7 @@
     <EnforceCodeStyleInBuild>false</EnforceCodeStyleInBuild>
     <GenerateDocumentationFile>false</GenerateDocumentationFile>
 
-    <Version>2.0.0-dev</Version>
+    <Version>2.0.0</Version>
     <Company>NetWatch</Company>
     <Product>NetWatch</Product>
     <Copyright>NetWatch</Copyright>

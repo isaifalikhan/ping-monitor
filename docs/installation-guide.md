@@ -86,6 +86,9 @@ Authorities*, for example with a GPO: *Computer Configuration → Policies → W
 
 **B. Use a certificate from your internal CA (recommended).**
 
+- *From the web console (simplest):* *Settings → System status → HTTPS certificate* → choose the .pfx (with
+  private key) and its password. NetWatch checks the key, validity, server-authentication usage, key size and the
+  server's names, stores it DPAPI-encrypted and uses it from the next start (optionally restarts right away).
 - *From the machine certificate store:*
   1. Import the certificate, with its private key, into *Local Computer → Personal*.
   2. Set its thumbprint in `C:\ProgramData\NetWatch\appsettings.json`:
@@ -105,8 +108,13 @@ Authorities*, for example with a GPO: *Computer Configuration → Policies → W
 If the configured certificate cannot be found, NetWatch logs an error and falls back to the self-signed one, so
 the console stays reachable.
 
-To use another port, change `Https:Port` in `appsettings.json`, restart the service, and adjust the firewall
-rule "NetWatch HTTPS".
+To use another port, change `Https:Port` in `appsettings.json` (or set `NETWATCH_Https__Port`), restart the
+service, and adjust the firewall rule "NetWatch HTTPS".
+
+**Certificates of monitored systems.** NetWatch never checks certificate revocation online (there is no
+internet). *Settings → General → Security → Certificate revocation*: **NoCheck** (default) or **Offline** (only
+CRLs already in the server's cache — import your internal CA's CRL with `certutil -addstore -f CA <file.crl>`
+and keep it current, otherwise every connection fails with "revocation status unknown").
 
 ## 5. Service account and least-privilege monitoring accounts
 
@@ -124,6 +132,9 @@ Use dedicated, read-only accounts for monitoring:
 | Domain controllers | A domain user (e.g. `svc-netwatch-dc`), **not** a domain admin, member of the built-in domain local groups **Event Log Readers** (remote Security log) and **Remote Management Users** (WinRM; or **Distributed COM Users** for DCOM), with WMI *Remote Enable* on `root\cimv2` of the DCs (GPO or wmimgmt.msc). Replication status is read over LDAP, which every authenticated user may do. Configure the advanced audit policy shown on the *Recommended audit policy* tab of the DC page and set the Security log to at least 1 GB |
 | Linux servers | An unprivileged user (e.g. `netwatch`) with SSH access; password or key. No sudo is needed: NetWatch only reads `/proc`, runs `df` and `systemctl show`. The host key is recorded on first contact and verified afterwards |
 | vCenter / ESXi | A vCenter user (e.g. `netwatch-ro@vsphere.local` or an AD account) with the built-in **Read-only** role assigned at the vCenter root object, *propagate to children* ticked. For a standalone ESXi host, a local user with the Read-only role. Self-signed (VMCA) certificates are pinned on first connection unless the VMCA root is trusted on the NetWatch server |
+| iLO / iDRAC | A local read-only account (iLO: *Login* privilege only; iDRAC: *Read Only* role) with Redfish enabled; credential type *iLO / iDRAC (Redfish)*. HTTPS 443 from the NetWatch server. Without it, HPE/Dell SNMP agents give the overall health |
+| GPUs | Nothing extra for inventory and utilization (WMI). For NVIDIA temperature/power over WinRM the Windows account must be in *Remote Management Users* (remote shell); on Linux `nvidia-smi` must be on the PATH |
+| Domain controllers (details) | See [dc-guide.md](dc-guide.md): audit policy GPO, Event Log Readers, remote reads vs Windows Event Forwarding, firewall |
 | Active Directory sign-in | None stored: users bind with their own account. Use LDAPS (636) with the DC certificate trusted on the NetWatch server |
 | SMTP relay | Optional; an authenticated relay account if the relay requires it |
 
@@ -135,7 +146,17 @@ restore*).
 
 Run the newer `NetWatch-Setup-<version>.exe` as administrator. The installer stops the service, replaces the
 program and starts it again. On start, NetWatch upgrades its databases automatically. Devices, history, alerts,
-users, settings and the certificate are kept. Take a backup first (admin guide, *Backup and restore*).
+users, settings and the certificate are kept. Take a backup first (admin guide, *Backup and restore*). After an
+upgrade, `NetWatch.Service.exe --self-test --data-dir C:\ProgramData\NetWatch` (service stopped) starts and stops
+the whole application once and exits 0 when it works. Upgrading to 2.0: see [CHANGELOG.md](CHANGELOG.md),
+*Upgrade notes*.
+
+**Unsigned builds and application control.** The NetWatch executable and installer are signed only when the
+build was given a code-signing certificate (`build.ps1 -SignCertificate <pfx> [-SignTimestampUrl <internal TSA>]`,
+password in `NETWATCH_SIGN_PASSWORD`). Unsigned builds may be blocked by Smart App Control (Windows 11 client PCs
+— not present on Windows Server) or by AppLocker/WDAC policies. Allow them with a **hash** or **path** rule for
+`C:\Program Files\NetWatch\NetWatch.Service.exe` (AppLocker: *Executable Rules → Create New Rule → Allow →
+Path*), or better sign the build with your organisation's code-signing certificate and allow that publisher.
 
 ## 7. Uninstall
 
@@ -152,5 +173,7 @@ Run from an elevated prompt in `C:\Program Files\NetWatch`:
 | `NetWatch.Service.exe --version` | Print the version |
 | `NetWatch.Service.exe --reset-admin` | Give `admin` a new one-time password (printed and written to `initial-admin-password.txt`), unlock it, and require a password change. Restart the service afterwards |
 | `NetWatch.Service.exe --set-certificate <pfx>` | Store the password of a PFX certificate (see section 4) |
-| `NetWatch.Service.exe --restore <backup.zip>` | Restore a backup (stop the service first). Verifies all checksums, keeps the current files in `before-restore-<date>`; see the admin guide, *Backup and restore* |
+| `NetWatch.Service.exe --restore <backup.zip> [--restore-password]` | Restore a backup (stop the service first). Verifies all checksums, keeps the current files in `before-restore-<date>`; `--restore-password` re-encrypts a portable credential export for this server. See [backup-restore-guide.md](backup-restore-guide.md) |
+| `NetWatch.Service.exe --self-test` | Start everything, run a few seconds, stop; exit code 0 when the installation works |
+| `--Https:Port=8444` / `NETWATCH_Https__Port=8444` | Override any `appsettings.json` value for one run (command line) or permanently (environment) |
 | `NetWatch.Service.exe --console --data-dir D:\NWTest --simulate` | Run interactively against a separate data folder with ~180 simulated devices, e.g. for training. Stop the service first if both would use port 8443 |

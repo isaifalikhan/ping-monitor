@@ -277,3 +277,28 @@ Decisions made while building Phase 2 (they refine sections 0–3):
 | Self-monitoring | `SelfMonitorService` evaluates pure `SelfChecks` every minute (disk, polling backlog for 3 min, dropped samples/signals, receiver drops, certificate expiry, backup age/failure, report failures, notification errors, WEF) and publishes them as `netwatch.selfcheck` states of an auto-created "<server> (NetWatch)" device (127.0.0.1), so the normal alert/notification path applies (rule "NetWatch self-check failing", Major, 2 min). |
 | NOC / topology | `/noc` renders outside the normal layout: live counts, open alerts, rotating panels (problems, sites, busiest links, DCs). `/topology` uses the ECharts tree series on the parent links (`/api/topology`), collapsed large branches coloured by their worst status. |
 | Hardening | Rate limit for heavy endpoints, `Cross-Origin-Resource-Policy`, backup downloads audited, report/backup file access by strict name patterns and path checks, report e-mail recipients validated, saved-search page length aligned with the schema. |
+
+## 9. 2.0 scope (delivered in 2.0.0)
+
+The individual decisions, with reasons, are in [decisions.md](decisions.md) (31 entries). Summary:
+
+| Area | Design |
+|---|---|
+| Start-up safety | `--self-test` boots the full host and stops; a unit test runs it on an empty data folder, and `HasPendingModelChanges()` guards both EF models. Configuration order: defaults → `appsettings.json` → `NETWATCH_*` environment → command line |
+| DC collection | Remote Security-log reads or WEF per DC (`ForwardedDcs`), bookmark per log, exponential back-off (1–30 min) for failing reads, 4624 ignore-sources (IP/CIDR/workstation). New rules: Kerberos spike, account deleted. Health: replication stale (`ReplicationStaleHours`), TCP checks of 389/88/53 every poll (`DcInfo.ReachabilityJson`) |
+| Switch ports | `dot3StatsDuplexStatus` and `ifLastChange` read every poll; `FlapTracker` counts status changes and hidden bounces; `NetInterface.Duplex`, `ExpectedSpeedBps`, `FlapCount24h`; half-duplex and below-speed checks on important ports |
+| Topology | LLDP-MIB and CISCO-CDP-MIB read with the interface table (`NeighborLinks`, matched to devices by IP then name); `TopologySuggester` walks the link graph from the core to suggest upstream devices (never through servers) |
+| Vendor health | `SnmpHealthProfile` (name/state/value columns with state mappings) — built-in ArubaOS-CX, overridable in `snmp-profiles.json`; HOST-RESOURCES/ENTITY-SENSOR remain the generic fallback |
+| GPUs | Win32_VideoController + GPU Engine/Adapter Memory counters; `nvidia-smi` over a WinRM remote shell (WS-Man Shell through WSMan.Automation) or SSH with lspci; `ServerGpus` table; metrics per GPU |
+| iLO / iDRAC | `HardwareCollector`: Redfish (basic auth, pinning, classic Thermal/Power, Storage/Drives) or SNMP overall health; `HardwareComponents` table replaced per read, every 5 min |
+| Reports | VMware report; `CapacityMath` (linear days-until-full, half-period trend); preview endpoint returns the format-neutral document |
+| Backups | `PortableSecrets` (PBKDF2-SHA256 600k + AES-256-GCM per secret, check value); `PendingRestore` marker → restore at next start before any DB is opened; installer `failureflag` so exit code 75 restarts the service |
+| NOC | `KioskDisplays`: hashed link token → hidden Viewer account (AuthSource Kiosk) with a persistent cookie and no idle timeout |
+| Pilot tools | `ConnectionTestService` (10 tests, steps with exact errors, last 100 kept); `DiagnosticBundleService` (logs, tests, stats, redacted config, `snmpwalk -On` walks) |
+| TLS | `TlsPolicy`: revocation NoCheck/Offline, no downloads, applied to vCenter, Redfish, LDAPS (own verification incl. host name) and SMTP; console certificate import (`ConsoleCertificateStore`) |
+| Build | NuGet lock files (win-x64 graph) with locked restore; `npm ci`; optional signtool signing; `npm test` and `dotnet test` in `build.ps1` |
+| Tests | 265 .NET tests (unit, sample-data parsers, real-host HTTPS and SignalR integration, endpoint-authorization enumeration) and 11 UI tests |
+
+New tables / columns (migrations Wp3DcHealth, Wp5SwitchPorts, Wp6Hardware, Wp9Kiosk): `DcInfo.ReachabilityJson`,
+`Interfaces.Duplex/ExpectedSpeedBps/FlapCount24h`, `NeighborLinks`, `Devices.BmcAddress/BmcTlsThumbprint`,
+`ServerGpus`, `HardwareComponents`, `KioskDisplays`. New packages: none.

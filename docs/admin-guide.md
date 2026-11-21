@@ -332,7 +332,7 @@ All state is in `C:\ProgramData\NetWatch`:
 | `reports\` | Scheduled reports (kept 400 days) |
 | `logs\` | Service logs (30 days) |
 
-**Automatic backups.** NetWatch backs itself up every day at 01:30 PKT while it keeps running
+**Automatic backups.** NetWatch backs itself up every day at 02:00 PKT while it keeps running
 (*Settings → System → Backups*). Each backup is one zip file `netwatch-backup-YYYYMMDD-HHMMSS.zip` with
 consistent copies of the three databases (SQLite `VACUUM INTO`, taken without stopping the service),
 `appsettings.json`, the certificate folder and a `manifest.json` with a SHA-256 checksum of every file. The
@@ -342,6 +342,11 @@ service account needs write access; NetWatch tests this when you save), run a ba
 delete backups. Downloads are recorded in the audit trail: a backup contains the user database and the
 (encrypted) credentials, so store copies as carefully as the server itself. The self-check *Backups* raises an
 alert when the newest backup is older than 36 hours or the last one failed.
+
+**Restore from the console:** *Backups* → **Restore** next to a backup (type RESTORE). NetWatch validates the
+backup, stops, and restores it at the next start (the service restarts by itself). **Back up for another
+server…** adds a password-protected credential export so a restore on a new server keeps the credentials. Details:
+[backup-restore-guide.md](backup-restore-guide.md).
 
 **Restore** (offline, from an elevated prompt in `C:\Program Files\NetWatch`):
 
@@ -364,7 +369,8 @@ the current `metrics.db`. The command refuses to run while the service is runnin
    your own, see the installation guide). The old private key cannot be decrypted on another machine.
 4. Start the service and re-enter the secret of every credential in *Settings → Credentials*, and the SMTP
    password in *Settings → Notifications*. DPAPI ties encrypted secrets to the original server. Devices,
-   history, alerts, users, rules and schedules carry over.
+   history, alerts, users, rules and schedules carry over. With a **portable** backup and its password
+   (`--restore-password`), the credentials are re-encrypted for the new server and need not be re-entered.
 
 ## 6a. Reports
 
@@ -410,7 +416,24 @@ device *<server> (NetWatch)* (127.0.0.1, created automatically; do not delete it
 built-in alert *NetWatch self-check failing* and goes through the normal notification channels. Thresholds are
 set in the same panel.
 
+## 6d. NetWatch 2.0 additions
+
+| Feature | Where |
+|---|---|
+| Duplex, expected speed, flap count per port | Device → Interfaces (Speed column is editable by admins); port grid marks half duplex (striped) and flapping ports (dashed) |
+| LLDP/CDP topology and dependency suggestions | Topology → *Discovered links (LLDP/CDP)*; admins apply suggested upstream devices |
+| SNMP health profiles | `C:\ProgramData\NetWatch\snmp-profiles.json` (re-read when changed); built-in ArubaOS-CX profile |
+| GPUs, iLO / iDRAC hardware health | Server page panels; device form: *iLO / iDRAC address* and credential |
+| NOC wall displays | *Settings → Users → NOC wall displays*: create a display link, open it once on the screen |
+| Connection tests and diagnostic bundle | *Settings → Pilot tools*; see [troubleshooting.md](troubleshooting.md) and [pilot-checklist.md](pilot-checklist.md) |
+| Domain controllers | [dc-guide.md](dc-guide.md) |
+| Reports | [reports-guide.md](reports-guide.md) |
+| Security review | [security-review.md](security-review.md) |
+
 ## 7. Troubleshooting
+
+See also [troubleshooting.md](troubleshooting.md) for the errors shown by the connection tests.
+
 
 | Symptom | Check |
 |---|---|
