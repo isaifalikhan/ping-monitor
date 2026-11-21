@@ -42,6 +42,8 @@ public static class AdminEndpoints
             SaveAsync(ReceiverSettings.Key, s, x => x.Normalise(), h, svc, a, ct));
         admin.MapPut("/settings/servers", (ServerMonitoringSettings s, HttpContext h, SettingsService svc, AuditWriter a, CancellationToken ct) =>
             SaveAsync(ServerMonitoringSettings.Key, s, x => x.Normalise(), h, svc, a, ct));
+        admin.MapPut("/settings/vmware", (VmwareSettings s, HttpContext h, SettingsService svc, AuditWriter a, CancellationToken ct) =>
+            SaveAsync(VmwareSettings.Key, s, x => x.Normalise(), h, svc, a, ct));
         admin.MapPut("/settings/ldap", SaveLdapAsync);
         admin.MapPost("/settings/ldap/test", TestLdapAsync);
 
@@ -380,6 +382,7 @@ public static class AdminEndpoints
             receivers = settings.Receivers,
             servers = settings.Servers,
             ldap = settings.Ldap,
+            vmware = settings.Vmware,
         });
 
     private static async Task<IResult> SaveAsync<T>(string key, T value, Action<T> normalise, HttpContext http, SettingsService settings, AuditWriter audit, CancellationToken ct)

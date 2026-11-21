@@ -34,7 +34,9 @@ public sealed record DeviceSnapshot(
     IReadOnlyList<string>? WatchedServices = null,
     string? SshHostKeyFingerprint = null,
     string? MaintenanceReason = null,
-    DateTime? MaintenanceUntilUtc = null)
+    DateTime? MaintenanceUntilUtc = null,
+    int? VcenterCredentialId = null,
+    string? TlsThumbprint = null)
 {
     public const string SimulatedTag = "simulated";
 
@@ -60,6 +62,7 @@ public sealed class InventoryCache : BackgroundService, IDeviceContextProvider, 
     private readonly TaskCompletionSource _ready = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private volatile FrozenDictionary<int, DeviceSnapshot> _devices = FrozenDictionary<int, DeviceSnapshot>.Empty;
     private volatile FrozenDictionary<string, DeviceSnapshot> _byIp = FrozenDictionary<string, DeviceSnapshot>.Empty;
+    private volatile FrozenDictionary<string, DeviceSnapshot> _byName = FrozenDictionary<string, DeviceSnapshot>.Empty;
     private volatile IReadOnlyList<MaintenanceWindow> _windows = Array.Empty<MaintenanceWindow>();
 
     public InventoryCache(IServiceScopeFactory scopeFactory, TimeProvider time, ILogger<InventoryCache> logger)
@@ -89,6 +92,31 @@ public sealed class InventoryCache : BackgroundService, IDeviceContextProvider, 
     {
         var ip = address.IsIPv4MappedToIPv6 ? address.MapToIPv4() : address;
         return _byIp.GetValueOrDefault(ip.ToString());
+    }
+
+    /// <summary>
+    /// Finds the inventory device for a VMware VM or host: by IP address, then by name (also the short host name
+    /// of an FQDN). Used to attach VMware alerts to the device operators already know.
+    /// </summary>
+    public DeviceSnapshot? FindByAddressOrName(string? ip, string? name)
+    {
+        if (!string.IsNullOrWhiteSpace(ip) && IPAddress.TryParse(ip, out var address) && FindByIp(address) is { } byIp)
+        {
+            return byIp;
+        }
+
+        if (string.IsNullOrWhiteSpace(name))
+        {
+            return null;
+        }
+
+        if (IPAddress.TryParse(name, out var nameIp) && FindByIp(nameIp) is { } byNameIp)
+        {
+            return byNameIp;
+        }
+
+        var shortName = name.Split('.')[0];
+        return _byName.GetValueOrDefault(name) ?? _byName.GetValueOrDefault(shortName);
     }
 
     public void NotifyInventoryChanged() => _changes.Writer.TryWrite(true);
@@ -200,12 +228,17 @@ public sealed class InventoryCache : BackgroundService, IDeviceContextProvider, 
                 d.WatchedServices.Select(s => s.ServiceName).OrderBy(s => s, StringComparer.OrdinalIgnoreCase).ToList(),
                 d.SshHostKeyFingerprint,
                 reason,
-                until);
+                until,
+                d.Credentials.FirstOrDefault(c => c.Purpose == CredentialPurpose.VCenter)?.CredentialProfileId,
+                d.TlsThumbprint);
         }
 
         _devices = result.ToFrozenDictionary();
         _byIp = result.Values
             .GroupBy(d => d.IpAddress, StringComparer.OrdinalIgnoreCase)
+            .ToFrozenDictionary(g => g.Key, g => g.First(), StringComparer.OrdinalIgnoreCase);
+        _byName = result.Values
+            .GroupBy(d => d.Name, StringComparer.OrdinalIgnoreCase)
             .ToFrozenDictionary(g => g.Key, g => g.First(), StringComparer.OrdinalIgnoreCase);
         _windows = windows;
         Reloaded?.Invoke();

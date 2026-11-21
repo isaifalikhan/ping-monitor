@@ -201,6 +201,37 @@ You can add your own rules:
 
 Each channel has a minimum severity, a *Send test* button and a delivery status.
 
+## 4b. VMware (vCenter / ESXi)
+
+Add the vCenter as a device of type **vCenter** (or a standalone ESXi host as type **Hypervisor**), create a
+*vCenter* credential (*Settings → Credentials*, an account with the Read-only role, see the installation guide)
+and select it as *vCenter / ESXi credential* in the device dialog. *Test* on the credential page shows what the
+account can see. Every poll (60 s by default) NetWatch reads through the vSphere API:
+
+| Object | Collected |
+|---|---|
+| ESXi hosts | Connection state, maintenance mode, CPU and memory use, hardware sensors, model, ESXi version, uptime, cluster |
+| VMs | Power state, host, CPU %, **CPU ready** (per vCPU), memory, ballooning, VMware Tools state, guest OS and IP, guest disk fill, datastores, snapshots |
+| Datastores | Capacity, free space, provisioned (thin) space, accessibility |
+| Snapshots | Every snapshot with age and approximate size (state file plus delta disks written since it) |
+| vCenter alarms | Triggered (red/yellow) alarms that are not acknowledged in vCenter |
+| vCenter events | New events from the first poll on (no history import): host connection lost, HA failover, VM powered off, DRS migrations … |
+
+The **VMware** page shows the hosts with their VMs, VM, datastore and snapshot reports, alarms and events. VMs and
+hosts that are also NetWatch devices (same IP or name, e.g. a VM monitored by ping/WinRM) are linked, and their
+VMware alerts (snapshots, CPU ready, Tools) appear on that device; the device page shows a VMware card.
+
+Built-in VMware rules: *vCenter/ESXi API not reachable*, *ESXi host not connected* (Critical), *ESXi host hardware
+alarm*, *ESXi host high CPU/memory* (> 90 %), *Datastore space low/critical* (> 85 % / 95 %), *Datastore not
+accessible*, *Old snapshot* (> 7 days), *Large snapshot* (> 50 GB), *VM CPU ready high* (> 10 % for 10 min),
+*VMware Tools not running* (15 min), *vCenter alarm (red/yellow)*, *vCenter major event*. Adjust them in
+*Settings → Alert rules*. A deleted snapshot or a cleared vCenter alarm resolves its alert at the next poll.
+
+**Certificates:** vCenter normally uses a certificate from its own CA (VMCA). If that CA is not trusted on the
+NetWatch server, the certificate's SHA-256 thumbprint is pinned at the first connection (*Settings → General →
+VMware*, on by default) and a different certificate is refused later. After a planned certificate renewal click
+*Reset* next to the pinned certificate on the vCenter's device page.
+
 ## 4a. Syslog and SNMP traps
 
 Point devices at the NetWatch server: syslog to UDP or TCP 514, SNMP traps/informs to UDP 162. Messages are matched
@@ -226,6 +257,7 @@ snmp-server enable traps snmp linkdown linkup coldstart warmstart
 | Security | Idle timeout 30 min; absolute 12 h; lockout after 5 failures for 15 min; minimum password length 10 |
 | Alert lifecycle | Flapping after 5 changes in 30 min, stable 15 min; escalate Critical after 15 min; repeat sound every 5 min; dependency suppression on |
 | Server monitoring | WinRM 5985 (DCOM fallback on), event logs Critical/Error, max 200 entries per log and poll, SSH 22, timeout 20 s |
+| VMware | Events and alarms imported, CPU ready collected, certificates pinned on first use, API timeout 60 s, max 500 events per poll |
 | Receivers | Syslog UDP/TCP 514, traps UDP 162, unknown sources stored, 2,000 messages/s |
 | Retention | Raw samples 7 days; 5-minute averages 90 days; hourly averages 730 days; events (device events, syslog, traps, Windows events), audit and closed alerts 365 days |
 
@@ -289,6 +321,9 @@ All state is in `C:\ProgramData\NetWatch`:
 | Interface graphs empty | Graphs need two polls to compute a rate; wait 2 poll intervals. Check that the interface is ticked *Monitored* |
 | CPU/memory missing on a switch | The model doesn't expose them through the supported MIBs (Cisco PROCESS/MEMORY-POOL, HP/Aruba, Juniper jnxOperating, HOST-RESOURCES). Ping and interfaces still work |
 | "Polls overrunning" on *System* | Too many devices for the poll interval. Increase *parallel polls* (then restart) or the poll interval |
+| VMware: "vCenter certificate changed" | The vCenter certificate was renewed or the address now points elsewhere. Verify, then *Reset* the pinned certificate on the device page |
+| VMware: "lacks permission" / empty inventory | Assign the Read-only role at the vCenter root with *propagate to children* |
+| VMware: CPU ready missing | Statistics level 1 is enough for real-time counters; check that *Collect VM CPU ready* is on |
 | Server tab: "WinRM … failing" | Check WinRM is enabled on the server (`Test-WSMan <server>` from the NetWatch server), the firewall rule *Windows Remote Management (HTTP-In)*, and that the account is in *Remote Management Users*. With DCOM fallback on, the error lists both attempts |
 | "Access denied" on WMI | Grant *Remote Enable* on `root\cimv2` and `root\default`, add the account to *Distributed COM Users* |
 | No Windows events, "Event logs: …" warning | Add the account to *Event Log Readers*; enable the firewall rule *Remote Event Log Management* |

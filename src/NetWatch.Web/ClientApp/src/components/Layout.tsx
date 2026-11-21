@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { Bell, BellOff, Cable, HardDrive, LayoutDashboard, LogOut, Moon, Network, ScrollText, Server, Settings, Siren, Sun, Wifi, WifiOff } from 'lucide-react';
+import { Bell, BellOff, Boxes, Cable, HardDrive, LayoutDashboard, LogOut, Moon, Network, ScrollText, Server, Settings, Siren, Sun, Wifi, WifiOff } from 'lucide-react';
 import { useEffect, useState, type ReactNode } from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
 import { api } from '../api/client';
@@ -138,6 +138,10 @@ export function Layout({ children }: { children: ReactNode }) {
           <NavLink to="/servers">
             <HardDrive size={18} />
             <span>Servers</span>
+          </NavLink>
+          <NavLink to="/vmware">
+            <Boxes size={18} />
+            <span>VMware</span>
           </NavLink>
           <NavLink to="/events">
             <ScrollText size={18} />

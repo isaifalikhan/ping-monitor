@@ -153,6 +153,37 @@ public sealed class ServerMonitoringSettings
     }
 }
 
+/// <summary>VMware (vCenter / ESXi) monitoring. Stored under key "vmware".</summary>
+public sealed class VmwareSettings
+{
+    public const string Key = "vmware";
+
+    /// <summary>Import vCenter events (VM powered off, host disconnected, HA failover ...).</summary>
+    public bool ImportEvents { get; set; } = true;
+
+    /// <summary>Import triggered vCenter alarms as NetWatch alerts.</summary>
+    public bool ImportAlarms { get; set; } = true;
+
+    /// <summary>Query the CPU-ready counter of powered-on VMs (one performance query per poll).</summary>
+    public bool CollectCpuReady { get; set; } = true;
+
+    /// <summary>
+    /// When the vCenter certificate is not issued by a CA trusted on this server (VMCA self-signed), pin its
+    /// SHA-256 thumbprint on the first connection and refuse a different one later. Off = such certificates are refused.
+    /// </summary>
+    public bool TrustOnFirstUse { get; set; } = true;
+    public int TimeoutSec { get; set; } = 60;
+
+    /// <summary>Maximum events read per poll.</summary>
+    public int MaxEventsPerPoll { get; set; } = 500;
+
+    public void Normalise()
+    {
+        TimeoutSec = Math.Clamp(TimeoutSec, 10, 300);
+        MaxEventsPerPoll = Math.Clamp(MaxEventsPerPoll, 50, 5000);
+    }
+}
+
 public enum SmtpSecurity
 {
     None,

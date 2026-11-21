@@ -1,12 +1,13 @@
-{
+﻿{
   "version": "0.0.1",
   "configurations": [
     {
       "name": "netwatch-simulator",
       "runtimeExecutable": "artifacts/publish/NetWatch.Service.exe",
       "runtimeArgs": ["--console", "--simulate", "--data-dir", ".data"],
-      "url": "https://localhost:8443",
-      "port": 8443
+      "url": "https://localhost:8444",
+      "port": 8444
     }
   ]
 }
+

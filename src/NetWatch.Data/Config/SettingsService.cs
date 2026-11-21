@@ -36,6 +36,8 @@ public sealed class SettingsService
 
     public LdapSettings Ldap => Get<LdapSettings>(LdapSettings.Key, s => s.Normalise());
 
+    public VmwareSettings Vmware => Get<VmwareSettings>(VmwareSettings.Key, s => s.Normalise());
+
     public T Get<T>(string key, Action<T>? normalise = null)
         where T : class, new()
     {

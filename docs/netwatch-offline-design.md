@@ -1,6 +1,6 @@
 # NetWatch (Offline Edition): Phase 0 design for review
 
-Status: **Approved.** Phase 1 delivered (1.0.0); Phase 2 delivered (1.1.0, section 5).
+Status: **Approved.** Phase 1 delivered (1.0.0); Phase 2 delivered (1.1.0, section 5); Phase 3 delivered (1.2.0, section 6).
 Date: 2026-11-18
 
 ---
@@ -239,3 +239,14 @@ Decisions made while building Phase 2 (they refine sections 0–3):
 | Notifications | Windows Event Log (source registered by the installer), RFC 5424 syslog forward, scripts restricted to `ProgramData\NetWatch\scripts` (data via environment/stdin, never the command line), SMTP via MailKit with digest for bursts. |
 | LDAP | `System.DirectoryServices.Protocols`, bind as the user (Negotiate or simple bind over TLS), nested group check with `LDAP_MATCHING_RULE_IN_CHAIN`, highest mapped role wins, role refreshed at each sign-in. |
 | Packages added | System.Management, System.Diagnostics.EventLog, System.DirectoryServices.Protocols (MIT, Microsoft), SSH.NET (MIT), MailKit (MIT). All offline at run time. |
+## 6. Phase 3 scope (delivered in 1.2.0)
+
+| Topic | Decision |
+|---|---|
+| vSphere client | Hand-written vim25 SOAP client (`HttpClient` + XML, about 10 calls: RetrieveServiceContent, Login/Logout, CreateContainerView, RetrievePropertiesEx/ContinueRetrievePropertiesEx, QueryPerf, CreateCollectorForEvents/ReadNextEvents/DestroyCollector). No VMware SDK, nothing to download, works in the single-file exe. The vSphere Automation REST API was not needed: one property-collector query returns the full inventory. |
+| Polling | A device of type vCenter (or Hypervisor) with a credential of purpose VCenter is polled through the normal scheduler; the vSphere query runs beside ping/SNMP. |
+| Storage | `VmwareHosts`, `VmwareVms`, `VmwareDatastores`, `VmwareSnapshots`, `VmwareAlarms` (netwatch.db, current state, replaced each poll); `VmwareEvents` (events.db, bookmark by event key). Host CPU/memory, datastore use and VM CPU ready go to generic series. |
+| Device mapping | VMs and hosts are matched to inventory devices by IP, then name (also the short name of an FQDN); their alerts are raised on that device. |
+| Snapshot size | Approximate: the snapshot's state/memory files plus delta disks in the next point's chain that are not in its own chain. |
+| Certificates | CA-trusted certificates are accepted; otherwise the SHA-256 thumbprint is pinned on first use (`Devices.TlsThumbprint`) and verified afterwards. |
+| Rules | 15 built-in VMware rules (API unreachable, host not connected/hardware/CPU/memory, datastore space/accessibility, old/large snapshot, CPU ready, Tools, vCenter alarms red/yellow, major events). |

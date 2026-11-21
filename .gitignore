@@ -11,6 +11,7 @@ TestResults/
 # Build artefacts and the offline build kit (NuGet/npm caches are large and re-creatable)
 artifacts/
 offline/
+installer/NetWatch.Installer/Output/
 
 # Web UI
 src/NetWatch.Web/ClientApp/node_modules/

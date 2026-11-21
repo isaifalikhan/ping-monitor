@@ -67,6 +67,7 @@ public sealed class RetentionService : BackgroundService
             // High-volume tables are purged in batches so the event writer is never blocked for long.
             purgedEvents += await PurgeInBatchesAsync(() => events.SyslogMessages.Where(e => e.ReceivedUtc < eventCutoff).OrderBy(e => e.Id).Take(50_000).ExecuteDeleteAsync(ct));
             purgedEvents += await PurgeInBatchesAsync(() => events.SnmpTraps.Where(e => e.ReceivedUtc < eventCutoff).OrderBy(e => e.Id).Take(50_000).ExecuteDeleteAsync(ct));
+            purgedEvents += await PurgeInBatchesAsync(() => events.VmwareEvents.Where(e => e.TimestampUtc < eventCutoff).OrderBy(e => e.Id).Take(50_000).ExecuteDeleteAsync(ct));
             purgedEvents += await PurgeInBatchesAsync(() => events.WindowsEvents.Where(e => e.TimestampUtc < eventCutoff).OrderBy(e => e.Id).Take(50_000).ExecuteDeleteAsync(ct));
 
             var db = scope.ServiceProvider.GetRequiredService<NetWatchDbContext>();

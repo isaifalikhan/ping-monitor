@@ -172,7 +172,7 @@ public static class DeviceEndpoints
             d.Credentials.Select(c => new DeviceCredentialDto(c.Purpose, c.CredentialProfileId, c.CredentialProfile?.Name)).ToList(),
             d.CreatedUtc, d.UpdatedUtc,
             d.WatchedServices.Select(s => s.ServiceName).OrderBy(s => s, StringComparer.OrdinalIgnoreCase).ToList(),
-            d.SshHostKeyFingerprint, maintenanceReason, unreachableVia));
+            d.SshHostKeyFingerprint, maintenanceReason, unreachableVia, d.TlsThumbprint));
     }
 
     private static async Task<IResult> InterfacesAsync(int id, NetWatchDbContext db, LiveStateCache live, CancellationToken ct)
@@ -349,6 +349,12 @@ public static class DeviceEndpoints
             return "Selected Windows/SSH credential does not exist.";
         }
 
+        if (input.VcenterCredentialId is { } vid &&
+            !await db.CredentialProfiles.AnyAsync(c => c.Id == vid && c.Kind == CredentialKind.VCenter, ct))
+        {
+            return "Selected vCenter credential does not exist.";
+        }
+
         var services = (input.WatchedServices ?? Array.Empty<string>())
             .Select(s => s.Trim())
             .Where(s => s.Length > 0)
@@ -368,6 +374,7 @@ public static class DeviceEndpoints
         {
             // A different address may be a different machine: re-learn its SSH host key.
             device.SshHostKeyFingerprint = null;
+            device.TlsThumbprint = null;
         }
 
         device.Name = name;
@@ -404,6 +411,12 @@ public static class DeviceEndpoints
         if (input.ManagementCredentialId is { } managementId && !device.Credentials.Any(c => c.Purpose == CredentialPurpose.Management))
         {
             device.Credentials.Add(new DeviceCredential { Purpose = CredentialPurpose.Management, CredentialProfileId = managementId });
+        }
+
+        device.Credentials.RemoveAll(c => c.Purpose == CredentialPurpose.VCenter && c.CredentialProfileId != input.VcenterCredentialId);
+        if (input.VcenterCredentialId is { } vcenterId && !device.Credentials.Any(c => c.Purpose == CredentialPurpose.VCenter))
+        {
+            device.Credentials.Add(new DeviceCredential { Purpose = CredentialPurpose.VCenter, CredentialProfileId = vcenterId });
         }
 
         if (input.WatchedServices is not null)

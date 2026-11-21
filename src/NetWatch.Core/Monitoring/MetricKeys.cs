@@ -28,6 +28,25 @@ public static class MetricKeys
     public const string NetInBps = "net.in.bps";
     public const string NetOutBps = "net.out.bps";
 
+    /// <summary>Datastore used space in percent (instance = datastore).</summary>
+    public const string DatastoreUsed = "vmware.datastore.used.pct";
+
+    /// <summary>Snapshot age in days (instance = VM / snapshot).</summary>
+    public const string SnapshotAgeDays = "vmware.snapshot.age.days";
+
+    /// <summary>Snapshot size in GB (instance = VM / snapshot).</summary>
+    public const string SnapshotSizeGb = "vmware.snapshot.size.gb";
+
+    /// <summary>VM CPU ready in percent per vCPU.</summary>
+    public const string VmCpuReady = "vmware.vm.cpuready.pct";
+
+    /// <summary>VM ballooned memory in MB.</summary>
+    public const string VmBalloonMb = "vmware.vm.balloon.mb";
+
+    /// <summary>ESXi host CPU / memory usage in percent (instance = host).</summary>
+    public const string HostCpu = "vmware.host.cpu.pct";
+    public const string HostMemory = "vmware.host.mem.pct";
+
     public static readonly IReadOnlyDictionary<string, string> DisplayNames = new Dictionary<string, string>
     {
         [PingRtt] = "Ping latency (ms)",
@@ -42,6 +61,13 @@ public static class MetricKeys
         [LoadPerCpu] = "Load average per CPU (Linux)",
         [NetInBps] = "Server network in (bits/s)",
         [NetOutBps] = "Server network out (bits/s)",
+        [DatastoreUsed] = "Datastore used (%)",
+        [SnapshotAgeDays] = "Snapshot age (days)",
+        [SnapshotSizeGb] = "Snapshot size (GB)",
+        [VmCpuReady] = "VM CPU ready (%)",
+        [VmBalloonMb] = "VM ballooned memory (MB)",
+        [HostCpu] = "ESXi host CPU (%)",
+        [HostMemory] = "ESXi host memory (%)",
     };
 }
 
@@ -55,6 +81,14 @@ public static class StateKeys
     public const string ServiceDown = "service.down";
     public const string ServerCollectionFailed = "server.unreachable";
     public const string PendingReboot = "server.pending.reboot";
+    public const string VcenterUnreachable = "vmware.vcenter.unreachable";
+    public const string HostNotConnected = "vmware.host.disconnected";
+    public const string HostMaintenance = "vmware.host.maintenance";
+    public const string HostHardware = "vmware.host.hardware";
+    public const string DatastoreInaccessible = "vmware.datastore.inaccessible";
+    public const string VmToolsNotRunning = "vmware.vm.tools";
+    public const string VcenterAlarmRed = "vmware.alarm.red";
+    public const string VcenterAlarmYellow = "vmware.alarm.yellow";
 
     public static readonly IReadOnlyDictionary<string, string> DisplayNames = new Dictionary<string, string>
     {
@@ -65,6 +99,14 @@ public static class StateKeys
         [ServiceDown] = "Watched service not running",
         [ServerCollectionFailed] = "Server monitoring (WinRM/WMI/SSH) failing",
         [PendingReboot] = "Server reboot pending",
+        [VcenterUnreachable] = "vCenter/ESXi API not reachable",
+        [HostNotConnected] = "ESXi host not connected",
+        [HostMaintenance] = "ESXi host in maintenance mode",
+        [HostHardware] = "ESXi host hardware sensor alarm",
+        [DatastoreInaccessible] = "Datastore not accessible",
+        [VmToolsNotRunning] = "VMware Tools not running (powered-on VM)",
+        [VcenterAlarmRed] = "vCenter alarm (red)",
+        [VcenterAlarmYellow] = "vCenter alarm (yellow)",
     };
 }
 
@@ -75,6 +117,7 @@ public static class EventKeys
     public const string SyslogMessage = "syslog.message";
     public const string SnmpTrap = "snmp.trap";
     public const string WindowsEvent = "windows.event";
+    public const string VmwareEvent = "vmware.event";
 
     public static readonly IReadOnlyDictionary<string, string> DisplayNames = new Dictionary<string, string>
     {
@@ -82,6 +125,7 @@ public static class EventKeys
         [SyslogMessage] = "Syslog message",
         [SnmpTrap] = "SNMP trap",
         [WindowsEvent] = "Windows event log entry",
+        [VmwareEvent] = "vCenter event",
     };
 }
 

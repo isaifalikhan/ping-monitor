@@ -77,6 +77,7 @@ export interface DeviceDetail extends Omit<DeviceListItem, 'tags' | 'os'> {
   updatedUtc: string;
   watchedServices: string[];
   sshHostKeyFingerprint?: string | null;
+  tlsThumbprint?: string | null;
 }
 
 export interface DeviceInput {
@@ -95,6 +96,7 @@ export interface DeviceInput {
   tags: string[];
   managementCredentialId?: number | null;
   watchedServices?: string[];
+  vcenterCredentialId?: number | null;
 }
 
 export interface NetInterface {
@@ -601,4 +603,136 @@ export interface ChannelStatus {
   lastSuccessUtc?: string | null;
   lastErrorUtc?: string | null;
   lastError?: string | null;
+}
+// ---------------------------------------------------------------- Phase 3: VMware
+
+export interface VcenterSummary {
+  deviceId: number;
+  name: string;
+  ipAddress: string;
+  lastPollUtc?: string | null;
+  hosts: number;
+  hostsConnected: number;
+  vms: number;
+  vmsPoweredOn: number;
+  datastores: number;
+  snapshots: number;
+  alarms: number;
+}
+
+export interface VmwareHost {
+  id: number;
+  sourceDeviceId: number;
+  moRef: string;
+  name: string;
+  cluster?: string | null;
+  connectionState: string;
+  inMaintenance: boolean;
+  overallStatus?: string | null;
+  vendor?: string | null;
+  model?: string | null;
+  product?: string | null;
+  cpuCores?: number | null;
+  cpuPct?: number | null;
+  memPct?: number | null;
+  memTotalBytes?: number | null;
+  bootTimeUtc?: string | null;
+  sensorWarnings: number;
+  sensorAlarms: number;
+  deviceId?: number | null;
+  vmCount: number;
+  vmsPoweredOn: number;
+  lastSeenUtc: string;
+}
+
+export interface VmwareVm {
+  id: number;
+  sourceDeviceId: number;
+  moRef: string;
+  name: string;
+  hostName?: string | null;
+  powerState: string;
+  guestOs?: string | null;
+  ipAddress?: string | null;
+  toolsRunningStatus?: string | null;
+  toolsVersionStatus?: string | null;
+  overallStatus?: string | null;
+  numCpu?: number | null;
+  memoryMb?: number | null;
+  cpuPct?: number | null;
+  cpuReadyPct?: number | null;
+  memPct?: number | null;
+  balloonedMb?: number | null;
+  committedBytes?: number | null;
+  uncommittedBytes?: number | null;
+  guestDiskMaxPct?: number | null;
+  datastores?: string | null;
+  snapshotCount: number;
+  bootTimeUtc?: string | null;
+  deviceId?: number | null;
+  lastSeenUtc: string;
+}
+
+export interface VmwareDatastore {
+  id: number;
+  sourceDeviceId: number;
+  moRef: string;
+  name: string;
+  type?: string | null;
+  capacityBytes: number;
+  freeBytes: number;
+  usedPct: number;
+  uncommittedBytes?: number | null;
+  accessible: boolean;
+  maintenanceMode?: string | null;
+  hostCount: number;
+  vmCount: number;
+  lastSeenUtc: string;
+}
+
+export interface VmwareSnapshot {
+  id: number;
+  sourceDeviceId: number;
+  vmMoRef: string;
+  vmName: string;
+  vmDeviceId?: number | null;
+  name: string;
+  description?: string | null;
+  createdUtc: string;
+  ageDays: number;
+  sizeBytes?: number | null;
+  isCurrent: boolean;
+}
+
+export interface VmwareAlarm {
+  id: number;
+  sourceDeviceId: number;
+  alarmName: string;
+  entityMoRef: string;
+  entityName?: string | null;
+  status: string;
+  acknowledged: boolean;
+  triggeredUtc: string;
+}
+
+export interface VmwareEvent {
+  id: number;
+  sourceDeviceId: number;
+  sourceName?: string | null;
+  eventKey: number;
+  timestampUtc: string;
+  eventType: string;
+  severity: Severity;
+  userName?: string | null;
+  entityName?: string | null;
+  message: string;
+}
+
+export interface VmwareSettings {
+  importEvents: boolean;
+  importAlarms: boolean;
+  collectCpuReady: boolean;
+  trustOnFirstUse: boolean;
+  timeoutSec: number;
+  maxEventsPerPoll: number;
 }
