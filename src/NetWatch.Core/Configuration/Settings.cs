@@ -153,6 +153,79 @@ public sealed class ServerMonitoringSettings
     }
 }
 
+/// <summary>Domain controller monitoring (Security log, replication, time). Stored under key "dc".</summary>
+public sealed class DcSettings
+{
+    public const string Key = "dc";
+
+    /// <summary>Read the Security log of each DC remotely (account in "Event Log Readers").</summary>
+    public bool ReadSecurityLog { get; set; } = true;
+
+    /// <summary>
+    /// Instead of remote reads, take DC Security events from this server's "ForwardedEvents" log (Windows Event
+    /// Forwarding subscription). Remote Security-log reads are then skipped.
+    /// </summary>
+    public bool UseForwardedEvents { get; set; }
+
+    /// <summary>Store successful logons (4624). They are never alerted on by default.</summary>
+    public bool StoreSuccessfulLogons { get; set; } = true;
+
+    /// <summary>Logon types of 4624 to store (2 interactive, 3 network, 7 unlock, 10 RDP, 11 cached). Empty = all.</summary>
+    public List<int> SuccessfulLogonTypes { get; set; } = [2, 7, 10, 11];
+
+    /// <summary>Skip events about computer accounts (names ending in $) for 4624/4625/4768/4771/4776.</summary>
+    public bool ExcludeComputerAccounts { get; set; } = true;
+    public int MaxSecurityEventsPerPoll { get; set; } = 5000;
+
+    /// <summary>How often replication partners are queried (minutes).</summary>
+    public int ReplicationCheckMin { get; set; } = 5;
+
+    /// <summary>Working days for "admin logon outside working hours" (Mon..Sun).</summary>
+    public string WorkingDays { get; set; } = "Mon,Tue,Wed,Thu,Fri";
+
+    /// <summary>Working hours in PKT ("HH:mm").</summary>
+    public string WorkingHoursStart { get; set; } = "08:00";
+    public string WorkingHoursEnd { get; set; } = "17:00";
+
+    /// <summary>Groups whose new members raise a CRITICAL alert.</summary>
+    public List<string> PrivilegedGroups { get; set; } = [.. DcDefaults.PrivilegedGroups];
+
+    public bool IsPrivilegedGroup(string? group) =>
+        group is { Length: > 0 } && PrivilegedGroups.Any(g => string.Equals(g, group.Trim(), StringComparison.OrdinalIgnoreCase));
+
+    public void Normalise()
+    {
+        PrivilegedGroups = PrivilegedGroups.Where(g => !string.IsNullOrWhiteSpace(g)).Select(g => g.Trim()).Distinct(StringComparer.OrdinalIgnoreCase).Take(50).ToList();
+        MaxSecurityEventsPerPoll = Math.Clamp(MaxSecurityEventsPerPoll, 100, 50_000);
+        ReplicationCheckMin = Math.Clamp(ReplicationCheckMin, 1, 1440);
+        SuccessfulLogonTypes = SuccessfulLogonTypes.Where(t => t is >= 0 and <= 13).Distinct().ToList();
+        if (!TimeSpan.TryParseExact(WorkingHoursStart, @"hh\:mm", null, out _))
+        {
+            WorkingHoursStart = "08:00";
+        }
+
+        if (!TimeSpan.TryParseExact(WorkingHoursEnd, @"hh\:mm", null, out _))
+        {
+            WorkingHoursEnd = "17:00";
+        }
+    }
+
+    /// <summary>True when <paramref name="utc"/> falls inside the working days and hours (PKT).</summary>
+    public bool IsWorkingTime(DateTime utc)
+    {
+        var local = LocalTime.ToLocal(utc);
+        var day = local.DayOfWeek.ToString()[..3];
+        if (!WorkingDays.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries).Contains(day, StringComparer.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        var start = TimeSpan.TryParseExact(WorkingHoursStart, @"hh\:mm", null, out var s) ? s : TimeSpan.FromHours(8);
+        var end = TimeSpan.TryParseExact(WorkingHoursEnd, @"hh\:mm", null, out var e) ? e : TimeSpan.FromHours(17);
+        return local.TimeOfDay >= start && local.TimeOfDay < end;
+    }
+}
+
 /// <summary>VMware (vCenter / ESXi) monitoring. Stored under key "vmware".</summary>
 public sealed class VmwareSettings
 {

@@ -16,13 +16,15 @@ public sealed class NetworkDevicePoller : IDevicePoller
 {
     private readonly IServerCollector _servers;
     private readonly Vmware.IVmwareCollector _vmware;
+    private readonly DomainControllers.IDcCollector _dc;
     private readonly TimeProvider _time;
     private readonly ILogger<NetworkDevicePoller> _logger;
 
-    public NetworkDevicePoller(IServerCollector servers, Vmware.IVmwareCollector vmware, TimeProvider time, ILogger<NetworkDevicePoller> logger)
+    public NetworkDevicePoller(IServerCollector servers, Vmware.IVmwareCollector vmware, DomainControllers.IDcCollector dc, TimeProvider time, ILogger<NetworkDevicePoller> logger)
     {
         _servers = servers;
         _vmware = vmware;
+        _dc = dc;
         _time = time;
         _logger = logger;
     }
@@ -40,7 +42,9 @@ public sealed class NetworkDevicePoller : IDevicePoller
         var snmp = request.Snmp is null ? Task.CompletedTask : PollSnmpAsync(ip, request, result, ct);
         var server = request.Server is null ? Task.FromResult<ServerPollData?>(null) : CollectServerAsync(request.Server, ct);
         var vmware = request.Vmware is null ? Task.FromResult<Vmware.VmwarePollData?>(null) : CollectVmwareAsync(request.Vmware, ct);
-        await Task.WhenAll(ping, snmp, server, vmware);
+        var dc = request.Dc is null ? Task.FromResult<DomainControllers.DcPollData?>(null) : CollectDcAsync(request.Dc, ct);
+        await Task.WhenAll(ping, snmp, server, vmware, dc);
+        result.Dc = await dc;
         result.Vmware = await vmware;
 
         var p = await ping;
@@ -65,6 +69,19 @@ public sealed class NetworkDevicePoller : IDevicePoller
         {
             _logger.LogDebug(ex, "Server collection failed for {Host}", request.Host);
             return new ServerPollData { Error = ex.Message };
+        }
+    }
+
+    private async Task<DomainControllers.DcPollData?> CollectDcAsync(DomainControllers.DcPollRequest request, CancellationToken ct)
+    {
+        try
+        {
+            return await _dc.CollectAsync(request, ct);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException || !ct.IsCancellationRequested)
+        {
+            _logger.LogDebug(ex, "DC collection failed for {Host}", request.Host);
+            return new DomainControllers.DcPollData { SecurityLogError = ex.Message };
         }
     }
 

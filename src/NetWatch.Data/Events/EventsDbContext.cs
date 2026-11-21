@@ -17,6 +17,7 @@ public class EventsDbContext : DbContext
     public DbSet<WindowsEventEntry> WindowsEvents => Set<WindowsEventEntry>();
     public DbSet<EventBookmark> EventBookmarks => Set<EventBookmark>();
     public DbSet<VmwareEvent> VmwareEvents => Set<VmwareEvent>();
+    public DbSet<DcSecurityEvent> DcSecurityEvents => Set<DcSecurityEvent>();
 
     protected override void ConfigureConventions(ModelConfigurationBuilder configurationBuilder)
     {
@@ -78,6 +79,28 @@ public class EventsDbContext : DbContext
             e.Property(x => x.Message).HasMaxLength(4000);
             e.HasIndex(x => x.TimestampUtc);
             e.HasIndex(x => new { x.SourceDeviceId, x.EventKey }).IsUnique();
+        });
+
+        b.Entity<DcSecurityEvent>(e =>
+        {
+            e.ToTable("DcSecurityEvents");
+            e.Property(x => x.Category).HasMaxLength(32);
+            e.Property(x => x.SubjectUser).HasMaxLength(255);
+            e.Property(x => x.SubjectDomain).HasMaxLength(255);
+            e.Property(x => x.TargetUser).HasMaxLength(255);
+            e.Property(x => x.TargetDomain).HasMaxLength(255);
+            e.Property(x => x.GroupName).HasMaxLength(255);
+            e.Property(x => x.ObjectName).HasMaxLength(1000);
+            e.Property(x => x.SourceIp).HasMaxLength(64);
+            e.Property(x => x.Workstation).HasMaxLength(255);
+            e.Property(x => x.Status).HasMaxLength(16);
+            e.Property(x => x.SubStatus).HasMaxLength(16);
+            e.Property(x => x.Message).HasMaxLength(2000);
+            e.HasIndex(x => x.TimestampUtc);
+            e.HasIndex(x => new { x.EventId, x.TimestampUtc });
+            e.HasIndex(x => x.TargetUser);
+            e.HasIndex(x => x.SourceIp);
+            e.HasIndex(x => new { x.DeviceId, x.RecordId }).IsUnique();
         });
 
         b.Entity<EventBookmark>(e =>

@@ -17,7 +17,7 @@ public static class SimulatedTopology
             .Select(i => new SimPortSpec(i, $"Gi1/0/{i}", $"GigabitEthernet1/0/{i}", Gig, 6, false))
             .Concat(Enumerable.Range(1, 4).Select(i => new SimPortSpec(48 + i, $"Te1/1/{i}", $"TenGigabitEthernet1/1/{i}", 10 * Gig, 6, true)))
             .ToList(),
-        DeviceType.Server => [new SimPortSpec(1, "NIC1", "Embedded NIC 1", 10 * Gig, 6, true), new SimPortSpec(2, "NIC2", "Embedded NIC 2", 10 * Gig, 6, true)],
+        DeviceType.Server or DeviceType.DomainController => [new SimPortSpec(1, "NIC1", "Embedded NIC 1", 10 * Gig, 6, true), new SimPortSpec(2, "NIC2", "Embedded NIC 2", 10 * Gig, 6, true)],
         DeviceType.VM => [new SimPortSpec(1, "Ethernet0", "vmxnet3 Ethernet Adapter", 10 * Gig, 6, true)],
         _ => [new SimPortSpec(1, "eth0", "eth0", Gig, 6, true), new SimPortSpec(2, "eth1", "eth1", Gig, 6, false)],
     };
@@ -33,7 +33,7 @@ public static class SimulatedTopology
             _ => new SimVendorSpec("Juniper", "EX4300-48T", "21.4R3-S5", "1.3.6.1.4.1.2636.1.1.1.2.63",
                 "Juniper Networks, Inc. ex4300-48t Ethernet Switch, kernel JUNOS 21.4R3-S5"),
         },
-        DeviceType.Server => new SimVendorSpec("Dell", "PowerEdge R750", "BIOS 1.10.2", "1.3.6.1.4.1.311.1.1.3.1.2",
+        DeviceType.Server or DeviceType.DomainController => new SimVendorSpec("Dell", "PowerEdge R750", "BIOS 1.10.2", "1.3.6.1.4.1.311.1.1.3.1.2",
             "Hardware: Intel64 Family 6 - Software: Windows Version 6.3 (Build 20348 Multiprocessor Free)"),
         DeviceType.VM => new SimVendorSpec("VMware", "VMware Virtual Platform", "VMware Tools 12.3", "1.3.6.1.4.1.311.1.1.3.1.2",
             "Hardware: Intel64 Family 6 - Software: Windows Version 6.3 (Build 17763 Multiprocessor Free)"),

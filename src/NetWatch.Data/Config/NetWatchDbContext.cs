@@ -34,6 +34,9 @@ public class NetWatchDbContext : DbContext
     public DbSet<VmwareDatastore> VmwareDatastores => Set<VmwareDatastore>();
     public DbSet<VmwareSnapshot> VmwareSnapshots => Set<VmwareSnapshot>();
     public DbSet<VmwareAlarm> VmwareAlarms => Set<VmwareAlarm>();
+    public DbSet<DcInfo> DcInfos => Set<DcInfo>();
+    public DbSet<DcReplicationLink> DcReplicationLinks => Set<DcReplicationLink>();
+    public DbSet<SavedSearch> SavedSearches => Set<SavedSearch>();
 
     protected override void ConfigureConventions(ModelConfigurationBuilder configurationBuilder)
     {
@@ -214,6 +217,41 @@ public class NetWatchDbContext : DbContext
             e.Property(x => x.Status).HasMaxLength(16);
         });
 
+        b.Entity<DcInfo>(e =>
+        {
+            e.ToTable("DcInfo");
+            e.HasKey(x => x.DeviceId);
+            e.HasOne<Device>().WithOne().HasForeignKey<DcInfo>(x => x.DeviceId).OnDelete(DeleteBehavior.Cascade);
+            e.Property(x => x.Domain).HasMaxLength(255);
+            e.Property(x => x.Forest).HasMaxLength(255);
+            e.Property(x => x.Site).HasMaxLength(255);
+            e.Property(x => x.DcName).HasMaxLength(255);
+            e.Property(x => x.Roles).HasMaxLength(200);
+            e.Property(x => x.PdcEmulator).HasMaxLength(255);
+            e.Property(x => x.ReplicationError).HasMaxLength(1000);
+            e.Property(x => x.SecurityLogError).HasMaxLength(1000);
+        });
+
+        b.Entity<DcReplicationLink>(e =>
+        {
+            e.ToTable("DcReplicationLinks");
+            e.HasOne<Device>().WithMany().HasForeignKey(x => x.DeviceId).OnDelete(DeleteBehavior.Cascade);
+            e.Property(x => x.Partner).HasMaxLength(255);
+            e.Property(x => x.NamingContext).HasMaxLength(500);
+            e.Property(x => x.LastMessage).HasMaxLength(1000);
+            e.HasIndex(x => new { x.DeviceId, x.Partner, x.NamingContext }).IsUnique();
+        });
+
+        b.Entity<SavedSearch>(e =>
+        {
+            e.ToTable("SavedSearches");
+            e.HasOne<User>().WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Cascade);
+            e.Property(x => x.Page).HasMaxLength(32);
+            e.Property(x => x.Name).HasMaxLength(100);
+            e.Property(x => x.QueryJson).HasMaxLength(4000);
+            e.HasIndex(x => new { x.UserId, x.Page });
+        });
+
         b.Entity<MaintenanceWindow>(e =>
         {
             e.ToTable("MaintenanceWindows");
@@ -260,6 +298,7 @@ public class NetWatchDbContext : DbContext
             e.Property(x => x.Name).HasMaxLength(200);
             e.Property(x => x.Key).HasMaxLength(64);
             e.Property(x => x.FilterJson).HasMaxLength(2000);
+            e.Property(x => x.GroupByField).HasMaxLength(64);
         });
 
         b.Entity<Alert>(e =>

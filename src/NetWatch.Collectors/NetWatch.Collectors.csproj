@@ -11,6 +11,7 @@
     <PackageReference Include="System.Management" />
     <PackageReference Include="System.Diagnostics.EventLog" />
     <PackageReference Include="SSH.NET" />
+    <PackageReference Include="System.DirectoryServices.Protocols" />
   </ItemGroup>
 
   <ItemGroup>

@@ -1,6 +1,6 @@
 # NetWatch (Offline Edition): Phase 0 design for review
 
-Status: **Approved.** Phase 1 delivered (1.0.0); Phase 2 delivered (1.1.0, section 5); Phase 3 delivered (1.2.0, section 6).
+Status: **Approved.** Phase 1 delivered (1.0.0); Phase 2 delivered (1.1.0, section 5); Phase 3 delivered (1.2.0, section 6); Phase 4 delivered (1.3.0, section 7).
 Date: 2026-11-18
 
 ---
@@ -250,3 +250,17 @@ Decisions made while building Phase 2 (they refine sections 0–3):
 | Snapshot size | Approximate: the snapshot's state/memory files plus delta disks in the next point's chain that are not in its own chain. |
 | Certificates | CA-trusted certificates are accepted; otherwise the SHA-256 thumbprint is pinned on first use (`Devices.TlsThumbprint`) and verified afterwards. |
 | Rules | 15 built-in VMware rules (API unreachable, host not connected/hardware/CPU/memory, datastore space/accessibility, old/large snapshot, CPU ready, Tools, vCenter alarms red/yellow, major events). |
+
+## 7. Phase 4 scope (delivered in 1.3.0)
+
+| Topic | Decision |
+|---|---|
+| Collection | A device of type Domain controller with a Windows credential gets a DC request beside the normal server request. Security log via remote `EventLogSession` (XPath on the collected event IDs, resumed by `EventRecordID` bookmark; first contact starts at the newest record); Directory Service and DFS Replication logs (level 1–3); topology and replication over LDAP 389 with Negotiate signing + sealing (rootDSE, `fSMORoleOwner`, `msDS-NCReplInboundNeighbors` per naming context) every `ReplicationCheckMin`; clock via WMI `Win32_UTCTime` on the DC and on the PDC emulator (offset measured at the midpoint of the query, 1 s resolution). No `System.DirectoryServices` (ADSI) dependency. |
+| WEF | Optional `ForwardedEventsReader`: reads this server's `ForwardedEvents` log every 30 s, matches the event's computer name to a DC device, and stores events through the same path. Forwarded events keep their original record ID, so the unique (DC, record) index removes duplicates; after a restart the last hour is re-read. Remote Security-log reads are skipped while WEF is on. |
+| Parsing | `DcEventParser` maps `EventRecord.ToXml()` (EventData and UserData) to user, domain, target, group (member DN → CN), object, source IP (`::ffff:` stripped), workstation, logon type, status/sub-status and a failure flag; XML DTDs prohibited. Pure functions, unit tested. |
+| Storage | `DcSecurityEvents` (events.db, indexes on time, event ID + time, target user, source IP, unique DC + record), `DcInfo`, `DcReplicationLinks` (unique DC + partner + naming context), `SavedSearches` (netwatch.db). DS/DFSR entries go to `WindowsEvents`. Clock skew is a generic series. Retention as for other events. |
+| Filters | 4624/4768/4776 successes are stored (logon types 2, 7, 10, 11 by default) but not sent to the alert engine; computer accounts and service identities are dropped where they are noise. |
+| Alert engine | `EventSignal` gained `Fields`; `EventFilter` gained `FieldEquals`; CountInWindow rules gained `GroupByField` (one counter, dedup key and alert per field value, e.g. per account or source). The processor sets `failed`, `privileged` (configurable group list), `offHours` (working days/hours in PKT), `targetUser`, `source`, `sourceIp`, `group`, `logonType`. |
+| Rules | 13 built-in DC rules (failed logons per account ≥ 5 / per source ≥ 20 in 5 min, lockout, privileged group add, log cleared, audit policy change, off-hours admin logon, new user/computer account, replication failing 15 min, DS/DFSR replication events, clock skew > 30 s / > 240 s). |
+| UI | `/dc` page: overview, security event viewer with saved searches (own; shared by operators), lockout tracker, privileged group change log, replication matrix, recommended audit policy. Settings → General → Domain controllers. |
+| Simulator | SIM-DC-01 (PDC) and SIM-DC-02 with office-hours logon traffic, brute force → lockout, password spray, rare account/group changes, admin logons at odd hours, replication failures (1722) and clock drift on the non-PDC. |

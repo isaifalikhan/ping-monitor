@@ -65,6 +65,26 @@ public static class DefaultRules
             State("vCenter alarm (yellow)", "A vCenter alarm is yellow and not acknowledged in vCenter.", StateKeys.VcenterAlarmYellow, Severity.Warning, 0, all),
             Event("vCenter major event", "vCenter reported a major event: host connection lost, HA failover or isolation, failed VM reset ...", EventKeys.VmwareEvent, Severity.Major, all,
                 new EventFilter { MinSeverity = Severity.Major }),
+
+            // ---- Phase 4: domain controllers (Security log, replication, time)
+            Count("Failed logons for one account", "At least 5 failed logons (4625/4771/4776) for the same account within 5 minutes (password guessing or a stale credential).",
+                EventKeys.DcSecurity, 5, 300, Severity.Warning, all, new EventFilter { FieldEquals = new() { ["failed"] = "true" } }, "targetUser"),
+            Count("Failed logons from one source", "At least 20 failed logons from the same source IP/workstation within 5 minutes (possible brute force or password spraying).",
+                EventKeys.DcSecurity, 20, 300, Severity.Major, all, new EventFilter { FieldEquals = new() { ["failed"] = "true" } }, "source"),
+            Event("Account locked out", "An account was locked out (4740).", EventKeys.DcSecurity, Severity.Major, all, new EventFilter { EventIds = [4740] }),
+            Event("Privileged group membership added", "A member was added to Domain Admins, Enterprise Admins, Schema Admins, Administrators or Backup Operators (4728/4732/4756).",
+                EventKeys.DcSecurity, Severity.Critical, all, new EventFilter { EventIds = [4728, 4732, 4756], FieldEquals = new() { ["privileged"] = "true" } }),
+            Event("Security log cleared", "The Security event log of a domain controller was cleared (1102).", EventKeys.DcSecurity, Severity.Critical, all, new EventFilter { EventIds = [1102] }),
+            Event("Audit policy changed", "The audit policy of a domain controller was changed (4719).", EventKeys.DcSecurity, Severity.Critical, all, new EventFilter { EventIds = [4719] }),
+            Event("Admin logon outside working hours", "Special privileges were assigned to a logon (4672) outside the configured working hours (default Mon–Fri 08:00–17:00).",
+                EventKeys.DcSecurity, Severity.Warning, all, new EventFilter { EventIds = [4672], FieldEquals = new() { ["offHours"] = "true" } }),
+            Event("New user account created", "A user account was created in the domain (4720).", EventKeys.DcSecurity, Severity.Warning, all, new EventFilter { EventIds = [4720] }),
+            Event("New computer account created", "A computer account was created in the domain (4741).", EventKeys.DcSecurity, Severity.Warning, all, new EventFilter { EventIds = [4741] }),
+            State("AD replication failing", "Replication with a partner DC has failed for 15 minutes (per partner and naming context).", StateKeys.DcReplicationFailed, Severity.Major, 900, all),
+            Event("Directory/DFS replication error", "The Directory Service or DFS Replication log reported a replication problem (1311, 1864, 2042, 2087, 2088, 2213, 4012).",
+                EventKeys.WindowsEvent, Severity.Major, all, new EventFilter { EventIds = [1311, 1864, 2042, 2087, 2088, 2213, 4012] }),
+            Threshold("DC clock skew", MetricKeys.DcTimeSkew, ComparisonOperator.GreaterThan, 30, 20, 300, Severity.Warning, all),
+            Threshold("DC clock skew critical", MetricKeys.DcTimeSkew, ComparisonOperator.GreaterThan, 240, 200, 0, Severity.Critical, all),
         ];
 
         AlertRule Threshold(string name, string key, ComparisonOperator op, double threshold, double? clear, int durationSec, Severity severity, string scope) => new()
@@ -117,7 +137,7 @@ public static class DefaultRules
             UpdatedUtc = nowUtc,
         };
 
-        AlertRule Count(string name, string description, string key, int count, int windowSec, Severity severity, string scope, EventFilter filter) => new()
+        AlertRule Count(string name, string description, string key, int count, int windowSec, Severity severity, string scope, EventFilter filter, string? groupBy = null) => new()
         {
             Name = name,
             Description = description,
@@ -128,6 +148,7 @@ public static class DefaultRules
             FilterJson = filter.ToJson(),
             CountThreshold = count,
             WindowSec = windowSec,
+            GroupByField = groupBy,
             Severity = severity,
             ScopeJson = scope,
             CreatedUtc = nowUtc,

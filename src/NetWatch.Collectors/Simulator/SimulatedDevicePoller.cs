@@ -17,6 +17,7 @@ public sealed class SimulatedDevicePoller : IDevicePoller
     private readonly ConcurrentDictionary<int, SimDevice> _devices = new();
     private readonly TimeProvider _time;
     private readonly SimulatedVcenter _vcenter = new();
+    private readonly ConcurrentDictionary<int, SimulatedDomainController> _dcs = new();
 
     public SimulatedDevicePoller(TimeProvider time)
     {
@@ -223,13 +224,25 @@ public sealed class SimulatedDevicePoller : IDevicePoller
             result.Sensors.Add(new SensorReading(SensorKind.PowerSupply, "2", "Power supply 2", null, null, SensorState.Ok));
         }
 
-        if (request.Server is { } serverRequest && d.Type is DeviceType.Server or DeviceType.VM)
+        if (request.Server is { } serverRequest && d.Type is DeviceType.Server or DeviceType.VM or DeviceType.DomainController)
         {
             result.Server = SimulateServer(d, serverRequest, now, diurnal, elapsed, result);
         }
 
+        if (request.Dc is { } dcRequest && d.Type == DeviceType.DomainController)
+        {
+            var name = request.Device.Name;
+            var dc = _dcs.GetOrAdd(request.Device.Id, id => new SimulatedDomainController(id, name, IsPdc(name), PartnerOf(name), now));
+            result.Dc = dc.Poll(dcRequest, now, diurnal, elapsed);
+        }
+
         return result;
     }
+
+    /// <summary>SIM-DC-01 is the PDC emulator; the DCs replicate with each other.</summary>
+    private static bool IsPdc(string name) => name.EndsWith("-01", StringComparison.OrdinalIgnoreCase);
+
+    private static string PartnerOf(string name) => IsPdc(name) ? name[..^3] + "-02" : name[..^3] + "-01";
 
     internal double ServiceFailureProbability { get; set; } = 0.0004;
     internal double WindowsErrorProbability { get; set; } = 0.01;
@@ -289,7 +302,7 @@ public sealed class SimulatedDevicePoller : IDevicePoller
             Ok = true,
             OsName = linux
                 ? (d.Rng.Next(2) == 0 ? "Ubuntu 22.04.4 LTS" : "Red Hat Enterprise Linux 9.4 (Plow)")
-                : d.Type == DeviceType.VM ? "Microsoft Windows Server 2019 Standard" : "Microsoft Windows Server 2022 Standard",
+                : d.Type == DeviceType.VM ? "Microsoft Windows Server 2019 Standard" : d.Type == DeviceType.DomainController ? "Microsoft Windows Server 2022 Datacenter" : "Microsoft Windows Server 2022 Standard",
             OsVersion = linux ? "5.15.0-105-generic" : d.Type == DeviceType.VM ? "10.0.17763" : "10.0.20348",
             LastBootUtc = d.BootUtc,
             PendingReboot = s.PendingReboot,
@@ -384,6 +397,12 @@ public sealed class SimulatedDevicePoller : IDevicePoller
         "WinRM" => "Windows Remote Management (WS-Management)",
         "EventLog" => "Windows Event Log",
         "MSSQLSERVER" => "SQL Server (MSSQLSERVER)",
+        "NTDS" => "Active Directory Domain Services",
+        "DNS" => "DNS Server",
+        "Netlogon" => "Netlogon",
+        "Kdc" => "Kerberos Key Distribution Center",
+        "DFSR" => "DFS Replication",
+        "W32Time" => "Windows Time",
         _ => service,
     };
 

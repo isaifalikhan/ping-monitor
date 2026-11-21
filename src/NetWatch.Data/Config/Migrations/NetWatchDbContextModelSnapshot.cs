@@ -175,6 +175,10 @@ namespace NetWatch.Data.Config.Migrations
                         .HasMaxLength(2000)
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("GroupByField")
+                        .HasMaxLength(64)
+                        .HasColumnType("TEXT");
+
                     b.Property<bool>("IsBuiltIn")
                         .HasColumnType("INTEGER");
 
@@ -302,6 +306,109 @@ namespace NetWatch.Data.Config.Migrations
                         .IsUnique();
 
                     b.ToTable("CredentialProfiles", (string)null);
+                });
+
+            modelBuilder.Entity("NetWatch.Core.Entities.DcInfo", b =>
+                {
+                    b.Property<int>("DeviceId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<double?>("ClockOffsetSec")
+                        .HasColumnType("REAL");
+
+                    b.Property<string>("DcName")
+                        .HasMaxLength(255)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Domain")
+                        .HasMaxLength(255)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Forest")
+                        .HasMaxLength(255)
+                        .HasColumnType("TEXT");
+
+                    b.Property<bool>("IsGlobalCatalog")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime?>("LastReplicationCheckUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("LastSeenUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("PdcEmulator")
+                        .HasMaxLength(255)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ReplicationError")
+                        .HasMaxLength(1000)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Roles")
+                        .HasMaxLength(200)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("SecurityLogError")
+                        .HasMaxLength(1000)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Site")
+                        .HasMaxLength(255)
+                        .HasColumnType("TEXT");
+
+                    b.Property<double?>("SkewToPdcSec")
+                        .HasColumnType("REAL");
+
+                    b.HasKey("DeviceId");
+
+                    b.ToTable("DcInfo", (string)null);
+                });
+
+            modelBuilder.Entity("NetWatch.Core.Entities.DcReplicationLink", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("ConsecutiveFailures")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("DeviceId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime?>("LastAttemptUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("LastMessage")
+                        .HasMaxLength(1000)
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("LastResult")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime>("LastSeenUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime?>("LastSuccessUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("NamingContext")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Partner")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("DeviceId", "Partner", "NamingContext")
+                        .IsUnique();
+
+                    b.ToTable("DcReplicationLinks", (string)null);
                 });
 
             modelBuilder.Entity("NetWatch.Core.Entities.Device", b =>
@@ -610,6 +717,43 @@ namespace NetWatch.Data.Config.Migrations
                         .IsUnique();
 
                     b.ToTable("Interfaces", (string)null);
+                });
+
+            modelBuilder.Entity("NetWatch.Core.Entities.SavedSearch", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime>("CreatedUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<bool>("IsShared")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Page")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("QueryJson")
+                        .IsRequired()
+                        .HasMaxLength(4000)
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("UserId")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("UserId", "Page");
+
+                    b.ToTable("SavedSearches", (string)null);
                 });
 
             modelBuilder.Entity("NetWatch.Core.Entities.Sensor", b =>
@@ -1301,6 +1445,24 @@ namespace NetWatch.Data.Config.Migrations
                         .IsRequired();
                 });
 
+            modelBuilder.Entity("NetWatch.Core.Entities.DcInfo", b =>
+                {
+                    b.HasOne("NetWatch.Core.Entities.Device", null)
+                        .WithOne()
+                        .HasForeignKey("NetWatch.Core.Entities.DcInfo", "DeviceId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("NetWatch.Core.Entities.DcReplicationLink", b =>
+                {
+                    b.HasOne("NetWatch.Core.Entities.Device", null)
+                        .WithMany()
+                        .HasForeignKey("DeviceId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("NetWatch.Core.Entities.Device", b =>
                 {
                     b.HasOne("NetWatch.Core.Entities.DeviceGroup", "Group")
@@ -1357,6 +1519,15 @@ namespace NetWatch.Data.Config.Migrations
                     b.HasOne("NetWatch.Core.Entities.Device", null)
                         .WithMany("Interfaces")
                         .HasForeignKey("DeviceId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("NetWatch.Core.Entities.SavedSearch", b =>
+                {
+                    b.HasOne("NetWatch.Core.Entities.User", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
                 });

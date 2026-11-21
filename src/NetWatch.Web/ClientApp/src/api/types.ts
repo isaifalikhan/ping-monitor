@@ -233,6 +233,7 @@ export interface Rule {
   windowSec: number;
   countThreshold: number;
   escalateAfterMin?: number | null;
+  groupByField?: string | null;
 }
 
 export interface EventFilter {
@@ -241,6 +242,7 @@ export interface EventFilter {
   eventIds: number[];
   source?: string | null;
   oid?: string | null;
+  fieldEquals?: Record<string, string>;
 }
 
 export interface RuleKey {
@@ -735,4 +737,137 @@ export interface VmwareSettings {
   trustOnFirstUse: boolean;
   timeoutSec: number;
   maxEventsPerPoll: number;
+}
+
+// ---- Domain controllers (Phase 4)
+
+export interface DcSummary {
+  deviceId: number;
+  name: string;
+  ipAddress: string;
+  status: DeviceStatus;
+  lastPollUtc?: string | null;
+  domain?: string | null;
+  site?: string | null;
+  dcName?: string | null;
+  isGlobalCatalog: boolean;
+  roles?: string | null;
+  pdcEmulator?: string | null;
+  clockOffsetSec?: number | null;
+  skewToPdcSec?: number | null;
+  lastReplicationCheckUtc?: string | null;
+  replicationError?: string | null;
+  securityLogError?: string | null;
+  replicationLinks: number;
+  replicationFailing: number;
+  servicesDown: number;
+  events24h: number;
+  failedLogons24h: number;
+  lockouts24h: number;
+  groupChanges24h: number;
+}
+
+export interface DcOverview {
+  controllers: DcSummary[];
+  useForwardedEvents: boolean;
+  forwardedError?: string | null;
+  forwardedLastReadUtc?: string | null;
+  forwardedEventsRead: number;
+}
+
+export interface DcSecurityEvent {
+  id: number;
+  timestampUtc: string;
+  deviceId: number;
+  deviceName?: string | null;
+  eventId: number;
+  eventName: string;
+  category: string;
+  severity: Severity;
+  subjectUser?: string | null;
+  targetUser?: string | null;
+  groupName?: string | null;
+  objectName?: string | null;
+  sourceIp?: string | null;
+  workstation?: string | null;
+  logonType?: number | null;
+  status?: string | null;
+  subStatus?: string | null;
+  message: string;
+}
+
+export interface DcLockout {
+  id: number;
+  timestampUtc: string;
+  deviceId: number;
+  deviceName?: string | null;
+  user?: string | null;
+  callerComputer?: string | null;
+  failuresBefore: number;
+  lastFailureSource?: string | null;
+  unlockedUtc?: string | null;
+  unlockedBy?: string | null;
+}
+
+export interface DcGroupChange {
+  id: number;
+  timestampUtc: string;
+  deviceId: number;
+  deviceName?: string | null;
+  eventId: number;
+  added: boolean;
+  group?: string | null;
+  member?: string | null;
+  changedBy?: string | null;
+  privileged: boolean;
+}
+
+export interface DcReplicationLink {
+  id: number;
+  deviceId: number;
+  deviceName: string;
+  partner: string;
+  namingContext: string;
+  lastSuccessUtc?: string | null;
+  lastAttemptUtc?: string | null;
+  lastResult: number;
+  consecutiveFailures: number;
+  lastMessage?: string | null;
+  lastSeenUtc: string;
+}
+
+export interface DcTopEntry {
+  key: string;
+  count: number;
+  lastUtc: string;
+}
+
+export interface DcEventId {
+  id: number;
+  name: string;
+  category: string;
+}
+
+export interface SavedSearch<Q = Record<string, string>> {
+  id: number;
+  page: string;
+  name: string;
+  query: Q;
+  isShared: boolean;
+  isOwn: boolean;
+  createdUtc: string;
+}
+
+export interface DcSettings {
+  readSecurityLog: boolean;
+  useForwardedEvents: boolean;
+  storeSuccessfulLogons: boolean;
+  successfulLogonTypes: number[];
+  excludeComputerAccounts: boolean;
+  maxSecurityEventsPerPoll: number;
+  replicationCheckMin: number;
+  workingDays: string;
+  workingHoursStart: string;
+  workingHoursEnd: string;
+  privilegedGroups: string[];
 }

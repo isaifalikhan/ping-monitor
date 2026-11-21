@@ -38,6 +38,8 @@ public sealed class SettingsService
 
     public VmwareSettings Vmware => Get<VmwareSettings>(VmwareSettings.Key, s => s.Normalise());
 
+    public DcSettings Dc => Get<DcSettings>(DcSettings.Key, s => s.Normalise());
+
     public T Get<T>(string key, Action<T>? normalise = null)
         where T : class, new()
     {

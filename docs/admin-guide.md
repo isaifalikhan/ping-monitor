@@ -232,6 +232,51 @@ NetWatch server, the certificate's SHA-256 thumbprint is pinned at the first con
 VMware*, on by default) and a different certificate is refused later. After a planned certificate renewal click
 *Reset* next to the pinned certificate on the vCenter's device page.
 
+## 4c. Domain controllers (Active Directory)
+
+Add each domain controller as a device of type **Domain controller** with a *Windows* credential of a
+least-privilege domain account (member of **Event Log Readers**, see the installation guide). New DCs watch the
+services NTDS, DNS, Netlogon, Kdc, DFSR and W32Time. Every poll NetWatch reads:
+
+| Source | Collected |
+|---|---|
+| Security log | 4624, 4625, 4740/4767, 4720/4722/4725/4726/4738, 4723/4724, 4728/4729, 4732/4733, 4756/4757, 4672, 4768/4771/4776, 4741/4743, 4719, 1102, 5136, with account, source IP/workstation, target, group, logon type and status codes |
+| Directory Service, DFS Replication logs | Errors and warnings (incl. 1311, 1864, 2042, 2087, 2088, 2213, 4012) |
+| LDAP (every 5 min) | Domain, site, global catalog, FSMO roles, PDC emulator, inbound replication per partner and naming context (last success, last result, consecutive failures) |
+| WMI (every 5 min) | Clock difference to the PDC emulator |
+
+To keep the volume manageable, successful logons (4624) are stored only for logon types 2, 7, 10 and 11
+(interactive, unlock, RDP, cached; network logons are skipped), computer accounts (`name$`) are ignored in logon
+events, and 4672 is stored only for people (not SYSTEM or machine accounts). Successful logons are never alerted
+on. All of this is set in *Settings → General → Domain controllers*. Instead of reading every DC remotely the
+DCs can forward their events to the NetWatch server (Windows Event Forwarding, *ForwardedEvents* log); see the
+*Recommended audit policy* tab of the DC page.
+
+The **Domain controllers** page has an overview per DC (roles, clock skew, replication, 24-hour counts, top
+failing accounts and sources), a **security event viewer** (filter by DC, event type or IDs, account, source,
+text and time; click an account or source to filter on it; save searches for yourself or, as operator, for
+everyone), an **account lockout tracker** (who, where from, failures before the lockout, unlock), the
+**privileged group change log**, the **replication matrix** and the **recommended audit policy**.
+
+Built-in DC rules:
+
+| Rule | Condition | Severity |
+|---|---|---|
+| Failed logons for one account | ≥ 5 failed logons (4625/4771/4776/4768) for the same account in 5 min (one alert per account) | Warning |
+| Failed logons from one source | ≥ 20 failed logons from the same source IP/workstation in 5 min | Major |
+| Account locked out | 4740 | Major |
+| Privileged group membership added | 4728/4732/4756 to Domain Admins, Enterprise Admins, Schema Admins, Administrators, Backup Operators (list editable) | Critical |
+| Security log cleared / Audit policy changed | 1102 / 4719 | Critical |
+| Admin logon outside working hours | 4672 outside Mon–Fri 08:00–17:00 PKT (editable) | Warning |
+| New user / computer account created | 4720 / 4741 | Warning |
+| AD replication failing | A partner/naming context failing for 15 min | Major |
+| Directory/DFS replication error | DS/DFSR events 1311, 1864, 2042, 2087, 2088, 2213, 4012 | Major |
+| DC clock skew (critical) | Difference to the PDC > 30 s for 5 min (> 240 s) | Warning (Critical) |
+| Device down / Service not running | DC unreachable; NTDS, DNS, Netlogon, Kdc, DFSR or W32Time stopped | Critical / Major |
+
+Count rules can be grouped by any event field (*Count separately per* in the rule editor) and event rules can
+require field values (*Field values*, e.g. `failed=true`, `offHours=true`, `privileged=true`).
+
 ## 4a. Syslog and SNMP traps
 
 Point devices at the NetWatch server: syslog to UDP or TCP 514, SNMP traps/informs to UDP 162. Messages are matched

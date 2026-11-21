@@ -21,7 +21,8 @@ public sealed record AlertRuleDefinition(
     EventFilter? Filter = null,
     TimeSpan Window = default,
     int CountThreshold = 0,
-    int? EscalateAfterMin = null)
+    int? EscalateAfterMin = null,
+    string? GroupByField = null)
 {
     public EventFilter EffectiveFilter => Filter ?? EmptyFilter;
 
@@ -41,13 +42,14 @@ public sealed record AlertRuleDefinition(
         EventFilter.Parse(rule.FilterJson),
         TimeSpan.FromSeconds(Math.Max(0, rule.WindowSec)),
         Math.Max(0, rule.CountThreshold),
-        rule.EscalateAfterMin);
+        rule.EscalateAfterMin,
+        string.IsNullOrWhiteSpace(rule.GroupByField) ? null : rule.GroupByField.Trim());
 
     /// <summary>Compares everything that affects evaluation (used to decide whether timing state must be reset).</summary>
     public bool SameCondition(AlertRuleDefinition other) =>
         Type == other.Type && Key == other.Key && Operator == other.Operator && Threshold == other.Threshold &&
         ClearThreshold == other.ClearThreshold && Duration == other.Duration && Window == other.Window &&
-        CountThreshold == other.CountThreshold && Scope.ToJson() == other.Scope.ToJson() &&
+        CountThreshold == other.CountThreshold && GroupByField == other.GroupByField && Scope.ToJson() == other.Scope.ToJson() &&
         EffectiveFilter.ToJson() == other.EffectiveFilter.ToJson();
 }
 
@@ -203,7 +205,7 @@ public sealed class AlertEvaluator
                 if (state.Raised && events.Count == 0)
                 {
                     state.Raised = false;
-                    result.Add(new AlertTransition(TransitionKind.Resolve, rule, key, state.DeviceId, null, BuildTitle(rule, device, null),
+                    result.Add(new AlertTransition(TransitionKind.Resolve, rule, key, state.DeviceId, null, BuildTitle(rule, device, state.EntityName),
                         $"No matching events for {Span(rule.Window)}.", 0, nowUtc, AutoResolve: true));
                 }
                 else if (!state.Raised && events.Count == 0)
@@ -357,8 +359,20 @@ public sealed class AlertEvaluator
             return null;
         }
 
-        var dedup = DedupKey(rule.Id, EntityKey(e.DeviceId, null, null));
-        var state = GetState(dedup, rule.Id, e.DeviceId, null, null);
+        // Grouped rules count separately per field value (e.g. per target account or source IP).
+        string? group = null;
+        if (rule.GroupByField is { } field)
+        {
+            if (e.Fields is null || !e.Fields.TryGetValue(field, out group) || string.IsNullOrWhiteSpace(group))
+            {
+                return null;
+            }
+
+            group = group.Trim().ToLowerInvariant();
+        }
+
+        var dedup = DedupKey(rule.Id, EntityKey(e.DeviceId, null, group));
+        var state = GetState(dedup, rule.Id, e.DeviceId, null, group);
         var events = state.Events ??= new Queue<DateTime>();
         events.Enqueue(e.TimestampUtc);
         Prune(events, e.TimestampUtc - rule.Window);
@@ -376,7 +390,7 @@ public sealed class AlertEvaluator
         }
 
         var message = string.Create(CultureInfo.InvariantCulture,
-            $"{events.Count} matching {KeyName(rule.Key).ToLowerInvariant()} events in {Span(rule.Window)}. Last: {Truncate(e.Message, 300)}");
+            $"{events.Count} matching events in {Span(rule.Window)} ({KeyName(rule.Key)}{(group is null ? string.Empty : $", {rule.GroupByField} {group}")}). Last: {Truncate(e.Message, 300)}");
 
         if (state.Raised)
         {
@@ -387,7 +401,7 @@ public sealed class AlertEvaluator
             }
 
             state.LastRefresh = e.TimestampUtc;
-            return Raise(rule, dedup, e.DeviceId, null, device, null, message, events.Count, e.TimestampUtc, autoResolve: true);
+            return Raise(rule, dedup, e.DeviceId, null, device, group, message, events.Count, e.TimestampUtc, autoResolve: true);
         }
 
         if (suppression is not null)
@@ -399,7 +413,7 @@ public sealed class AlertEvaluator
         state.Raised = true;
         state.SuppressedBy = null;
         state.LastRefresh = e.TimestampUtc;
-        return Raise(rule, dedup, e.DeviceId, null, device, null, message, events.Count, e.TimestampUtc, autoResolve: true);
+        return Raise(rule, dedup, e.DeviceId, null, device, group, message, events.Count, e.TimestampUtc, autoResolve: true);
     }
 
     // ------------------------------------------------------------------ absence

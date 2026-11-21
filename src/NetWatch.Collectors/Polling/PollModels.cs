@@ -23,7 +23,8 @@ public sealed record PollRequest(
     int SnmpRetries,
     Servers.ServerPollRequest? Server = null,
     bool SnmpStorage = false,
-    Vmware.VmwarePollRequest? Vmware = null);
+    Vmware.VmwarePollRequest? Vmware = null,
+    DomainControllers.DcPollRequest? Dc = null);
 
 /// <summary>Raw interface counters and status from one poll.</summary>
 public sealed record InterfaceCounters(
@@ -91,6 +92,9 @@ public sealed class DevicePollResult
 
     /// <summary>vCenter / ESXi inventory and health, for devices with a vCenter credential.</summary>
     public Vmware.VmwarePollData? Vmware { get; set; }
+
+    /// <summary>Domain controller security events, replication and clock, for DCs with a Windows credential.</summary>
+    public DomainControllers.DcPollData? Dc { get; set; }
     public TimeSpan Duration { get; set; }
 }
 

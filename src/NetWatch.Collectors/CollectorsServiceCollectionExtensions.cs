@@ -40,6 +40,12 @@ public static class CollectorsServiceCollectionExtensions
         services.AddSingleton<Vmware.IVmwareCollector>(sp => sp.GetRequiredService<Vmware.VmwareCollector>());
         services.AddSingleton<VmwareResultProcessor>();
 
+        // Domain controllers (Security log, replication, clock; optional Windows Event Forwarding).
+        services.AddSingleton<DomainControllers.IDcCollector, DomainControllers.DcCollector>();
+        services.AddSingleton<DcResultProcessor>();
+        services.AddSingleton<DomainControllers.ForwardedEventsReader>();
+        services.AddHostedService(sp => sp.GetRequiredService<DomainControllers.ForwardedEventsReader>());
+
         services.AddSingleton<PollResultProcessor>();
         services.AddSingleton<NetworkDevicePoller>();
         services.AddSingleton<SimulatedDevicePoller>();

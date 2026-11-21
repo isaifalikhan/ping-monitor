@@ -11,6 +11,7 @@ import { LoginPage } from './pages/LoginPage';
 import { OverviewPage } from './pages/OverviewPage';
 import { ServersPage } from './pages/ServersPage';
 import { VmwarePage } from './pages/VmwarePage';
+import { DomainControllersPage } from './pages/DomainControllersPage';
 import { SettingsPage } from './pages/settings/SettingsPage';
 import { SwitchesPage } from './pages/SwitchesPage';
 import { useTheme } from './theme/useTheme';
@@ -34,6 +35,7 @@ export function App() {
           <Route path="/switches" element={<SwitchesPage />} />
           <Route path="/servers" element={<ServersPage />} />
           <Route path="/vmware" element={<VmwarePage />} />
+          <Route path="/dc" element={<DomainControllersPage />} />
           <Route path="/events" element={<EventsPage />} />
           <Route path="/alerts" element={<AlertsPage />} />
           <Route path="/account" element={<AccountPage />} />
