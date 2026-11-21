@@ -192,6 +192,8 @@ export function GeneralTab() {
         fields={[
           { key: 'maxSecurityEventsPerPoll', label: 'Max. Security events per DC and poll', min: 100, max: 50000 },
           { key: 'replicationCheckMin', label: 'Check replication and clock every (min)', min: 1, max: 1440 },
+          { key: 'replicationStaleHours', label: 'Alert when a partner has not replicated for (h)', min: 1, max: 336 },
+          { key: 'checkServicePorts', label: 'Check LDAP 389, Kerberos 88 and DNS 53 on every poll', kind: 'bool' },
           { key: 'workingDays', label: 'Working days', kind: 'text', hint: 'Comma-separated: Mon,Tue,Wed,Thu,Fri' },
           { key: 'workingHoursStart', label: 'Working hours start', kind: 'text', pattern: '[0-2][0-9]:[0-5][0-9]', hint: 'HH:mm' },
           { key: 'workingHoursEnd', label: 'Working hours end', kind: 'text', pattern: '[0-2][0-9]:[0-5][0-9]', hint: 'HH:mm' },

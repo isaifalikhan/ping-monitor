@@ -341,6 +341,10 @@ namespace NetWatch.Data.Config.Migrations
                         .HasMaxLength(255)
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("ReachabilityJson")
+                        .HasMaxLength(1000)
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("ReplicationError")
                         .HasMaxLength(1000)
                         .HasColumnType("TEXT");

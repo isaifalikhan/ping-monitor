@@ -86,11 +86,13 @@ public static class DefaultRules
                 new EventFilter { EventIds = [4726, 4743] }),
             Count("Kerberos pre-authentication failures spike", "At least 50 Kerberos pre-authentication failures (4771) on one DC within 5 minutes, across all accounts (password spraying or a widespread stale credential).",
                 EventKeys.DcSecurity, 50, 300, Severity.Major, all, new EventFilter { EventIds = [4771] }),
-            State("AD replication failing", "Replication with a partner DC has failed for 15 minutes (per partner and naming context).", StateKeys.DcReplicationFailed, Severity.Major, 900, all),
+            State("AD replication failing", "Replication with a partner DC has kept failing for 1 hour (per partner and naming context).", StateKeys.DcReplicationFailed, Severity.Major, 3600, all),
+            State("AD replication stale", "No successful inbound replication from a partner for longer than the configured time (default 3 hours).", StateKeys.DcReplicationStale, Severity.Major, 0, all),
+            State("DC service port unreachable", "LDAP (389), Kerberos (88) or DNS (53) of a domain controller did not accept TCP connections for 2 minutes.", StateKeys.DcPortUnreachable, Severity.Major, 120, all),
             Event("Directory/DFS replication error", "The Directory Service or DFS Replication log reported a replication problem (1311, 1864, 2042, 2087, 2088, 2213, 4012).",
                 EventKeys.WindowsEvent, Severity.Major, all, new EventFilter { EventIds = [1311, 1864, 2042, 2087, 2088, 2213, 4012] }),
             Threshold("DC clock skew", MetricKeys.DcTimeSkew, ComparisonOperator.GreaterThan, 30, 20, 300, Severity.Warning, all),
-            Threshold("DC clock skew critical", MetricKeys.DcTimeSkew, ComparisonOperator.GreaterThan, 240, 200, 0, Severity.Critical, all),
+            Threshold("DC clock skew critical", MetricKeys.DcTimeSkew, ComparisonOperator.GreaterThan, 120, 100, 0, Severity.Critical, all),
 
             // ---- Phase 5: self-monitoring
             State("NetWatch self-check failing", "A NetWatch self-check fails: data disk space, polling backlog, dropped samples or signals, message storm, certificate expiry, backups, scheduled reports, notifications or event forwarding.", StateKeys.SelfCheck, Severity.Major, 120, all),

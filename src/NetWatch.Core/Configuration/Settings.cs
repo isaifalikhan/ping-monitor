@@ -239,6 +239,12 @@ public sealed class DcSettings
     public bool ExcludeComputerAccounts { get; set; } = true;
     public int MaxSecurityEventsPerPoll { get; set; } = 5000;
 
+    /// <summary>Alert when a partner / naming context has not replicated successfully for this many hours.</summary>
+    public int ReplicationStaleHours { get; set; } = 3;
+
+    /// <summary>Check that LDAP (389), Kerberos (88) and DNS (53) accept TCP connections on every poll.</summary>
+    public bool CheckServicePorts { get; set; } = true;
+
     /// <summary>How often replication partners are queried (minutes).</summary>
     public int ReplicationCheckMin { get; set; } = 5;
 
@@ -263,6 +269,7 @@ public sealed class DcSettings
             .Distinct(StringComparer.OrdinalIgnoreCase).Take(500).ToList();
         MaxSecurityEventsPerPoll = Math.Clamp(MaxSecurityEventsPerPoll, 100, 50_000);
         ReplicationCheckMin = Math.Clamp(ReplicationCheckMin, 1, 1440);
+        ReplicationStaleHours = Math.Clamp(ReplicationStaleHours, 1, 24 * 14);
         SuccessfulLogonTypes = SuccessfulLogonTypes.Where(t => t is >= 0 and <= 13).Distinct().ToList();
         if (!TimeSpan.TryParseExact(WorkingHoursStart, @"hh\:mm", null, out _))
         {

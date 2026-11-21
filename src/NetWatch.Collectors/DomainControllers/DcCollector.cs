@@ -38,6 +38,11 @@ public sealed class DcCollector : IDcCollector
         var data = new DcPollData();
         var budget = request.Timeout + TimeSpan.FromSeconds(10);
 
+        if (request.CheckPorts)
+        {
+            data.Ports = await DcPorts.CheckAsync(request.Host, TimeSpan.FromSeconds(3), ct);
+        }
+
         await Part(() => ReadLogs(request, account, data), e => data.SecurityLogError = e, "event logs");
         if (request.CheckReplication)
         {

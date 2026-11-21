@@ -41,6 +41,7 @@ internal sealed class SimulatedDomainController
     private int _sprayPolls;
     private string? _sprayIp;
     private int _replicationFailPolls;
+    private int _portOutagePolls;
     private DateTime _lastReplicationSuccess;
     private int _replicationFailures;
     private double _clockOffset;
@@ -103,6 +104,22 @@ internal sealed class SimulatedDomainController
                 : (1864, $"This is the replication status for the following directory partition on this directory server. More than 24 hours since last successful replication with {_partner}.");
             data.DirectoryEvents.Add(new WindowsEventReading(DcLogs.DirectoryService, _dsRecordId, now, 2, id, "Microsoft-Windows-ActiveDirectory_DomainService", text));
             data.NewBookmarks[DcLogs.DirectoryService] = _dsRecordId;
+        }
+
+        if (request.CheckPorts)
+        {
+            if (_portOutagePolls > 0)
+            {
+                _portOutagePolls--;
+            }
+            else if (!_isPdc && _rng.NextDouble() < 0.002)
+            {
+                _portOutagePolls = 5;
+            }
+
+            data.Ports = DcPorts.All.Select(p => p.Service == "DNS" && _portOutagePolls > 0
+                ? new DcPortCheck(p.Service, p.Port, "connection refused")
+                : new DcPortCheck(p.Service, p.Port, null, Math.Round(0.4 + _rng.NextDouble(), 1))).ToList();
         }
 
         if (request.CheckReplication)

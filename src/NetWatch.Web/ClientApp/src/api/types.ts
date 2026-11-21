@@ -862,6 +862,8 @@ export interface DcSettings {
   readSecurityLog: boolean;
   useForwardedEvents: boolean;
   forwardedDcs: string[];
+  replicationStaleHours: number;
+  checkServicePorts: boolean;
   successfulLogonIgnoreSources: string[];
   storeSuccessfulLogons: boolean;
   successfulLogonTypes: number[];

@@ -61,6 +61,9 @@ public class DcInfo
     public DateTime? LastReplicationCheckUtc { get; set; }
     public string? ReplicationError { get; set; }
     public string? SecurityLogError { get; set; }
+
+    /// <summary>Last TCP reachability check as JSON: [{"service":"LDAP","port":389,"error":null,"ms":1.2}, ...].</summary>
+    public string? ReachabilityJson { get; set; }
     public DateTime LastSeenUtc { get; set; }
 }
 

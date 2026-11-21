@@ -231,6 +231,7 @@ public class NetWatchDbContext : DbContext
             e.Property(x => x.PdcEmulator).HasMaxLength(255);
             e.Property(x => x.ReplicationError).HasMaxLength(1000);
             e.Property(x => x.SecurityLogError).HasMaxLength(1000);
+            e.Property(x => x.ReachabilityJson).HasMaxLength(1000);
         });
 
         b.Entity<DcReplicationLink>(e =>
