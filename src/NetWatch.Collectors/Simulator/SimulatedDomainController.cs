@@ -204,9 +204,10 @@ internal sealed class SimulatedDomainController
         }
 
         // ---- normal office traffic (heavier during the working day)
-        // About three events per logon below (4768 + 4624, and a 4776 for every logon); a load test sets the total rate.
+        // 7/3 events per logon below (4768 + 4624, plus one 4776 per three logons); a load test sets the total generated rate
+        // over both DCs. Fewer are stored: by default only interactive/RDP/unlock/cached 4624 logons are kept.
         var logons = SimLoad.DcEventsPerMinute > 0
-            ? (int)Math.Round(SimLoad.DcEventsPerMinute / 2 / 3 * (Math.Max(1, elapsedSec) / 60) * (0.85 + (_rng.NextDouble() * 0.3)))
+            ? (int)Math.Round(SimLoad.DcEventsPerMinute / 2 / (7.0 / 3) * (Math.Max(1, elapsedSec) / 60) * (0.9 + (_rng.NextDouble() * 0.2)))
             : (int)Math.Round((4 + (diurnal * 30)) * (0.7 + (_rng.NextDouble() * 0.6)));
         for (var i = 0; i < logons; i++)
         {
