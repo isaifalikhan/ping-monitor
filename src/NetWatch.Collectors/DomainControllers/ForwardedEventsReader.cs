@@ -50,7 +50,7 @@ public sealed class ForwardedEventsReader : BackgroundService
         using var timer = new PeriodicTimer(Interval);
         do
         {
-            if (!_settings.Dc.UseForwardedEvents)
+            if (!_settings.Dc.AnyForwarding)
             {
                 LastError = null;
                 continue;
@@ -78,7 +78,8 @@ public sealed class ForwardedEventsReader : BackgroundService
 
     private async Task ReadAsync(CancellationToken ct)
     {
-        var max = _settings.Dc.MaxSecurityEventsPerPoll;
+        var dcSettings = _settings.Dc;
+        var max = dcSettings.MaxSecurityEventsPerPoll;
         var batch = new Dictionary<int, List<DcSecurityReading>>();
         EventBookmark? newest = _bookmark;
 
@@ -105,7 +106,8 @@ public sealed class ForwardedEventsReader : BackgroundService
                     continue;
                 }
 
-                if (FindDc(parsed.Computer) is not { } device)
+                // Only DCs set to WEF; the others are read remotely (and the unique index would drop duplicates anyway).
+                if (FindDc(parsed.Computer) is not { } device || !dcSettings.UsesForwarding(device.Name, device.IpAddress))
                 {
                     continue;
                 }

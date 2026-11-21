@@ -28,4 +28,9 @@
     <Using Include="Xunit" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- Real-format sample data for parser tests (event XML, SNMP walks, Redfish JSON ...). -->
+    <None Include="Samples\**\*" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
 </Project>

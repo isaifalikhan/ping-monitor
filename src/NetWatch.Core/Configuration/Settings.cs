@@ -167,6 +167,68 @@ public sealed class DcSettings
     /// </summary>
     public bool UseForwardedEvents { get; set; }
 
+    /// <summary>
+    /// DCs (name, short name or IP) that deliver their Security events through Windows Event Forwarding while the
+    /// others are read remotely. Ignored when <see cref="UseForwardedEvents"/> is on (then every DC uses WEF).
+    /// </summary>
+    public List<string> ForwardedDcs { get; set; } = new();
+
+    /// <summary>
+    /// Sources (IP address, IPv4 CIDR such as 10.0.20.0/24, or workstation name) whose successful logons (4624)
+    /// are not stored, e.g. application servers that log on over the network all day.
+    /// </summary>
+    public List<string> SuccessfulLogonIgnoreSources { get; set; } = new();
+
+    /// <summary>True when any DC uses Windows Event Forwarding (the ForwardedEvents reader must run).</summary>
+    [System.Text.Json.Serialization.JsonIgnore]
+    public bool AnyForwarding => UseForwardedEvents || ForwardedDcs.Count > 0;
+
+    /// <summary>True when this DC's Security events come from the ForwardedEvents log instead of remote reads.</summary>
+    public bool UsesForwarding(string? name, string? ip)
+    {
+        if (UseForwardedEvents)
+        {
+            return true;
+        }
+
+        var shortName = name?.Split('.')[0];
+        return ForwardedDcs.Any(d =>
+            (name is not null && d.Equals(name, StringComparison.OrdinalIgnoreCase)) ||
+            (shortName is not null && d.Split('.')[0].Equals(shortName, StringComparison.OrdinalIgnoreCase)) ||
+            (ip is not null && d.Equals(ip, StringComparison.OrdinalIgnoreCase)));
+    }
+
+    /// <summary>True when a successful logon from this source IP or workstation must not be stored.</summary>
+    public bool IsIgnoredLogonSource(string? ip, string? workstation)
+    {
+        foreach (var entry in SuccessfulLogonIgnoreSources)
+        {
+            if (workstation is not null && entry.Equals(workstation, StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+
+            if (ip is null || !System.Net.IPAddress.TryParse(ip, out var address))
+            {
+                continue;
+            }
+
+            if (entry.Contains('/'))
+            {
+                if (System.Net.IPNetwork.TryParse(entry, out var network) && network.Contains(address))
+                {
+                    return true;
+                }
+            }
+            else if (System.Net.IPAddress.TryParse(entry, out var single) && single.Equals(address))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     /// <summary>Store successful logons (4624). They are never alerted on by default.</summary>
     public bool StoreSuccessfulLogons { get; set; } = true;
 
@@ -196,6 +258,9 @@ public sealed class DcSettings
     public void Normalise()
     {
         PrivilegedGroups = PrivilegedGroups.Where(g => !string.IsNullOrWhiteSpace(g)).Select(g => g.Trim()).Distinct(StringComparer.OrdinalIgnoreCase).Take(50).ToList();
+        ForwardedDcs = ForwardedDcs.Where(d => !string.IsNullOrWhiteSpace(d)).Select(d => d.Trim()).Distinct(StringComparer.OrdinalIgnoreCase).Take(100).ToList();
+        SuccessfulLogonIgnoreSources = SuccessfulLogonIgnoreSources.Where(d => !string.IsNullOrWhiteSpace(d)).Select(d => d.Trim())
+            .Distinct(StringComparer.OrdinalIgnoreCase).Take(500).ToList();
         MaxSecurityEventsPerPoll = Math.Clamp(MaxSecurityEventsPerPoll, 100, 50_000);
         ReplicationCheckMin = Math.Clamp(ReplicationCheckMin, 1, 1440);
         SuccessfulLogonTypes = SuccessfulLogonTypes.Where(t => t is >= 0 and <= 13).Distinct().ToList();

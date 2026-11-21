@@ -62,7 +62,19 @@ public sealed class DcResultProcessor
         public bool Loaded;
         public Dictionary<string, long> Bookmarks = new(StringComparer.OrdinalIgnoreCase);
         public DateTime LastReplicationCheckUtc;
+
+        /// <summary>Security log requested in the current poll (for back-off bookkeeping).</summary>
+        public bool SecurityRequested;
+        public int SecurityFailures;
+        public DateTime NextSecurityReadUtc;
     }
+
+    /// <summary>
+    /// Wait after <paramref name="failures"/> consecutive failed Security-log reads: 1, 2, 4, 8, 16, then 30 minutes.
+    /// The bookmark only advances on success, so events are read later, not lost.
+    /// </summary>
+    internal static TimeSpan SecurityBackoff(int failures) =>
+        failures <= 0 ? TimeSpan.Zero : TimeSpan.FromMinutes(Math.Min(30, Math.Pow(2, Math.Min(failures, 6) - 1)));
 
     /// <summary>Security events stored since start (self-monitoring).</summary>
     public long StoredEvents => Interlocked.Read(ref _stored);
@@ -93,11 +105,13 @@ public sealed class DcResultProcessor
             rt.LastReplicationCheckUtc = now;
         }
 
+        var readSecurity = dc.ReadSecurityLog && !dc.UsesForwarding(device.Name, device.IpAddress) && now >= rt.NextSecurityReadUtc;
+        rt.SecurityRequested = readSecurity;
         return new DcPollRequest(
             device.IpAddress,
             credential,
             new Dictionary<string, long>(rt.Bookmarks, StringComparer.OrdinalIgnoreCase),
-            dc.ReadSecurityLog && !dc.UseForwardedEvents,
+            readSecurity,
             dc.MaxSecurityEventsPerPoll,
             checkReplication,
             servers.WinRmHttps && servers.WinRmPort == 5985 ? 5986 : servers.WinRmPort,
@@ -115,6 +129,25 @@ public sealed class DcResultProcessor
 
         var now = result.TimestampUtc;
         var rt = await GetRuntimeAsync(device.Id, ct);
+
+        if (rt.SecurityRequested)
+        {
+            if (dc.NewBookmarks.ContainsKey(DcLogs.Security))
+            {
+                rt.SecurityFailures = 0;
+                rt.NextSecurityReadUtc = DateTime.MinValue;
+            }
+            else
+            {
+                rt.SecurityFailures++;
+                rt.NextSecurityReadUtc = now + SecurityBackoff(rt.SecurityFailures);
+                if (rt.SecurityFailures is 1 or 6)
+                {
+                    _logger.LogWarning("Security log of {Device} could not be read ({Failures} in a row, next try {Next:u}): {Error}",
+                        device.Name, rt.SecurityFailures, rt.NextSecurityReadUtc, dc.SecurityLogError);
+                }
+            }
+        }
 
         await IngestSecurityAsync(device, dc.SecurityEvents, events, ct);
         await DirectoryEventsAsync(device, rt, dc, events, now, ct);
@@ -238,7 +271,8 @@ public sealed class DcResultProcessor
                 return s.StoreSuccessfulLogons &&
                        (s.SuccessfulLogonTypes.Count == 0 || (r.LogonType is { } t && s.SuccessfulLogonTypes.Contains(t))) &&
                        !(s.ExcludeComputerAccounts && DcEventParser.IsComputerAccount(r.TargetUser)) &&
-                       !DcEventParser.IsServiceIdentity(r.TargetUser);
+                       !DcEventParser.IsServiceIdentity(r.TargetUser) &&
+                       !s.IsIgnoredLogonSource(r.SourceIp, r.Workstation);
             case 4768 or 4776 when !r.Failed:
                 return s.StoreSuccessfulLogons && !(s.ExcludeComputerAccounts && DcEventParser.IsComputerAccount(r.TargetUser));
             case 4625 or 4768 or 4771 or 4776:

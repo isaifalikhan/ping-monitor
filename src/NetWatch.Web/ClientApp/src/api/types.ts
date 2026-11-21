@@ -861,6 +861,8 @@ export interface SavedSearch<Q = Record<string, string>> {
 export interface DcSettings {
   readSecurityLog: boolean;
   useForwardedEvents: boolean;
+  forwardedDcs: string[];
+  successfulLogonIgnoreSources: string[];
   storeSuccessfulLogons: boolean;
   successfulLogonTypes: number[];
   excludeComputerAccounts: boolean;

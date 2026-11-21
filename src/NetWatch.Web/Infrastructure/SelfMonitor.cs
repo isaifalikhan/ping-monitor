@@ -243,7 +243,7 @@ public sealed class SelfMonitorService : BackgroundService
             backups.LastError,
             ReportError,
             notifications.Status,
-            settings.Dc.UseForwardedEvents,
+            settings.Dc.AnyForwarding,
             forwarding.LastError);
 
         Latest = SelfChecks.Evaluate(input, settings.SelfMonitor);

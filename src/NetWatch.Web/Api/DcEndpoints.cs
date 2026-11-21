@@ -101,7 +101,7 @@ public static class DcEndpoints
         }).ToList();
 
         var s = settings.Dc;
-        return Results.Ok(new DcOverviewDto(list, s.UseForwardedEvents, s.UseForwardedEvents ? forwarded.LastError : null, forwarded.LastReadUtc, forwarded.EventsRead));
+        return Results.Ok(new DcOverviewDto(list, s.AnyForwarding, s.AnyForwarding ? forwarded.LastError : null, forwarded.LastReadUtc, forwarded.EventsRead));
     }
 
     // ---------------------------------------------------------------- security events

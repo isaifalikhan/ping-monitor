@@ -198,7 +198,9 @@ export function GeneralTab() {
           { key: 'successfulLogonTypes', label: 'Logon types of 4624 to store', kind: 'list', numeric: true, hint: '2 interactive, 3 network, 7 unlock, 10 RDP, 11 cached; empty = all' },
           { key: 'privilegedGroups', label: 'Privileged groups (new members = CRITICAL)', kind: 'list' },
           { key: 'readSecurityLog', label: 'Read the Security log of each DC remotely', kind: 'bool' },
-          { key: 'useForwardedEvents', label: 'Use Windows Event Forwarding (ForwardedEvents log on this server) instead', kind: 'bool' },
+          { key: 'useForwardedEvents', label: 'Use Windows Event Forwarding (ForwardedEvents log on this server) for all DCs', kind: 'bool' },
+          { key: 'forwardedDcs', label: 'DCs that use Event Forwarding (when not all)', kind: 'list', hint: 'DC name or IP; the other DCs are read remotely' },
+          { key: 'successfulLogonIgnoreSources', label: 'Do not store successful logons from', kind: 'list', hint: 'IP, CIDR (10.0.20.0/24) or workstation name, e.g. application servers' },
           { key: 'storeSuccessfulLogons', label: 'Store successful logons (4624, 4768, 4776)', kind: 'bool' },
           { key: 'excludeComputerAccounts', label: 'Ignore computer accounts (name$) in logon events', kind: 'bool' },
         ]}
