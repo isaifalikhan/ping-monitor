@@ -256,7 +256,7 @@ public static class InventoryEndpoints
         return Results.NoContent();
     }
 
-    private static async Task<IResult> TestCredentialAsync(int id, CredentialTestRequest request, HttpContext http, NetWatchDbContext db, ISecretProtector protector, SettingsService settings, IServerCollector servers, AuditWriter audit, CancellationToken ct)
+    private static async Task<IResult> TestCredentialAsync(int id, CredentialTestRequest request, HttpContext http, NetWatchDbContext db, ISecretProtector protector, SettingsService settings, IServerCollector servers, Collectors.Vmware.IVmwareCollector vmware, AuditWriter audit, CancellationToken ct)
     {
         if (!System.Net.IPAddress.TryParse(request.IpAddress?.Trim(), out var ip))
         {
@@ -283,9 +283,31 @@ public static class InventoryEndpoints
                 : Results.Ok(new { success = false, error = data.Error });
         }
 
+        if (profile.Kind == CredentialKind.VCenter)
+        {
+            await audit.WriteAsync(http.Actor(), "CredentialTested", "Credential", id.Inv(), ip.ToString());
+            var v = settings.Vmware;
+
+            // A test never pins a certificate: with trust on first use it only reports what would be pinned.
+            var data = await vmware.CollectAsync(new Collectors.Vmware.VmwarePollRequest(
+                ip.ToString(), new ManagementCredential(profile.Kind, secret), null, v.TrustOnFirstUse, false, false, false, 10, null,
+                TimeSpan.FromSeconds(v.TimeoutSec)), ct);
+            return data.Ok
+                ? Results.Ok(new
+                {
+                    success = true,
+                    sysName = data.FullName,
+                    sysDescription = $"{data.Hosts.Count} host(s), {data.Vms.Count} VM(s), {data.Datastores.Count} datastore(s)" +
+                                     (data.NewThumbprint is { } tp ? $". Certificate not CA-trusted; it will be pinned on first poll (SHA-256 {tp})." : "."),
+                    vendor = (string?)null,
+                    model = (string?)null,
+                })
+                : Results.Ok(new { success = false, error = data.Error });
+        }
+
         if (profile.Kind is not (CredentialKind.SnmpV2c or CredentialKind.SnmpV3))
         {
-            return HttpExtensions.Error("This credential type cannot be tested yet (vCenter arrives in Phase 3).");
+            return HttpExtensions.Error("This credential type cannot be tested.");
         }
         var monitoring = settings.Monitoring;
         var client = new SnmpClient(ip, new Collectors.Polling.SnmpCredential(profile.Kind, secret), monitoring.SnmpTimeoutMs, monitoring.SnmpRetries);

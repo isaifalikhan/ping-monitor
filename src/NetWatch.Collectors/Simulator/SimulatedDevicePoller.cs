@@ -16,6 +16,7 @@ public sealed class SimulatedDevicePoller : IDevicePoller
 
     private readonly ConcurrentDictionary<int, SimDevice> _devices = new();
     private readonly TimeProvider _time;
+    private readonly SimulatedVcenter _vcenter = new();
 
     public SimulatedDevicePoller(TimeProvider time)
     {
@@ -124,6 +125,11 @@ public sealed class SimulatedDevicePoller : IDevicePoller
         result.PingOk = true;
         result.RttMs = Math.Round(d.BaseRtt * (1 + (diurnal * 0.5)) + (d.Rng.NextDouble() * d.BaseRtt * 0.6), 2);
         result.LossPct = d.Rng.NextDouble() < 0.004 ? 33.3 : 0;
+
+        if (request.Vmware is { } vmwareRequest && d.Type == DeviceType.VCenter)
+        {
+            result.Vmware = _vcenter.Poll(vmwareRequest, now, diurnal);
+        }
 
         if (request.Snmp is null)
         {

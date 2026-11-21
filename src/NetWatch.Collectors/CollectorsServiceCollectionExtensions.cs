@@ -35,6 +35,11 @@ public static class CollectorsServiceCollectionExtensions
         services.AddSingleton<IServerCollector, ServerCollectorRouter>();
         services.AddSingleton<ServerResultProcessor>();
 
+        // VMware (vSphere Web Services).
+        services.AddSingleton<Vmware.VmwareCollector>();
+        services.AddSingleton<Vmware.IVmwareCollector>(sp => sp.GetRequiredService<Vmware.VmwareCollector>());
+        services.AddSingleton<VmwareResultProcessor>();
+
         services.AddSingleton<PollResultProcessor>();
         services.AddSingleton<NetworkDevicePoller>();
         services.AddSingleton<SimulatedDevicePoller>();

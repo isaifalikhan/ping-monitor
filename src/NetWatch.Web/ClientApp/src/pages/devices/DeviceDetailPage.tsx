@@ -16,6 +16,7 @@ import { fmtAgo, fmtBps, fmtDateTime, fmtDuration, fmtMs, fmtNum, fmtPct, fmtSpe
 import { AlertDetailDialog } from '../alerts/AlertsPage';
 import { DeviceForm } from './DeviceForm';
 import { ServerPanel } from './ServerPanel';
+import { VmwarePanel } from './VmwarePanel';
 
 interface LiveMetrics {
   deviceId: number;
@@ -412,6 +413,7 @@ export function DeviceDetailPage() {
               </div>
             </div>
           )}
+          <VmwarePanel device={d} />
           <DeviceCharts deviceId={deviceId} range={range} />
           <div className="card">
             <div className="card-head">

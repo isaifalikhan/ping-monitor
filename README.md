@@ -8,12 +8,16 @@ inventory (manual, CSV import, subnet discovery), ICMP ping and SNMP v2c/v3 poll
 Juniper, plus standard-MIB fallbacks), interface traffic graphs, CPU/memory/temperature/sensor health, threshold and
 state alerts with on-screen pop-ups and sound, and a Windows installer.
 
-**Phase 2 (this release, 1.1.0):** agentless server monitoring (Windows via WinRM/WMI with DCOM fallback and remote
+**Phase 2 (1.1.0):** agentless server monitoring (Windows via WinRM/WMI with DCOM fallback and remote
 event logs; Linux via SSH; SNMP HOST-RESOURCES fallback) with disks, watched services, pending reboot, last patch,
 load and network; SNMP trap receiver (v1/v2c/v3, informs) and syslog receiver (UDP/TCP, RFC 5424/3164 and vendor
 formats) with search; full alert lifecycle (event filters, count-in-window and absence rules, flapping protection,
 escalation, dependency suppression, scheduled maintenance windows); offline notification channels (Windows Event
 Log, syslog forwarding, script, SMTP); sign-in with Active Directory accounts (LDAPS, group → role mapping).
+
+**Phase 3 (this release, 1.2.0):** VMware monitoring through the vSphere API (vCenter or standalone ESXi): hosts,
+VMs, datastores and snapshots (age and size), CPU ready, VMware Tools, triggered vCenter alarms and events, VM →
+host → datastore mapping, a VMware page, VMware alert rules, and certificate pinning for self-signed vCenters.
 
 The earlier cloud version (Next.js + Supabase) is preserved at git tag `legacy-cloud-netwatch`.
 

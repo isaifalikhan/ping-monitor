@@ -22,7 +22,8 @@ public sealed record PollRequest(
     int SnmpTimeoutMs,
     int SnmpRetries,
     Servers.ServerPollRequest? Server = null,
-    bool SnmpStorage = false);
+    bool SnmpStorage = false,
+    Vmware.VmwarePollRequest? Vmware = null);
 
 /// <summary>Raw interface counters and status from one poll.</summary>
 public sealed record InterfaceCounters(
@@ -87,6 +88,9 @@ public sealed class DevicePollResult
 
     /// <summary>Server facts (WinRM/WMI, SSH or SNMP storage), or null for network devices.</summary>
     public Servers.ServerPollData? Server { get; set; }
+
+    /// <summary>vCenter / ESXi inventory and health, for devices with a vCenter credential.</summary>
+    public Vmware.VmwarePollData? Vmware { get; set; }
     public TimeSpan Duration { get; set; }
 }
 

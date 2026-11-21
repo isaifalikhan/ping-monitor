@@ -69,6 +69,12 @@ public class Device
     /// later is refused until an administrator clears this value.
     /// </summary>
     public string? SshHostKeyFingerprint { get; set; }
+
+    /// <summary>
+    /// SHA-256 thumbprint of the vCenter/ESXi TLS certificate pinned on first connection when it is not issued by a
+    /// trusted CA (typical for VMCA self-signed certificates). A different certificate is refused until cleared.
+    /// </summary>
+    public string? TlsThumbprint { get; set; }
     public DateTime CreatedUtc { get; set; }
     public DateTime UpdatedUtc { get; set; }
 

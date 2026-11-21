@@ -72,7 +72,8 @@ public sealed record DeviceDetailDto(
     IReadOnlyList<string> WatchedServices,
     string? SshHostKeyFingerprint,
     string? MaintenanceReason,
-    string? UnreachableVia);
+    string? UnreachableVia,
+    string? TlsThumbprint = null);
 
 public sealed record DeviceInput(
     string? Name,
@@ -89,7 +90,8 @@ public sealed record DeviceInput(
     string? Notes,
     IReadOnlyList<string>? Tags,
     int? ManagementCredentialId = null,
-    IReadOnlyList<string>? WatchedServices = null);
+    IReadOnlyList<string>? WatchedServices = null,
+    int? VcenterCredentialId = null);
 
 public sealed record MaintenanceRequest(IReadOnlyList<int> DeviceIds, bool Enabled, DateTime? UntilUtc);
 

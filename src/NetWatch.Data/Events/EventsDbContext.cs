@@ -16,6 +16,7 @@ public class EventsDbContext : DbContext
     public DbSet<SnmpTrap> SnmpTraps => Set<SnmpTrap>();
     public DbSet<WindowsEventEntry> WindowsEvents => Set<WindowsEventEntry>();
     public DbSet<EventBookmark> EventBookmarks => Set<EventBookmark>();
+    public DbSet<VmwareEvent> VmwareEvents => Set<VmwareEvent>();
 
     protected override void ConfigureConventions(ModelConfigurationBuilder configurationBuilder)
     {
@@ -66,6 +67,17 @@ public class EventsDbContext : DbContext
             e.HasIndex(x => x.TimestampUtc);
             e.HasIndex(x => new { x.DeviceId, x.TimestampUtc });
             e.HasIndex(x => new { x.DeviceId, x.LogName, x.RecordId }).IsUnique();
+        });
+
+        b.Entity<VmwareEvent>(e =>
+        {
+            e.ToTable("VmwareEvents");
+            e.Property(x => x.EventType).HasMaxLength(128);
+            e.Property(x => x.UserName).HasMaxLength(255);
+            e.Property(x => x.EntityName).HasMaxLength(255);
+            e.Property(x => x.Message).HasMaxLength(4000);
+            e.HasIndex(x => x.TimestampUtc);
+            e.HasIndex(x => new { x.SourceDeviceId, x.EventKey }).IsUnique();
         });
 
         b.Entity<EventBookmark>(e =>

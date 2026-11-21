@@ -43,6 +43,7 @@ Interfaces you mark as not monitored are not stored. You can shorten retention u
 | Outbound | TCP 5985 (or 5986) | NetWatch server → Windows servers | WinRM (WMI over WS-Management). 5985 traffic is encrypted by Kerberos/NTLM |
 | Outbound | TCP 135 + dynamic RPC | NetWatch server → Windows servers | Remote event logs; WMI over DCOM if WinRM is unavailable |
 | Outbound | TCP 22 | NetWatch server → Linux servers | SSH |
+| Outbound | TCP 443 | NetWatch server → vCenter / ESXi | vSphere API (read-only) |
 | Outbound | TCP 636 (or 389) | NetWatch server → domain controllers | Optional: sign-in with AD accounts (LDAPS) |
 | Outbound | as configured | NetWatch server → SMTP relay / SIEM | Optional notification channels |
 
@@ -119,6 +120,7 @@ Use dedicated, read-only accounts for monitoring:
 | Switches, routers | SNMP v2c read-only community, or (recommended) an SNMPv3 user with authPriv (SHA-256 + AES) and a read-only view. Restrict SNMP to the NetWatch server's address. Send traps (v2c or v3) and syslog to the NetWatch server |
 | Windows servers | A domain user (e.g. `svc-netwatch`), **not** a domain admin. On each server (or by GPO): member of **Event Log Readers** and **Distributed COM Users**; WMI namespace `root\cimv2` and `root\default` (for pending-reboot checks): *Enable Account* + *Remote Enable* (wmimgmt.msc → WMI Control → Security). For WinRM add the account to **Remote Management Users** and enable WinRM (`winrm quickconfig` or GPO). Windows firewall rules: *Windows Remote Management (HTTP-In)*, *Remote Event Log Management*, and for the DCOM fallback *Windows Management Instrumentation (WMI-In)* |
 | Linux servers | An unprivileged user (e.g. `netwatch`) with SSH access; password or key. No sudo is needed: NetWatch only reads `/proc`, runs `df` and `systemctl show`. The host key is recorded on first contact and verified afterwards |
+| vCenter / ESXi | A vCenter user (e.g. `netwatch-ro@vsphere.local` or an AD account) with the built-in **Read-only** role assigned at the vCenter root object, *propagate to children* ticked. For a standalone ESXi host, a local user with the Read-only role. Self-signed (VMCA) certificates are pinned on first connection unless the VMCA root is trusted on the NetWatch server |
 | Active Directory sign-in | None stored: users bind with their own account. Use LDAPS (636) with the DC certificate trusted on the NetWatch server |
 | SMTP relay | Optional; an authenticated relay account if the relay requires it |
 

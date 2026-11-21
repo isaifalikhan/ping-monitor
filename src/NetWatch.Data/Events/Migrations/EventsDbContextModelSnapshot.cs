@@ -184,6 +184,54 @@ namespace NetWatch.Data.Events.Migrations
                     b.ToTable("SyslogMessages", (string)null);
                 });
 
+            modelBuilder.Entity("NetWatch.Core.Entities.VmwareEvent", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("EntityName")
+                        .HasMaxLength(255)
+                        .HasColumnType("TEXT");
+
+                    b.Property<long>("EventKey")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("EventType")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Message")
+                        .IsRequired()
+                        .HasMaxLength(4000)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Severity")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("SourceDeviceId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime>("TimestampUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("UserName")
+                        .HasMaxLength(255)
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TimestampUtc");
+
+                    b.HasIndex("SourceDeviceId", "EventKey")
+                        .IsUnique();
+
+                    b.ToTable("VmwareEvents", (string)null);
+                });
+
             modelBuilder.Entity("NetWatch.Core.Entities.WindowsEventEntry", b =>
                 {
                     b.Property<long>("Id")

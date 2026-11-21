@@ -27,6 +27,7 @@ export function DeviceForm({ device, onClose, onSaved }: { device?: DeviceDetail
     parentDeviceId: device?.parentDeviceId ?? null,
     snmpCredentialId: device?.credentials.find((c) => c.purpose === 'Snmp')?.credentialProfileId ?? null,
     managementCredentialId: device?.credentials.find((c) => c.purpose === 'Management')?.credentialProfileId ?? null,
+    vcenterCredentialId: device?.credentials.find((c) => c.purpose === 'VCenter')?.credentialProfileId ?? null,
     notes: device?.notes ?? '',
     tags: device?.tags ?? [],
   }));
@@ -68,6 +69,8 @@ export function DeviceForm({ device, onClose, onSaved }: { device?: DeviceDetail
 
   const snmpCreds = (creds.data ?? []).filter((c) => c.kind === 'SnmpV2c' || c.kind === 'SnmpV3');
   const managementCreds = (creds.data ?? []).filter((c) => c.kind === 'Windows' || c.kind === 'Ssh');
+  const vcenterCreds = (creds.data ?? []).filter((c) => c.kind === 'VCenter');
+  const vmwareType = form.type === 'VCenter' || form.type === 'Hypervisor';
   const serverType = ['Server', 'VM', 'DomainController', 'Hypervisor'].includes(form.type);
 
   return (
@@ -144,6 +147,20 @@ export function DeviceForm({ device, onClose, onSaved }: { device?: DeviceDetail
             ))}
           </select>
         </label>
+        {(vmwareType || form.vcenterCredentialId) && (
+          <label className="field">
+            <span>vCenter / ESXi credential</span>
+            <select value={form.vcenterCredentialId ?? ''} onChange={(e) => set('vcenterCredentialId', e.target.value ? Number(e.target.value) : null)}>
+              <option value="">— none —</option>
+              {vcenterCreds.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name}
+                </option>
+              ))}
+            </select>
+            <span className="hint">Collects hosts, VMs, datastores, snapshots, alarms and events through the vSphere API (read-only role).</span>
+          </label>
+        )}
         {(serverType || form.managementCredentialId) && (
           <label className="field">
             <span>Windows / SSH credential</span>

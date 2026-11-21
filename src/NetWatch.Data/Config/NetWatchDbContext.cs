@@ -29,6 +29,11 @@ public class NetWatchDbContext : DbContext
     public DbSet<ServerInfo> ServerInfos => Set<ServerInfo>();
     public DbSet<Volume> Volumes => Set<Volume>();
     public DbSet<WatchedService> WatchedServices => Set<WatchedService>();
+    public DbSet<VmwareHost> VmwareHosts => Set<VmwareHost>();
+    public DbSet<VmwareVm> VmwareVms => Set<VmwareVm>();
+    public DbSet<VmwareDatastore> VmwareDatastores => Set<VmwareDatastore>();
+    public DbSet<VmwareSnapshot> VmwareSnapshots => Set<VmwareSnapshot>();
+    public DbSet<VmwareAlarm> VmwareAlarms => Set<VmwareAlarm>();
 
     protected override void ConfigureConventions(ModelConfigurationBuilder configurationBuilder)
     {
@@ -102,6 +107,7 @@ public class NetWatchDbContext : DbContext
             e.HasMany(x => x.Interfaces).WithOne().HasForeignKey(x => x.DeviceId).OnDelete(DeleteBehavior.Cascade);
             e.HasMany(x => x.WatchedServices).WithOne().HasForeignKey(x => x.DeviceId).OnDelete(DeleteBehavior.Cascade);
             e.Property(x => x.SshHostKeyFingerprint).HasMaxLength(128);
+            e.Property(x => x.TlsThumbprint).HasMaxLength(128);
         });
 
         b.Entity<ServerInfo>(e =>
@@ -134,6 +140,78 @@ public class NetWatchDbContext : DbContext
             e.Property(x => x.DisplayName).HasMaxLength(256);
             e.Property(x => x.StartMode).HasMaxLength(32);
             e.HasIndex(x => new { x.DeviceId, x.ServiceName }).IsUnique();
+        });
+
+        b.Entity<VmwareHost>(e =>
+        {
+            e.ToTable("VmwareHosts");
+            e.HasOne<Device>().WithMany().HasForeignKey(x => x.SourceDeviceId).OnDelete(DeleteBehavior.Cascade);
+            e.HasIndex(x => new { x.SourceDeviceId, x.MoRef }).IsUnique();
+            e.Property(x => x.MoRef).HasMaxLength(64);
+            e.Property(x => x.Name).HasMaxLength(255);
+            e.Property(x => x.Cluster).HasMaxLength(255);
+            e.Property(x => x.ConnectionState).HasMaxLength(32);
+            e.Property(x => x.PowerState).HasMaxLength(32);
+            e.Property(x => x.OverallStatus).HasMaxLength(16);
+            e.Property(x => x.Vendor).HasMaxLength(100);
+            e.Property(x => x.Model).HasMaxLength(100);
+            e.Property(x => x.Product).HasMaxLength(200);
+        });
+
+        b.Entity<VmwareVm>(e =>
+        {
+            e.ToTable("VmwareVms");
+            e.HasOne<Device>().WithMany().HasForeignKey(x => x.SourceDeviceId).OnDelete(DeleteBehavior.Cascade);
+            e.HasIndex(x => new { x.SourceDeviceId, x.MoRef }).IsUnique();
+            e.HasIndex(x => x.DeviceId);
+            e.Property(x => x.MoRef).HasMaxLength(64);
+            e.Property(x => x.Name).HasMaxLength(255);
+            e.Property(x => x.HostMoRef).HasMaxLength(64);
+            e.Property(x => x.HostName).HasMaxLength(255);
+            e.Property(x => x.PowerState).HasMaxLength(32);
+            e.Property(x => x.GuestOs).HasMaxLength(200);
+            e.Property(x => x.IpAddress).HasMaxLength(64);
+            e.Property(x => x.GuestHostName).HasMaxLength(255);
+            e.Property(x => x.ToolsRunningStatus).HasMaxLength(64);
+            e.Property(x => x.ToolsVersionStatus).HasMaxLength(64);
+            e.Property(x => x.OverallStatus).HasMaxLength(16);
+            e.Property(x => x.Datastores).HasMaxLength(1000);
+        });
+
+        b.Entity<VmwareDatastore>(e =>
+        {
+            e.ToTable("VmwareDatastores");
+            e.HasOne<Device>().WithMany().HasForeignKey(x => x.SourceDeviceId).OnDelete(DeleteBehavior.Cascade);
+            e.HasIndex(x => new { x.SourceDeviceId, x.MoRef }).IsUnique();
+            e.Property(x => x.MoRef).HasMaxLength(64);
+            e.Property(x => x.Name).HasMaxLength(255);
+            e.Property(x => x.Type).HasMaxLength(32);
+            e.Property(x => x.MaintenanceMode).HasMaxLength(32);
+            e.Ignore(x => x.UsedPct);
+        });
+
+        b.Entity<VmwareSnapshot>(e =>
+        {
+            e.ToTable("VmwareSnapshots");
+            e.HasOne<Device>().WithMany().HasForeignKey(x => x.SourceDeviceId).OnDelete(DeleteBehavior.Cascade);
+            e.HasIndex(x => new { x.SourceDeviceId, x.MoRef }).IsUnique();
+            e.Property(x => x.MoRef).HasMaxLength(64);
+            e.Property(x => x.VmMoRef).HasMaxLength(64);
+            e.Property(x => x.VmName).HasMaxLength(255);
+            e.Property(x => x.Name).HasMaxLength(255);
+            e.Property(x => x.Description).HasMaxLength(1000);
+        });
+
+        b.Entity<VmwareAlarm>(e =>
+        {
+            e.ToTable("VmwareAlarms");
+            e.HasOne<Device>().WithMany().HasForeignKey(x => x.SourceDeviceId).OnDelete(DeleteBehavior.Cascade);
+            e.HasIndex(x => new { x.SourceDeviceId, x.Key }).IsUnique();
+            e.Property(x => x.Key).HasMaxLength(128);
+            e.Property(x => x.AlarmName).HasMaxLength(255);
+            e.Property(x => x.EntityMoRef).HasMaxLength(64);
+            e.Property(x => x.EntityName).HasMaxLength(255);
+            e.Property(x => x.Status).HasMaxLength(16);
         });
 
         b.Entity<MaintenanceWindow>(e =>

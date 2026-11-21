@@ -47,9 +47,27 @@ public static class DefaultRules
             Count("Repeated login failures (syslog)", "At least 10 syslog messages about failed logins from one device within 5 minutes (possible brute force).",
                 EventKeys.SyslogMessage, 10, 300, Severity.Warning, all,
                 new EventFilter { Pattern = @"authentication fail|failed password|login fail|invalid user|bad password|failed login" }),
+
+            // ---- Phase 3: VMware
+            State("vCenter/ESXi API not reachable", "The vSphere API of a vCenter or ESXi host cannot be queried (credentials, certificate, network).", StateKeys.VcenterUnreachable, Severity.Major, 180, all),
+            State("ESXi host not connected", "An ESXi host is disconnected or not responding in vCenter (and not in maintenance mode).", StateKeys.HostNotConnected, Severity.Critical, 0, all),
+            State("ESXi host hardware alarm", "A hardware sensor of an ESXi host reports red (fan, power supply, temperature ...).", StateKeys.HostHardware, Severity.Major, 0, all),
+            Threshold("ESXi host high CPU", MetricKeys.HostCpu, ComparisonOperator.GreaterThan, 90, 85, 300, Severity.Major, all),
+            Threshold("ESXi host high memory", MetricKeys.HostMemory, ComparisonOperator.GreaterThan, 90, 85, 300, Severity.Major, all),
+            Threshold("Datastore space low", MetricKeys.DatastoreUsed, ComparisonOperator.GreaterThan, 85, 80, 0, Severity.Warning, all),
+            Threshold("Datastore space critical", MetricKeys.DatastoreUsed, ComparisonOperator.GreaterThan, 95, 92, 0, Severity.Critical, all),
+            State("Datastore not accessible", "A datastore is not accessible from vCenter.", StateKeys.DatastoreInaccessible, Severity.Critical, 0, all),
+            Threshold("Old snapshot", MetricKeys.SnapshotAgeDays, ComparisonOperator.GreaterThan, 7, null, 0, Severity.Warning, all),
+            Threshold("Large snapshot", MetricKeys.SnapshotSizeGb, ComparisonOperator.GreaterThan, 50, 40, 0, Severity.Warning, all),
+            Threshold("VM CPU ready high", MetricKeys.VmCpuReady, ComparisonOperator.GreaterThan, 10, 5, 600, Severity.Warning, all),
+            State("VMware Tools not running", "A powered-on VM has no running VMware Tools (no guest heartbeat, IP or disk data).", StateKeys.VmToolsNotRunning, Severity.Warning, 900, all),
+            State("vCenter alarm (red)", "A vCenter alarm is red and not acknowledged in vCenter.", StateKeys.VcenterAlarmRed, Severity.Major, 0, all),
+            State("vCenter alarm (yellow)", "A vCenter alarm is yellow and not acknowledged in vCenter.", StateKeys.VcenterAlarmYellow, Severity.Warning, 0, all),
+            Event("vCenter major event", "vCenter reported a major event: host connection lost, HA failover or isolation, failed VM reset ...", EventKeys.VmwareEvent, Severity.Major, all,
+                new EventFilter { MinSeverity = Severity.Major }),
         ];
 
-        AlertRule Threshold(string name, string key, ComparisonOperator op, double threshold, double clear, int durationSec, Severity severity, string scope) => new()
+        AlertRule Threshold(string name, string key, ComparisonOperator op, double threshold, double? clear, int durationSec, Severity severity, string scope) => new()
         {
             Name = name,
             Description = durationSec > 0

@@ -1,7 +1,7 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
 import { api } from '../../api/client';
-import type { AlertingSettings, MonitoringSettings, ReceiverSettings, RetentionSettings, SecuritySettings, ServerMonitoringSettings } from '../../api/types';
+import type { AlertingSettings, MonitoringSettings, ReceiverSettings, RetentionSettings, SecuritySettings, ServerMonitoringSettings, VmwareSettings } from '../../api/types';
 import { ErrorBox } from '../../components/Modal';
 
 interface AllSettings {
@@ -11,6 +11,7 @@ interface AllSettings {
   alerting: AlertingSettings;
   receivers: ReceiverSettings;
   servers: ServerMonitoringSettings;
+  vmware: VmwareSettings;
 }
 
 type Field<T> =
@@ -132,6 +133,20 @@ export function GeneralTab() {
           { key: 'dcomFallback', label: 'Fall back to WMI over DCOM when WinRM is unreachable', kind: 'bool' },
           { key: 'readEventLogs', label: 'Read System/Application event logs (Critical, Error)', kind: 'bool' },
           { key: 'includeWarnings', label: 'Also store Warning-level entries', kind: 'bool' },
+        ]}
+      />
+      <Section<VmwareSettings>
+        title="VMware (vCenter / ESXi)"
+        section="vmware"
+        initial={q.data.vmware}
+        note="Devices of type vCenter (or Hypervisor for standalone ESXi) with a vCenter credential are polled through the vSphere API. Use an account with the vCenter Read-only role."
+        fields={[
+          { key: 'timeoutSec', label: 'API timeout (s)', min: 10, max: 300 },
+          { key: 'maxEventsPerPoll', label: 'Max. vCenter events per poll', min: 50, max: 5000 },
+          { key: 'importEvents', label: 'Import vCenter events', kind: 'bool' },
+          { key: 'importAlarms', label: 'Import triggered vCenter alarms', kind: 'bool' },
+          { key: 'collectCpuReady', label: 'Collect VM CPU ready (performance counter)', kind: 'bool' },
+          { key: 'trustOnFirstUse', label: 'Pin self-signed vCenter certificates on first connection', kind: 'bool', hint: 'Off: only CA-trusted certificates are accepted.' },
         ]}
       />
       <Section<ReceiverSettings>

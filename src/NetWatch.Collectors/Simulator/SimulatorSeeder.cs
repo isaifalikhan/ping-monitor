@@ -198,4 +198,67 @@ public static class SimulatorSeeder
         await db.SaveChangesAsync(ct);
         logger.LogInformation("Simulator: added server monitoring (WinRM/SSH, watched services) to {Count} simulated servers and VMs", servers.Count);
     }
+
+    /// <summary>
+    /// Phase 3 additions: a simulated vCenter (with a vCenter credential) and its four ESXi hosts as devices.
+    /// The simulated VMs already exist (SIM-VM-01..40). Idempotent.
+    /// </summary>
+    public static async Task UpgradeVmwareAsync(NetWatchDbContext db, ISecretProtector protector, ILogger logger, CancellationToken ct)
+    {
+        if (!await db.DeviceTags.AnyAsync(t => t.Tag == DeviceSnapshot.SimulatedTag, ct) ||
+            await db.Devices.AnyAsync(d => d.Type == DeviceType.VCenter && d.Tags.Any(t => t.Tag == DeviceSnapshot.SimulatedTag), ct))
+        {
+            return;
+        }
+
+        var now = DateTime.UtcNow;
+        var secret = new CredentialSecret { Username = "netwatch-ro@vsphere.local", Password = "simulated-only" };
+        var credential = await db.CredentialProfiles.FirstOrDefaultAsync(p => p.Name == "Simulator vCenter", ct);
+        if (credential is null)
+        {
+            credential = new CredentialProfile
+            {
+                Name = "Simulator vCenter",
+                Kind = CredentialKind.VCenter,
+                DisplayHint = secret.BuildDisplayHint(CredentialKind.VCenter),
+                SecretBlob = protector.Protect(secret.ToJson()),
+                CreatedUtc = now,
+                UpdatedUtc = now,
+            };
+            db.CredentialProfiles.Add(credential);
+            await db.SaveChangesAsync(ct);
+        }
+
+        var snmp = await db.CredentialProfiles.FirstOrDefaultAsync(p => p.Name == "Simulator SNMP v2c", ct);
+        var group = await db.Groups.FirstOrDefaultAsync(g => g.Name == "Data Center", ct);
+        Device Add(string name, string ip, DeviceType type, OsKind os, string role, CredentialPurpose purpose, int credentialId)
+        {
+            var d = new Device
+            {
+                Name = name,
+                IpAddress = ip,
+                Type = type,
+                Os = os,
+                GroupId = group?.Id,
+                PollIntervalSec = 60,
+                Status = DeviceStatus.Unknown,
+                StatusSinceUtc = now,
+                CreatedUtc = now,
+                UpdatedUtc = now,
+                Tags = [new DeviceTag { Tag = DeviceSnapshot.SimulatedTag }, new DeviceTag { Tag = role }],
+                Credentials = [new DeviceCredential { Purpose = purpose, CredentialProfileId = credentialId }],
+            };
+            db.Devices.Add(d);
+            return d;
+        }
+
+        Add("SIM-VCENTER", "10.250.30.10", DeviceType.VCenter, OsKind.Unknown, "vcenter", CredentialPurpose.VCenter, credential.Id);
+        for (var i = 1; i <= 4; i++)
+        {
+            Add($"SIM-ESX-{i:D2}", $"10.250.30.{10 + i}", DeviceType.Hypervisor, OsKind.Esxi, "esxi", CredentialPurpose.Snmp, snmp?.Id ?? credential.Id);
+        }
+
+        await db.SaveChangesAsync(ct);
+        logger.LogInformation("Simulator: added a simulated vCenter with 4 ESXi hosts");
+    }
 }

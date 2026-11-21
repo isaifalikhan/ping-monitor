@@ -212,7 +212,7 @@ function TestDialog({ credential, onClose }: { credential: Credential; onClose: 
       {result &&
         (result.success ? (
           <div className="ok-box">
-            {credential.kind === 'Windows' || credential.kind === 'Ssh' ? 'Connected' : 'SNMP OK'} — {result.sysName} {result.vendor && `(${result.vendor} ${result.model ?? ''})`}
+            {credential.kind === 'SnmpV2c' || credential.kind === 'SnmpV3' ? 'SNMP OK' : 'Connected'} — {result.sysName} {result.vendor && `(${result.vendor} ${result.model ?? ''})`}
             <div className="muted" style={{ marginTop: 4 }}>
               {result.sysDescription}
             </div>
@@ -265,11 +265,9 @@ export function CredentialsTab() {
                 <td className="num">{c.usedBy}</td>
                 <td className="muted">{fmtDateTime(c.updatedUtc)}</td>
                 <td className="nowrap" style={{ textAlign: 'right' }}>
-                  {c.kind !== 'VCenter' && (
-                    <button className="small" onClick={() => setTest(c)}>
-                      Test
-                    </button>
-                  )}{' '}
+                  <button className="small" onClick={() => setTest(c)}>
+                    Test
+                  </button>{' '}
                   <button className="small" onClick={() => setEdit(c)}>
                     Edit
                   </button>{' '}

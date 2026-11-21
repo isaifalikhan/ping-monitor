@@ -15,12 +15,14 @@ namespace NetWatch.Collectors.Polling;
 public sealed class NetworkDevicePoller : IDevicePoller
 {
     private readonly IServerCollector _servers;
+    private readonly Vmware.IVmwareCollector _vmware;
     private readonly TimeProvider _time;
     private readonly ILogger<NetworkDevicePoller> _logger;
 
-    public NetworkDevicePoller(IServerCollector servers, TimeProvider time, ILogger<NetworkDevicePoller> logger)
+    public NetworkDevicePoller(IServerCollector servers, Vmware.IVmwareCollector vmware, TimeProvider time, ILogger<NetworkDevicePoller> logger)
     {
         _servers = servers;
+        _vmware = vmware;
         _time = time;
         _logger = logger;
     }
@@ -37,7 +39,9 @@ public sealed class NetworkDevicePoller : IDevicePoller
         var ping = PingProbe.ProbeAsync(ip, request.PingCount, request.PingTimeoutMs, ct);
         var snmp = request.Snmp is null ? Task.CompletedTask : PollSnmpAsync(ip, request, result, ct);
         var server = request.Server is null ? Task.FromResult<ServerPollData?>(null) : CollectServerAsync(request.Server, ct);
-        await Task.WhenAll(ping, snmp, server);
+        var vmware = request.Vmware is null ? Task.FromResult<Vmware.VmwarePollData?>(null) : CollectVmwareAsync(request.Vmware, ct);
+        await Task.WhenAll(ping, snmp, server, vmware);
+        result.Vmware = await vmware;
 
         var p = await ping;
         result.PingOk = p.Reachable;
@@ -61,6 +65,19 @@ public sealed class NetworkDevicePoller : IDevicePoller
         {
             _logger.LogDebug(ex, "Server collection failed for {Host}", request.Host);
             return new ServerPollData { Error = ex.Message };
+        }
+    }
+
+    private async Task<Vmware.VmwarePollData?> CollectVmwareAsync(Vmware.VmwarePollRequest request, CancellationToken ct)
+    {
+        try
+        {
+            return await _vmware.CollectAsync(request, ct);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException || !ct.IsCancellationRequested)
+        {
+            _logger.LogDebug(ex, "vSphere collection failed for {Host}", request.Host);
+            return new Vmware.VmwarePollData { Error = ex.Message };
         }
     }
 

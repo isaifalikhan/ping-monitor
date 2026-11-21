@@ -10,6 +10,7 @@ import { EventsPage } from './pages/EventsPage';
 import { LoginPage } from './pages/LoginPage';
 import { OverviewPage } from './pages/OverviewPage';
 import { ServersPage } from './pages/ServersPage';
+import { VmwarePage } from './pages/VmwarePage';
 import { SettingsPage } from './pages/settings/SettingsPage';
 import { SwitchesPage } from './pages/SwitchesPage';
 import { useTheme } from './theme/useTheme';
@@ -32,6 +33,7 @@ export function App() {
           <Route path="/devices/:id" element={<DeviceDetailPage />} />
           <Route path="/switches" element={<SwitchesPage />} />
           <Route path="/servers" element={<ServersPage />} />
+          <Route path="/vmware" element={<VmwarePage />} />
           <Route path="/events" element={<EventsPage />} />
           <Route path="/alerts" element={<AlertsPage />} />
           <Route path="/account" element={<AccountPage />} />

@@ -394,6 +394,10 @@ namespace NetWatch.Data.Config.Migrations
                     b.Property<string>("SysObjectId")
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("TlsThumbprint")
+                        .HasMaxLength(128)
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("Type")
                         .IsRequired()
                         .HasMaxLength(32)
@@ -837,6 +841,363 @@ namespace NetWatch.Data.Config.Migrations
                     b.ToTable("UserSessions", (string)null);
                 });
 
+            modelBuilder.Entity("NetWatch.Core.Entities.VmwareAlarm", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<bool>("Acknowledged")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("AlarmName")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("EntityMoRef")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("EntityName")
+                        .HasMaxLength(255)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Key")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("LastSeenUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("SourceDeviceId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("TriggeredUtc")
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("SourceDeviceId", "Key")
+                        .IsUnique();
+
+                    b.ToTable("VmwareAlarms", (string)null);
+                });
+
+            modelBuilder.Entity("NetWatch.Core.Entities.VmwareDatastore", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<bool>("Accessible")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<long>("CapacityBytes")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<long>("FreeBytes")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("HostCount")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime>("LastSeenUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("MaintenanceMode")
+                        .HasMaxLength(32)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("MoRef")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("SourceDeviceId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Type")
+                        .HasMaxLength(32)
+                        .HasColumnType("TEXT");
+
+                    b.Property<long?>("UncommittedBytes")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("VmCount")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("SourceDeviceId", "MoRef")
+                        .IsUnique();
+
+                    b.ToTable("VmwareDatastores", (string)null);
+                });
+
+            modelBuilder.Entity("NetWatch.Core.Entities.VmwareHost", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime?>("BootTimeUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Cluster")
+                        .HasMaxLength(255)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ConnectionState")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("TEXT");
+
+                    b.Property<int?>("CpuCores")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<long?>("CpuTotalMhz")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<long?>("CpuUsageMhz")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int?>("DeviceId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<bool>("InMaintenance")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime>("LastSeenUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<long?>("MemTotalBytes")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<long?>("MemUsageBytes")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("MoRef")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Model")
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("OverallStatus")
+                        .HasMaxLength(16)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("PowerState")
+                        .HasMaxLength(32)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Product")
+                        .HasMaxLength(200)
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("SensorAlarms")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("SensorWarnings")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("SourceDeviceId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Vendor")
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("SourceDeviceId", "MoRef")
+                        .IsUnique();
+
+                    b.ToTable("VmwareHosts", (string)null);
+                });
+
+            modelBuilder.Entity("NetWatch.Core.Entities.VmwareSnapshot", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime>("CreatedUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Description")
+                        .HasMaxLength(1000)
+                        .HasColumnType("TEXT");
+
+                    b.Property<bool>("IsCurrent")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime>("LastSeenUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("MoRef")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("TEXT");
+
+                    b.Property<long?>("SizeBytes")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("SourceDeviceId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("VmMoRef")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("VmName")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("SourceDeviceId", "MoRef")
+                        .IsUnique();
+
+                    b.ToTable("VmwareSnapshots", (string)null);
+                });
+
+            modelBuilder.Entity("NetWatch.Core.Entities.VmwareVm", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<long?>("BalloonedMb")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime?>("BootTimeUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<long?>("CommittedBytes")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<double?>("CpuPct")
+                        .HasColumnType("REAL");
+
+                    b.Property<double?>("CpuReadyPct")
+                        .HasColumnType("REAL");
+
+                    b.Property<string>("Datastores")
+                        .HasMaxLength(1000)
+                        .HasColumnType("TEXT");
+
+                    b.Property<int?>("DeviceId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<double?>("GuestDiskMaxPct")
+                        .HasColumnType("REAL");
+
+                    b.Property<string>("GuestHostName")
+                        .HasMaxLength(255)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("GuestOs")
+                        .HasMaxLength(200)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("HostMoRef")
+                        .HasMaxLength(64)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("HostName")
+                        .HasMaxLength(255)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("IpAddress")
+                        .HasMaxLength(64)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("LastSeenUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<double?>("MemPct")
+                        .HasColumnType("REAL");
+
+                    b.Property<int?>("MemoryMb")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("MoRef")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("TEXT");
+
+                    b.Property<int?>("NumCpu")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("OverallStatus")
+                        .HasMaxLength(16)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("PowerState")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("SnapshotCount")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("SourceDeviceId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("ToolsRunningStatus")
+                        .HasMaxLength(64)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ToolsVersionStatus")
+                        .HasMaxLength(64)
+                        .HasColumnType("TEXT");
+
+                    b.Property<long?>("UncommittedBytes")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("DeviceId");
+
+                    b.HasIndex("SourceDeviceId", "MoRef")
+                        .IsUnique();
+
+                    b.ToTable("VmwareVms", (string)null);
+                });
+
             modelBuilder.Entity("NetWatch.Core.Entities.Volume", b =>
                 {
                     b.Property<int>("Id")
@@ -1027,6 +1388,51 @@ namespace NetWatch.Data.Config.Migrations
                         .IsRequired();
 
                     b.Navigation("User");
+                });
+
+            modelBuilder.Entity("NetWatch.Core.Entities.VmwareAlarm", b =>
+                {
+                    b.HasOne("NetWatch.Core.Entities.Device", null)
+                        .WithMany()
+                        .HasForeignKey("SourceDeviceId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("NetWatch.Core.Entities.VmwareDatastore", b =>
+                {
+                    b.HasOne("NetWatch.Core.Entities.Device", null)
+                        .WithMany()
+                        .HasForeignKey("SourceDeviceId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("NetWatch.Core.Entities.VmwareHost", b =>
+                {
+                    b.HasOne("NetWatch.Core.Entities.Device", null)
+                        .WithMany()
+                        .HasForeignKey("SourceDeviceId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("NetWatch.Core.Entities.VmwareSnapshot", b =>
+                {
+                    b.HasOne("NetWatch.Core.Entities.Device", null)
+                        .WithMany()
+                        .HasForeignKey("SourceDeviceId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("NetWatch.Core.Entities.VmwareVm", b =>
+                {
+                    b.HasOne("NetWatch.Core.Entities.Device", null)
+                        .WithMany()
+                        .HasForeignKey("SourceDeviceId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("NetWatch.Core.Entities.Volume", b =>
