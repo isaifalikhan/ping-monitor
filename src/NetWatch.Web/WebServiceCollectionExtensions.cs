@@ -28,6 +28,8 @@ public static class WebServiceCollectionExtensions
         services.AddSingleton<SessionService>();
         services.AddSingleton<LdapAuthenticator>();
         services.AddSingleton<DiscoveryService>();
+        services.AddSingleton<Diagnostics.ConnectionTestService>();
+        services.AddSingleton<Diagnostics.DiagnosticBundleService>();
         services.AddSingleton<ILiveUpdatePublisher, SignalRLivePublisher>();
         services.AddHostedService<SummaryBroadcaster>();
         services.AddSingleton<SelfMonitorService>();
@@ -86,6 +88,7 @@ public static class WebServiceCollectionExtensions
         app.MapVmwareEndpoints();
         app.MapDcEndpoints();
         Topology.TopologyEndpoints.MapTopologyEndpoints(app);
+        Diagnostics.DiagnosticsEndpoints.MapDiagnosticsEndpoints(app);
         app.MapBackupEndpoints();
         app.MapReportEndpoints();
         app.MapHub<LiveHub>("/hubs/live");

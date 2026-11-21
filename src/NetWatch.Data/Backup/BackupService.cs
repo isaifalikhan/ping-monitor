@@ -473,6 +473,9 @@ public static class BackupRestore
                 portableSecrets = PortableSecrets.Decrypt(File.ReadAllText(portableFile), password);
             }
 
+            // Pooled connections of this process would keep the files open (and checkpoint into them later).
+            SqliteConnection.ClearAllPools();
+
             // Keep the current state next to the data folder, then move the backup in.
             var keep = Path.Combine(paths.Root, $"before-restore-{DateTime.Now:yyyyMMdd-HHmmss}");
             Directory.CreateDirectory(Path.Combine(keep, "data"));

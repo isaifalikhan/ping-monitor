@@ -33,7 +33,7 @@ public static class PortableSecrets
         var salt = RandomNumberGenerator.GetBytes(16);
         var key = Rfc2898DeriveBytes.Pbkdf2(password, salt, Iterations, HashAlgorithmName.SHA256, 32);
         var items = new List<Item>();
-        using (var connection = new SqliteConnection(SqliteConnectionFactory.Build(configDb)))
+        using (var connection = new SqliteConnection(Unpooled(configDb)))
         {
             connection.Open();
             using var command = connection.CreateCommand();
@@ -88,7 +88,7 @@ public static class PortableSecrets
     /// <summary>Writes the decrypted secrets into a (restored) configuration database, protected for this machine.</summary>
     public static int Apply(string configDb, IReadOnlyDictionary<int, string> secrets, ISecretProtector protector)
     {
-        using var connection = new SqliteConnection(SqliteConnectionFactory.Build(configDb));
+        using var connection = new SqliteConnection(Unpooled(configDb));
         connection.Open();
         using var tx = connection.BeginTransaction();
         var updated = 0;
@@ -105,6 +105,9 @@ public static class PortableSecrets
         tx.Commit();
         return updated;
     }
+
+    /// <summary>No pooling: nothing keeps the file open after the export/apply (restores move these files).</summary>
+    private static string Unpooled(string file) => new SqliteConnectionStringBuilder(SqliteConnectionFactory.Build(file)) { Pooling = false }.ToString();
 
     public static void Validate(string? password)
     {

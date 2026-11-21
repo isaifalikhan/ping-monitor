@@ -9,6 +9,7 @@ import { NotificationsTab } from './NotificationsTab';
 import { RulesTab } from './RulesTab';
 import { SystemTab } from './SystemTab';
 import { UsersTab } from './UsersTab';
+import { PilotToolsTab } from './PilotToolsTab';
 
 const TABS = [
   { key: 'rules', label: 'Alert rules', el: <RulesTab /> },
@@ -21,6 +22,7 @@ const TABS = [
   { key: 'general', label: 'General', el: <GeneralTab /> },
   { key: 'audit', label: 'Audit trail', el: <AuditTab /> },
   { key: 'system', label: 'System status', el: <SystemTab /> },
+  { key: 'pilot', label: 'Pilot tools', el: <PilotToolsTab /> },
 ];
 
 export function SettingsPage() {

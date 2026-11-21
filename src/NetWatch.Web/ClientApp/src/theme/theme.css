@@ -1359,3 +1359,9 @@ a.btn:hover {
     animation: none;
   }
 }
+
+a.btn.primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-contrast);
+}

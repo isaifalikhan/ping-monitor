@@ -15,7 +15,12 @@ using NetWatch.Data.Config;
 
 namespace NetWatch.Tests;
 
+/// <summary>Tests that move database files: not run in parallel with tests that clear the shared SQLite pool.</summary>
+[CollectionDefinition(nameof(SqliteFileMoves), DisableParallelization = true)]
+public sealed class SqliteFileMoves;
+
 /// <summary>WP8: portable credential export, restore with re-encryption, wrong passwords, pending restores, damaged backups.</summary>
+[Collection(nameof(SqliteFileMoves))]
 public sealed class Wp8BackupTests : IAsyncLifetime
 {
     private const string Password = "Pilot-Restore-2026!";
@@ -102,11 +107,11 @@ public sealed class Wp8BackupTests : IAsyncLifetime
     {
         var backups = _sp.GetRequiredService<BackupService>();
         var info = await backups.CreateAsync("portable", CancellationToken.None, Password);
-        var before = File.GetLastWriteTimeUtc(_paths.ConfigDb);
         await _sp.DisposeAsync();
         SqliteConnection.ClearAllPools();
+        var before = Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(_paths.ConfigDb)));
         Assert.Throws<CryptographicException>(() => BackupRestore.Restore(backups.PathOf(info.Name)!, _paths, "not-the-password!", new Data.Security.DpapiSecretProtector()));
-        Assert.Equal(before, File.GetLastWriteTimeUtc(_paths.ConfigDb));
+        Assert.Equal(before, Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(_paths.ConfigDb))));
         Assert.Empty(Directory.EnumerateDirectories(_paths.Root, "before-restore-*"));
         _sp = new ServiceCollection().BuildServiceProvider();
     }
