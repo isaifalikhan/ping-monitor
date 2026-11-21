@@ -1,5 +1,5 @@
 ﻿; NetWatch installer (Inno Setup 6).
-; Built by build.ps1:  ISCC /DAppVersion=1.0.0 /DSourceDir=..\..\artifacts\publish /DDocsDir=..\..\docs netwatch.iss
+; Built by build.ps1:  ISCC /DAppVersion=2.0.0-dev /DNumericVersion=2.0.0 /DSourceDir=..\..\artifacts\publish /DDocsDir=..\..\docs netwatch.iss
 ;
 ; Install:    copies NetWatch.Service.exe, creates the "NetWatch" Windows service (delayed auto-start, restart on
 ;             failure), inbound firewall rules for the web console (TCP 8443), SNMP traps (UDP 162) and syslog
@@ -11,7 +11,10 @@
 ;             chooses to delete it.
 
 #ifndef AppVersion
-  #define AppVersion "1.4.0"
+  #define AppVersion "2.0.0-dev"
+#endif
+#ifndef NumericVersion
+  #define NumericVersion "2.0.0"
 #endif
 #ifndef SourceDir
   #define SourceDir "..\..\artifacts\publish"
@@ -30,7 +33,7 @@ AppName=NetWatch
 AppVersion={#AppVersion}
 AppVerName=NetWatch {#AppVersion}
 AppPublisher=NetWatch
-VersionInfoVersion={#AppVersion}
+VersionInfoVersion={#NumericVersion}
 DefaultDirName={autopf}\NetWatch
 DefaultGroupName=NetWatch
 DisableProgramGroupPage=yes

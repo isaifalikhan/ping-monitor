@@ -21,6 +21,7 @@
     <ProjectReference Include="..\..\src\NetWatch.Collectors\NetWatch.Collectors.csproj" />
     <ProjectReference Include="..\..\src\NetWatch.Alerts\NetWatch.Alerts.csproj" />
     <ProjectReference Include="..\..\src\NetWatch.Web\NetWatch.Web.csproj" />
+    <ProjectReference Include="..\..\src\NetWatch.Service\NetWatch.Service.csproj" />
   </ItemGroup>
 
   <ItemGroup>

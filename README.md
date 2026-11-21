@@ -61,7 +61,7 @@ build.ps1              one-command build: UI, tests, single-file exe, installer
 Requirements on the build PC: .NET 10 SDK, Node.js 20+, Inno Setup 6.
 
 ```powershell
-.\build.ps1                 # online build -> artifacts\NetWatch-Setup-1.0.0.exe
+.\build.ps1                 # online build -> artifacts\NetWatch-Setup-2.0.0-dev.exe (version from -Version)
 .\build.ps1 -PrepareOffline # fill offline\ with every NuGet/npm package (internet-connected PC)
 .\build.ps1 -Offline        # build inside the air-gapped network from offline\
 ```
