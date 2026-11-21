@@ -199,13 +199,8 @@ public sealed class RedfishClient : IDisposable
             UseCookies = false,
             ConnectTimeout = TimeSpan.FromSeconds(10),
             AutomaticDecompression = DecompressionMethods.GZip | DecompressionMethods.Deflate,
-            SslOptions = new SslClientAuthenticationOptions
-            {
-                RemoteCertificateValidationCallback = Validate,
-
-                // Air-gapped: never try to reach a CRL/OCSP responder on the internet.
-                CertificateRevocationCheckMode = X509RevocationMode.NoCheck,
-            },
+            // Air-gapped: revocation per the security settings, never online.
+            SslOptions = Core.Configuration.TlsPolicy.Apply(new SslClientAuthenticationOptions { RemoteCertificateValidationCallback = Validate }),
         };
         _http = new HttpClient(handler) { BaseAddress = new Uri($"https://{target}"), Timeout = timeout };
         _http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Basic", Convert.ToBase64String(Encoding.UTF8.GetBytes($"{user}:{password}")));

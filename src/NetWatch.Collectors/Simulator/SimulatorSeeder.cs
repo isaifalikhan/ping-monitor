@@ -75,14 +75,14 @@ public static class SimulatorSeeder
         await db.SaveChangesAsync(ct);
 
         var distribution = new List<Device>();
-        for (var i = 0; i < 8; i++)
+        for (var i = 0; i < 8 * SimLoad.Scale; i++)
         {
             distribution.Add(Add($"SIM-DIST-SW-{i + 1:D2}", $"10.250.0.{11 + i}", DeviceType.Switch, floors[i % floors.Count], "distribution", cores[i % 2]));
         }
 
         await db.SaveChangesAsync(ct);
 
-        for (var i = 0; i < 110; i++)
+        for (var i = 0; i < 110 * SimLoad.Scale; i++)
         {
             var floor = floors[i % floors.Count];
             Add($"SIM-ACC-SW-{i + 1:D3}", $"10.250.{1 + (i / 50)}.{10 + (i % 50)}", DeviceType.Switch, floor, "access", distribution[i % distribution.Count]);

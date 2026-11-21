@@ -100,8 +100,17 @@ public sealed class SimulatedDevicePoller : IDevicePoller
     {
         var d = _devices.GetOrAdd(request.Device.Id, id => Create(id, request.Device.Type));
 
-        // Simulate network round trip / SNMP latency.
-        await Task.Delay(d.Rng.Next(5, 40), ct);
+        // Simulate network round trip / SNMP latency (load tests: slow devices and SNMP timeouts, see SimLoad).
+        if (request.Snmp is not null && d.Type == DeviceType.Switch && SimLoad.TimeoutPercent > 0 && d.Rng.NextDouble() * 100 < SimLoad.TimeoutPercent)
+        {
+            await Task.Delay(request.SnmpTimeoutMs * (request.SnmpRetries + 1), ct);
+            var timedOut = new DevicePollResult { DeviceId = request.Device.Id, TimestampUtc = _time.GetUtcNow().UtcDateTime, PingOk = true, RttMs = d.BaseRtt, LossPct = 0 };
+            timedOut.SnmpOk = false;
+            timedOut.SnmpError = $"No SNMP response within {request.SnmpTimeoutMs} ms (simulated timeout)";
+            return timedOut;
+        }
+
+        await Task.Delay(SimLoad.IsSlow(request.Device.Id) ? d.Rng.Next(2000, 2800) : d.Rng.Next(5, 40), ct);
         var now = _time.GetUtcNow().UtcDateTime;
         var elapsed = d.LastPollUtc == default ? 60 : Math.Clamp((now - d.LastPollUtc).TotalSeconds, 1, 600);
         d.LastPollUtc = now;

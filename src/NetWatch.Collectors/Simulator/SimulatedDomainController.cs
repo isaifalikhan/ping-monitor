@@ -204,7 +204,10 @@ internal sealed class SimulatedDomainController
         }
 
         // ---- normal office traffic (heavier during the working day)
-        var logons = (int)Math.Round((4 + (diurnal * 30)) * (0.7 + (_rng.NextDouble() * 0.6)));
+        // About three events per logon below (4768 + 4624, and a 4776 for every logon); a load test sets the total rate.
+        var logons = SimLoad.DcEventsPerMinute > 0
+            ? (int)Math.Round(SimLoad.DcEventsPerMinute / 2 / 3 * (Math.Max(1, elapsedSec) / 60) * (0.85 + (_rng.NextDouble() * 0.3)))
+            : (int)Math.Round((4 + (diurnal * 30)) * (0.7 + (_rng.NextDouble() * 0.6)));
         for (var i = 0; i < logons; i++)
         {
             var ws = Ws();

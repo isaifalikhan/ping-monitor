@@ -150,6 +150,9 @@ public static class Program
             var app = builder.Build();
             await app.Services.InitialiseDatabasesAsync(startupLogger);
 
+            // Outgoing TLS revocation policy (never online); re-applied whenever the security settings are saved.
+            _ = app.Services.GetRequiredService<Data.Config.SettingsService>().Security;
+
             if (cli.ResetAdmin)
             {
                 var password = await Seeder.ResetAdminAsync(app.Services, CancellationToken.None);

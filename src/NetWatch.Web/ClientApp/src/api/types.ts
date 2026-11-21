@@ -378,6 +378,7 @@ export interface SecuritySettings {
   maxFailedLogins: number;
   lockoutMinutes: number;
   minPasswordLength: number;
+  certificateRevocation: 'NoCheck' | 'Offline';
 }
 
 export interface RetentionSettings {

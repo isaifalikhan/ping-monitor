@@ -229,6 +229,7 @@ export function GeneralTab() {
         initial={q.data.security}
         fields={[
           { key: 'sessionIdleTimeoutMin', label: 'Idle session timeout (min)', min: 5, max: 1440 },
+          { key: 'certificateRevocation', label: 'Certificate revocation checks (vCenter, iLO/iDRAC, LDAPS, SMTP)', kind: 'text', pattern: 'NoCheck|Offline', hint: 'NoCheck (default, air gap) or Offline (only CRLs imported into this server’s cache; never online)' },
           { key: 'sessionAbsoluteTimeoutHours', label: 'Maximum session length (h)', min: 1, max: 168 },
           { key: 'maxFailedLogins', label: 'Lock account after N failed sign-ins', min: 3, max: 50 },
           { key: 'lockoutMinutes', label: 'Lockout duration (min)', min: 1, max: 1440 },

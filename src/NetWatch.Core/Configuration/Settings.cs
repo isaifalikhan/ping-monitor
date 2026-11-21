@@ -57,8 +57,13 @@ public sealed class SecuritySettings
     public int LockoutMinutes { get; set; } = 15;
     public int MinPasswordLength { get; set; } = 10;
 
+    /// <summary>Revocation checks for outgoing TLS (vCenter, iLO/iDRAC, LDAPS, SMTP); never online in an air gap.</summary>
+    [System.Text.Json.Serialization.JsonConverter(typeof(System.Text.Json.Serialization.JsonStringEnumConverter))]
+    public RevocationCheck CertificateRevocation { get; set; } = RevocationCheck.NoCheck;
+
     public void Normalise()
     {
+        TlsPolicy.Revocation = CertificateRevocation;
         SessionIdleTimeoutMin = Math.Clamp(SessionIdleTimeoutMin, 5, 24 * 60);
         SessionAbsoluteTimeoutHours = Math.Clamp(SessionAbsoluteTimeoutHours, 1, 24 * 7);
         MaxFailedLogins = Math.Clamp(MaxFailedLogins, 3, 50);

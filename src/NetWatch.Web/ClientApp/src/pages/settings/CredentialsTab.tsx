@@ -68,6 +68,9 @@ function CredentialDialog({ credential, onClose }: { credential?: Credential; on
         <label className="field">
           <span>Community string</span>
           <input type="password" autoComplete="off" value={f.community} onChange={(e) => set('community', e.target.value)} />
+          <span className="hint" style={{ color: 'var(--warn)' }}>
+            SNMP v2c sends the community string unencrypted on the network. Prefer SNMP v3 (authPriv, SHA + AES) where the device supports it; use v2c read-only and limit it by an ACL to this server.
+          </span>
         </label>
       )}
       {f.kind === 'SnmpV3' && (

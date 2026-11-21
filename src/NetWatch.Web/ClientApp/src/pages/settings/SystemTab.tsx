@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query';
 import { api } from '../../api/client';
 import type { ChannelStatus, SelfCheck } from '../../api/types';
 import { BackupPanel, SelfCheckPanel } from './BackupPanel';
+import { CertificatePanel } from './CertificatePanel';
 import { ErrorBox } from '../../components/Modal';
 import { fmtAgo, fmtBytes, fmtNum } from '../../util/format';
 
@@ -31,6 +32,7 @@ export function SystemTab() {
   return (
     <>
     <SelfCheckPanel checks={s.selfChecks} checkedUtc={s.selfChecksUtc} selfDeviceId={s.selfDeviceId} />
+    <CertificatePanel />
     <div className="grid cols-2" style={{ marginBottom: 16 }}>
       <div className="card card-body">
         <h2 style={{ marginBottom: 10 }}>Service</h2>

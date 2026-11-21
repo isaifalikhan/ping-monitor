@@ -148,10 +148,11 @@ public sealed class LdapAuthenticator
         var options = connection.SessionOptions;
         options.ProtocolVersion = 3;
         options.ReferralChasing = ReferralChasingOptions.None;
-        if (!s.ValidateCertificate)
-        {
-            options.VerifyServerCertificate = (_, _) => true;
-        }
+        // Our own verification (chain under the air-gap TLS policy + host name) instead of the system one, which
+        // may try to download CRLs and hang on an isolated network.
+        options.VerifyServerCertificate = s.ValidateCertificate
+            ? (connection, certificate) => TlsPolicy.Verify(certificate, server, out var error)
+            : (_, _) => true;
 
         switch (s.Security)
         {
