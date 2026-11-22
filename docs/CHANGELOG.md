@@ -3,7 +3,7 @@
 ## 2.0.0
 
 **Domain controllers**
-- Security-log collection for all 23 required event IDs (4624–4776, 4719, 1102, 5136, group changes …), remote
+- Security-log collection for all 23 required event IDs, 26 in total (4624–4776, 4719, 1102, 5136, group changes …), remote
   reads or Windows Event Forwarding selectable per DC, bookmarks, back-off for failing DCs, 4624 filters
   (logon types, ignored sources).
 - New rules: Kerberos pre-authentication spike, account deleted; Account Operators privileged by default.
@@ -41,6 +41,11 @@ authorization enforced by tests; SNMP v2c warning.
 
 **Fixes**: vCenter events were never stored (query translation error); `--Https:Port` and `NETWATCH_*`
 environment variables now override `appsettings.json`.
+
+**Release QA fixes (2026-11-22)**: SMTP and syslog notifications are retried after a transient relay failure;
+e-mail addresses without a domain are refused; a notification script that ignores stdin no longer fails;
+`build.ps1 -Offline` works (it failed at the test step); clearer SMTP/SNMP connection-test errors; poll overruns are
+logged with device and timing. See docs/qa/BUGS.md.
 
 **Upgrade notes**: databases are upgraded automatically (migrations Phase4 … Wp9Kiosk). Built-in rules that
 already exist keep their thresholds: to use the 2.0 defaults set *AD replication failing* to 3600 s and *DC clock

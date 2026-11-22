@@ -106,6 +106,16 @@ public static class AdminEndpoints
             return HttpExtensions.Error("Enter the SMTP server, sender and at least one recipient.");
         }
 
+        if (!string.IsNullOrWhiteSpace(input.SmtpFrom) && !Alerts.Notifications.MailSender.ValidAddress(input.SmtpFrom))
+        {
+            return HttpExtensions.Error($"The sender '{input.SmtpFrom.Trim()}' is not a valid e-mail address (name@domain).");
+        }
+
+        if (!string.IsNullOrWhiteSpace(input.SmtpTo) && !Alerts.Notifications.MailSender.ValidRecipients(input.SmtpTo, out _))
+        {
+            return HttpExtensions.Error("Every recipient must be a valid e-mail address (name@domain), separated by commas or semicolons; at most 20.");
+        }
+
         if (input.ScriptEnabled)
         {
             try

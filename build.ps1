@@ -146,7 +146,9 @@ if (-not $SkipUi) {
 # ---------------------------------------------------------------------------------------------- tests
 if (-not $SkipTests) {
     Step 'Running unit tests'
-    Invoke-Checked 'dotnet' (@('test', $solution, '-c', $Configuration, "-p:Version=$Version", '-p:NetWatchLockedRestore=true', '--nologo') + $restoreSource)
+    # 'dotnet test' has no --source option: restore first (from the offline kit when -Offline), then test without restoring.
+    Invoke-Checked 'dotnet' (@('restore', $solution, "-p:Version=$Version", '-p:NetWatchLockedRestore=true') + $restoreSource)
+    Invoke-Checked 'dotnet' @('test', $solution, '-c', $Configuration, "-p:Version=$Version", '-p:NetWatchLockedRestore=true', '--no-restore', '--nologo')
 }
 
 # ---------------------------------------------------------------------------------------------- publish

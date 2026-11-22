@@ -237,10 +237,17 @@ internal static partial class ScriptChannel
         psi.Environment["NETWATCH_FIRST_SEEN_UTC"] = a.FirstSeenUtc.ToString("O", CultureInfo.InvariantCulture);
 
         using var process = Process.Start(psi) ?? throw new InvalidOperationException("Script could not be started.");
-        await process.StandardInput.WriteAsync(JsonSerializer.Serialize(new { @event = NotificationText.Verb(n.Kind), alert = a }));
-        process.StandardInput.Close();
         var stdout = process.StandardOutput.ReadToEndAsync(ct);
         var stderr = process.StandardError.ReadToEndAsync(ct);
+        try
+        {
+            await process.StandardInput.WriteAsync(JsonSerializer.Serialize(new { @event = NotificationText.Verb(n.Kind), alert = a }));
+            process.StandardInput.Close();
+        }
+        catch (IOException)
+        {
+            // The script does not read standard input and has already exited (or closed it): use its exit code.
+        }
 
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
         timeout.CancelAfter(TimeSpan.FromSeconds(s.ScriptTimeoutSec));
@@ -270,13 +277,37 @@ internal static partial class ScriptChannel
 /// <summary>Sends e-mail through an internal SMTP relay (optional).</summary>
 internal static class SmtpChannel
 {
+    /// <summary>Readable reason why the relay could not be reached.</summary>
+    public static string ConnectError(string host, int port, SocketException ex) => ex.SocketErrorCode switch
+    {
+        SocketError.HostNotFound or SocketError.NoData or SocketError.TryAgain => $"The SMTP server name '{host}' cannot be resolved (DNS). Check the name or use the relay's IP address.",
+        SocketError.ConnectionRefused => $"{host}:{port} refused the connection: no SMTP service is listening on that port.",
+        SocketError.TimedOut or SocketError.HostUnreachable or SocketError.NetworkUnreachable => $"{host}:{port} cannot be reached (timeout/unreachable): check routing and firewalls.",
+        _ => $"Cannot connect to the SMTP server {host}:{port}: {ex.Message}",
+    };
+
     public static IReadOnlyList<MailboxAddress> Recipients(string? to) =>
         (to ?? string.Empty)
             .Split([',', ';'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-            .Select(r => MailboxAddress.TryParse(r, out var m) ? m : null)
+            .Select(Parse)
             .Where(m => m is not null)
             .Select(m => m!)
             .ToList();
+
+    /// <summary>
+    /// Parses one address. MimeKit also accepts a bare local part ("noc"), which every relay rejects at RCPT and
+    /// which then fails the whole message for all recipients, so a domain is required.
+    /// </summary>
+    public static MailboxAddress? Parse(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value) || !MailboxAddress.TryParse(value.Trim(), out var m))
+        {
+            return null;
+        }
+
+        var at = m.Address.LastIndexOf('@');
+        return at > 0 && at < m.Address.Length - 1 && !m.Address.AsSpan(at + 1).Contains('@') && !m.Address.Contains(' ', StringComparison.Ordinal) ? m : null;
+    }
 
     public static async Task SendAsync(string subject, string body, NotificationSettings s, ISecretProtector protector, CancellationToken ct, string? toOverride = null, IReadOnlyList<(string Name, byte[] Content, string MimeType)>? attachments = null)
     {
@@ -291,7 +322,7 @@ internal static class SmtpChannel
             throw new InvalidOperationException("No valid recipient address configured.");
         }
 
-        if (!MailboxAddress.TryParse(s.SmtpFrom ?? string.Empty, out var from))
+        if (Parse(s.SmtpFrom) is not { } from)
         {
             throw new InvalidOperationException("The sender address is invalid.");
         }
@@ -320,7 +351,15 @@ internal static class SmtpChannel
             SmtpSecurity.StartTls => SecureSocketOptions.StartTls,
             _ => SecureSocketOptions.None,
         };
-        await client.ConnectAsync(s.SmtpHost, s.SmtpPort, options, ct);
+        try
+        {
+            await client.ConnectAsync(s.SmtpHost, s.SmtpPort, options, ct);
+        }
+        catch (SocketException ex)
+        {
+            // BUG-007: name the server and the likely cause (kept an IOException so delivery is retried).
+            throw new IOException(ConnectError(s.SmtpHost, s.SmtpPort, ex), ex);
+        }
         if (!string.IsNullOrWhiteSpace(s.SmtpUsername))
         {
             var password = string.IsNullOrEmpty(s.SmtpPasswordProtected)
@@ -355,6 +394,9 @@ public sealed class MailSender
         count = SmtpChannel.Recipients(to).Count;
         return parts.Length == count && count is > 0 and <= 20;
     }
+
+    /// <summary>True for one address with a local part and a domain ("noc@corp.local").</summary>
+    public static bool ValidAddress(string? address) => SmtpChannel.Parse(address) is not null;
 
     public Task SendAsync(string to, string subject, string body, IReadOnlyList<(string Name, byte[] Content, string MimeType)> attachments, CancellationToken ct) =>
         SmtpChannel.SendAsync(subject, body, _settings.Notifications, _protector, ct, to, attachments);

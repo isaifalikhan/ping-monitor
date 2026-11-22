@@ -65,7 +65,7 @@ but not yet run against the real device type.
 | D6 | iLO/iDRAC | Pending pilot | 90 | Redfish parsers on HPE iLO 5 and Dell iDRAC 9 samples; SNMP fallback |
 | D7 | Server UI + graphs | Done | 100 | GPU and hardware panels (UI tests) |
 | E1–E7 | VMware | Pending pilot | 95 | event-storage bug fixed (regression test); simulator; no real vCenter |
-| F1–F3 | DC log collection, parsing, 23 IDs | Pending pilot | 95 | 26 sample events, back-off, WEF per DC, 5,000-event ingest test; samples to be replaced by real exports |
+| F1–F3 | DC log collection, parsing, 26 event IDs (23 required) | Pending pilot | 95 | 26 sample events, back-off, WEF per DC, 5,000-event ingest test; samples to be replaced by real exports |
 | F4 | DC security rules | Done | 100 | every rule tested end to end (`Wp2DcRuleTests`) |
 | F5 | Replication, services, skew, ports | Pending pilot | 95 | |
 | F6 | DC UI | Done | 100 | filters, saved searches, CSV export, lockouts, groups, matrix, services/ports |

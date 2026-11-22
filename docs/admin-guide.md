@@ -155,17 +155,17 @@ The alert banner and the *Alerts* page update live.
 
 | Rule | Condition | Severity |
 |---|---|---|
-| Device down | No ping reply (see status) | Critical |
+| Device down | No answer to ping or SNMP (servers: nor WinRM/SSH) for 3 consecutive polls (see status) | Critical |
 | High latency | Ping RTT > 100 ms for 5 min (clears < 80 ms) | Warning |
 | Packet loss | Loss > 20 % for 3 min | Warning |
 | High CPU | CPU > 90 % for 5 min (clears < 85 %) | Major |
 | High memory | Memory > 90 % for 5 min (clears < 85 %) | Major |
 | Important port down | Operational status down on an important interface | Major |
-| High interface utilisation | > 90 % in either direction on an important interface | Warning |
+| High interface utilisation | > 90 % in either direction on an important interface for 5 min (clears < 80 %) | Warning |
 | Hardware sensor problem | Fan, power supply or temperature sensor not OK | Major |
 | SNMP not responding | Device answers ping but not SNMP for 3 min | Warning |
 | Device rebooted | sysUpTime went backwards | Warning |
-| Disk space low / critical | Volume more than 85 % / 95 % used | Warning / Critical |
+| Disk space low / critical | Volume more than 85 % / 95 % used for 2 min (clears < 80 % / 92 %) | Warning / Critical |
 | Service not running | A watched service is not running for 1 min | Major |
 | Server monitoring failing | Ping works but WinRM/WMI/SSH fails for 5 min | Warning |
 | High load (Linux) | 5-min load average > 2 per CPU for 10 min | Warning |

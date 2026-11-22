@@ -9,12 +9,12 @@ service **NetWatch**. Nothing is downloaded during installation or at run time.
 | Item | Requirement |
 |---|---|
 | Operating system | Windows Server 2019, 2022 or 2025 (or Windows 10 1809 / Windows 11), 64-bit |
-| CPU / memory | 2 vCPU / 4 GB RAM for up to ~300 devices; 4 vCPU / 8 GB for ~1,000 devices |
+| CPU / memory | 2 vCPU / 4 GB RAM for up to ~300 devices (measured: ≈ 2.5 % of one core, ≈ 330 MB). For ~1,000 devices 4 vCPU / 8 GB is an estimate — it has not been measured |
 | Disk | 20 GB free minimum on the data drive; see sizing below |
 | Rights | Local Administrator, to run the installer |
 | Browser (operator PCs) | Current Edge, Chrome or Firefox. Nothing has to be installed on operator PCs |
 
-**Disk sizing.** Nearly all disk use is interface history. With 1-minute polling and the default retention, each
+**Disk sizing.** Disk use is interface history plus stored events (mainly DC Security events). With 1-minute polling and the default retention, each
 monitored interface uses about 4 MB once the history is full:
 
 - raw samples, kept 7 days: about 0.06 MB per day (measured);
@@ -31,6 +31,8 @@ Disk use grows over the first months and then levels off:
 
 Interfaces you mark as not monitored are not stored. You can shorten retention under *Settings → General*.
 
+**Domain controller events** come on top: about 0.9 GB per day at 1,000 stored DC Security events per minute (measured). With the default event retention of 365 days that is about **330 GB**; with 90 days about 80 GB. Shorten *Event retention* or reduce the stored logon types (*Settings → General → Domain controllers*) if the data drive is smaller.
+
 ## 2. Network and firewall
 
 | Direction | Protocol / port | From → to | Purpose |
@@ -44,8 +46,10 @@ Interfaces you mark as not monitored are not stored. You can shorten retention u
 | Outbound | TCP 135 + dynamic RPC | NetWatch server → Windows servers | Remote event logs; WMI over DCOM if WinRM is unavailable |
 | Outbound | TCP 22 | NetWatch server → Linux servers | SSH |
 | Outbound | TCP 443 | NetWatch server → vCenter / ESXi | vSphere API (read-only) |
+| Outbound | TCP 443, UDP 161 | NetWatch server → iLO / iDRAC | Optional: hardware health over Redfish (HTTPS); SNMP fallback |
 | Outbound | TCP 636 (or 389) | NetWatch server → domain controllers | Optional: sign-in with AD accounts (LDAPS) |
 | Outbound | TCP 389, 5985 (or 135 + RPC) | NetWatch server → domain controllers | DC monitoring: replication status over signed/sealed LDAP, Security/Directory Service logs, clock (WMI) |
+| Outbound | TCP 389, 88, 53 | NetWatch server → domain controllers | DC service port check (LDAP, Kerberos, DNS accept TCP connections), every poll |
 | Inbound | TCP 5985 | domain controllers → NetWatch server | Optional: Windows Event Forwarding (WinRM) when DC events are pushed instead of read |
 | Outbound | as configured | NetWatch server → SMTP relay / SIEM | Optional notification channels |
 
@@ -138,9 +142,10 @@ Use dedicated, read-only accounts for monitoring:
 | Active Directory sign-in | None stored: users bind with their own account. Use LDAPS (636) with the DC certificate trusted on the NetWatch server |
 | SMTP relay | Optional; an authenticated relay account if the relay requires it |
 
-Device credentials are encrypted with Windows DPAPI (machine scope). They can only be decrypted on this server:
-when you move NetWatch to another server, the credentials must be re-entered (see the admin guide, *Backup and
-restore*).
+Device credentials are encrypted with Windows DPAPI (machine scope). They can only be decrypted on this server.
+To move NetWatch to another server, make a *Back up for another server* backup (credentials re-encrypted with a
+password you choose) and restore it there with `--restore <file> --restore-password` or from the web console; see
+[backup-restore-guide.md](backup-restore-guide.md). With an ordinary backup the credentials must be re-entered.
 
 ## 6. Upgrade
 
