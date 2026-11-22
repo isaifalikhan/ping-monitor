@@ -3,7 +3,7 @@
 ## 2.0.0
 
 **Domain controllers**
-- Security-log collection for all 23 required event IDs (4624–4776, 4719, 1102, 5136, group changes …), remote
+- Security-log collection for all 23 required event IDs, 26 in total (4624–4776, 4719, 1102, 5136, group changes …), remote
   reads or Windows Event Forwarding selectable per DC, bookmarks, back-off for failing DCs, 4624 filters
   (logon types, ignored sources).
 - New rules: Kerberos pre-authentication spike, account deleted; Account Operators privileged by default.

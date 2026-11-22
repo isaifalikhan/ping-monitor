@@ -53,6 +53,7 @@ certificate import, locked packages. See [docs/CHANGELOG.md](docs/CHANGELOG.md).
 | [docs/troubleshooting.md](docs/troubleshooting.md) | Connection-test errors and fixes |
 | [docs/security-review.md](docs/security-review.md) | Security review and performance test |
 | [docs/decisions.md](docs/decisions.md) | Decisions taken during 2.0 |
+| [docs/FEATURES.md](docs/FEATURES.md) | Complete feature list with status (summary: [FEATURES_SUMMARY.md](docs/FEATURES_SUMMARY.md), spreadsheet: [FEATURES.csv](docs/FEATURES.csv)) |
 | [docs/CHANGELOG.md](docs/CHANGELOG.md) | Release history |
 
 ## Repository layout
@@ -94,5 +95,7 @@ dotnet run --project src\NetWatch.Service -- --console --simulate --data-dir .da
 
 Open https://localhost:8443/, sign in as `admin` with the one-time password from
 `.data\initial-admin-password.txt`, and choose a new password. `--simulate` adds 120 switches, 20 servers (15
-Windows, 5 Linux) and 40 VMs with realistic traffic, faults, reboots, filling disks, stopping services, Windows
-event-log errors, syslog messages and SNMP traps, so every screen and alert can be exercised.
+Windows, 5 Linux), 40 VMs, a vCenter with 4 ESXi hosts and 2 domain controllers (187 devices, plus NetWatch's own
+self-monitoring device) with realistic traffic, faults, reboots, filling disks, stopping services, Windows
+event-log errors, syslog messages, SNMP traps, DC security events and hardware faults, so every screen and alert can
+be exercised.

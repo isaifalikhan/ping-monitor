@@ -81,7 +81,7 @@ counted at 90–95 %). Evidence = class/test; "QA" = added in this release QA.
 | D6 | iLO/iDRAC | PENDING PILOT | 90 | `Wp6HardwareTests` (Redfish samples) |
 | D7 | Server UI + graphs | DONE | 100 | UI tests |
 | E1–E7 | VMware | PENDING PILOT | 95 | `Phase3VmwareTests`; QA hung vCenter (VMW-03) |
-| F1–F3 | DC collection, parsing, 23 IDs | PENDING PILOT | 95 | `Wp1DcSecurityTests` (26 samples); QA DC-03/04 |
+| F1–F3 | DC collection, parsing, 26 event IDs (23 required) | PENDING PILOT | 95 | `Wp1DcSecurityTests` (26 samples); QA DC-03/04 |
 | F4 | DC security rules | DONE | 100 | `Wp2DcRuleTests` |
 | F5 | Replication, services, skew, ports | PENDING PILOT | 95 | `Wp3DcHealthTests` |
 | F6 | DC UI | DONE | 100 | `Wp4DcUiTests` |
@@ -203,7 +203,7 @@ hung vCenter → 15 s timeout, alert after the rule's 180 s, other polling unaff
 | Duplex / speed / flap / LLDP / traps / syslog on real switches | §B: half-duplex on an important port, 1G on a 10G uplink, 4 unplug/replug in 10 min, link-down trap, syslog |
 | Windows (WinRM + DCOM), Linux SSH, GPU, iLO/iDRAC | §C: connection tests; disks/services/patches; nvidia-smi over WinRM; pull a PSU cable → alert |
 | vCenter (read-only role), snapshots, events | §D |
-| DCs: remote reads and WEF, 23 event IDs from real exports, rules, replication | §E: export samples with `wevtutil qe Security /q:"*[System[EventID=4625]]" /c:1 /f:xml` per ID and re-run the parser tests; 5 wrong passwords, lockout, Domain Admins add/remove |
+| DCs: remote reads and WEF, the 26 collected event IDs from real exports, rules, replication | §E: export samples with `wevtutil qe Security /q:"*[System[EventID=4625]]" /c:1 /f:xml` per ID and re-run the parser tests; 5 wrong passwords, lockout, Domain Admins add/remove |
 | LDAP/AD sign-in with group → role mapping | Settings → Directory, LDAPS 636, map two groups, sign in with a user of each |
 | SMTP relay, syslog/Event Log forwarding | §F + §H Event Log test |
 | Browsers, 4K, themes, live updates, reconnect | §H |

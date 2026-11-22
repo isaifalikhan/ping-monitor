@@ -39,9 +39,9 @@ Run the matching test in *Settings → Pilot tools*. Each step shows the exact e
 
 | Error | Cause and fix |
 |---|---|
-| certificate changed / rejected | The API certificate was renewed or the address points elsewhere: verify, then reset the pinned certificate on the device page. With *trust on first use* off, only CA-trusted certificates are accepted |
+| certificate changed / rejected | The API certificate was renewed or the address points elsewhere: verify, then reset the pinned certificate on the device page. For vCenter, *trust on first use* can be turned off (*Settings → General → VMware*); then only CA-trusted certificates are accepted. For iLO/iDRAC trust on first use is always on |
 | Redfish login refused (401/403) | Wrong account, or the iLO/iDRAC account lacks the read-only (Login) privilege; on iDRAC check *Redfish* is enabled (*iDRAC Settings → Services*) |
-| timed out | TCP 443 blocked, or the controller is busy; iLO/iDRAC answer slowly — the poll interval is 5 minutes by default |
+| timed out | TCP 443 blocked, or the controller is busy; iLO/iDRAC answer slowly — they are read every 5 minutes with a 30 s timeout (fixed; not configurable in the console) |
 | lacks permission / empty inventory (vCenter) | Assign the Read-only role at the vCenter root with *propagate to children* |
 
 ## LDAP / LDAPS

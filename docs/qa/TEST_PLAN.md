@@ -112,7 +112,7 @@ Results: [TEST_RESULTS.md](TEST_RESULTS.md). Bugs: [BUGS.md](BUGS.md).
 | ID | Test | Expected |
 |---|---|---|
 | DC-01 | Viewer: event-ID catalog and filter per ID | Every filter returns only that ID |
-| DC-02 | All 23 required event IDs: sample in → fields parsed | Fields as in the sample |
+| DC-02 | All 26 collected event IDs (23 required + 3 more): sample in → fields parsed | Fields as in the sample |
 | DC-03 | Bookmarks: service killed mid-stream and restarted | No duplicate (DeviceId, RecordId); no gap |
 | DC-04 | Volume: ≥ 1,000 events/min sustained (soak: 4,000/min for 4 h) | No ingest backlog, no drops |
 | DC-05 | Every DC rule fires and does not fire falsely | As in `Wp2DcRuleTests` |
