@@ -144,6 +144,9 @@ public sealed class AlertManager : BackgroundService, IAlertSignalSink, IActiveA
 
         while (!stoppingToken.IsCancellationRequested)
         {
+            // Signals of this round count as processed only when the round is over (evaluated, persisted, periodic
+            // checks done), so ProcessedSignals never runs ahead of the database.
+            var handled = 0;
             try
             {
                 // Wait for signals, but wake up for the periodic checks (escalation, absence, flapping).
@@ -167,6 +170,8 @@ public sealed class AlertManager : BackgroundService, IAlertSignalSink, IActiveA
                     {
                         batch.Add(signal);
                     }
+
+                    handled = batch.Count;
 
                     if (_rulesDirty)
                     {
@@ -195,6 +200,13 @@ public sealed class AlertManager : BackgroundService, IAlertSignalSink, IActiveA
             {
                 _logger.LogError(ex, "Alert engine iteration failed ({Count} signal(s) in batch)", batch.Count);
             }
+            finally
+            {
+                if (handled > 0)
+                {
+                    Interlocked.Add(ref _processedSignals, handled);
+                }
+            }
         }
     }
 
@@ -219,7 +231,6 @@ public sealed class AlertManager : BackgroundService, IAlertSignalSink, IActiveA
             }
         }
 
-        Interlocked.Add(ref _processedSignals, batch.Count);
         if (transitions.Count > 0)
         {
             await PersistAsync(transitions, ct);

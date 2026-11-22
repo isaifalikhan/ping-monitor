@@ -129,6 +129,37 @@ public sealed class QaAlertLifecycleTests : IAsyncLifetime
         return await db.Alerts.AsNoTracking().Include(a => a.History).Where(a => deviceId == null || a.DeviceId == deviceId).OrderBy(a => a.Id).ToListAsync();
     }
 
+    /// <summary>
+    /// ProcessedSignals must not run ahead of the database: once it covers a signal, the alert that signal raised or
+    /// resolved is stored. (It used to be counted before persisting, which made these tests fail intermittently under load.)
+    /// </summary>
+    [Fact]
+    public async Task Processed_signal_count_never_runs_ahead_of_the_stored_alerts()
+    {
+        async Task PublishAndWaitForCounterOnly(AlertSignal signal)
+        {
+            var target = _manager.ProcessedSignals + 1;
+            _manager.Publish(signal);
+            for (var i = 0; i < 1000 && _manager.ProcessedSignals < target; i++)
+            {
+                await Task.Delay(2);
+            }
+
+            Assert.True(_manager.ProcessedSignals >= target, "engine did not process the signal");
+        }
+
+        // A new disk each round: raising and resolving the same alert every second would (correctly) count as flapping.
+        for (var round = 0; round < 25; round++)
+        {
+            await PublishAndWaitForCounterOnly(new MetricSignal(6, null, "disk.free.gb", $"V{round}:", 5, T0.AddSeconds((round * 2) + 1)));
+            Assert.Equal(round + 1, (await AlertsAsync(6)).Count);
+            Assert.Single(await AlertsAsync(6), a => a.State == AlertState.Active);
+
+            await PublishAndWaitForCounterOnly(new MetricSignal(6, null, "disk.free.gb", $"V{round}:", 50, T0.AddSeconds((round * 2) + 2)));
+            Assert.DoesNotContain(await AlertsAsync(6), a => a.State == AlertState.Active);
+        }
+    }
+
     [Fact]
     public async Task Threshold_fires_only_after_duration_not_at_limit_and_resolves_with_hysteresis()
     {

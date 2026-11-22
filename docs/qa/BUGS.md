@@ -18,8 +18,9 @@ black-box test → commit.
 | BUG-007 | Low | SMTP connection errors do not name the server or the cause ("No such host is known.") | Fixed | `QaNotificationTests.Smtp_connection_failures_name_the_server_and_the_cause`; black-box `PLT-01` |
 | BUG-008 | High | `build.ps1 -Offline` fails at the test step (`dotnet test` has no `--source`) | Fixed | offline build re-run with empty NuGet cache and network blocked (TEST_RESULTS AIR-03) |
 | BUG-009 | **Critical** | Reinstall/upgrade leaves every existing data file with an empty ACL; the service cannot start (found by the first real install, after rc1) | Fixed in rc2 (`7b6b9d8`); **verified** on the owner's PC | `QaInstallerAclTests` (3 tests) |
+| BUG-010 | Low | Alert engine counted signals as processed before the resulting alerts were saved; alert tests failed intermittently under load (stopped the rc build twice) | Fixed (`AlertManager`) | `QaAlertLifecycleTests.Processed_signal_count_never_runs_ahead_of_the_stored_alerts` (fails reliably without the fix) |
 
-Totals: found 9 (Critical 1, High 1, Medium 4, Low 3) · fixed 8 · **open 1 Medium (BUG-006)**. BUG-009 was found after the
+Totals: found 10 (Critical 1, High 1, Medium 4, Low 4) · fixed 9 · **open 1 Medium (BUG-006)**. BUG-009 was found after the
 QA run, by the first real installation; its fix is in `2.0.0-rc2` and was verified by reinstalling rc2 over the damaged folder.
 
 ---
@@ -134,6 +135,19 @@ QA run, by the first real installation; its fix is in `2.0.0-rc2` and was verifi
   reported the service running; `Get-Service NetWatch` Running; event "Service started successfully"; no .NET Runtime
   error since; dashboard `https://localhost:8443/` HTTP 200 and sign-in worked; data folder from 2026-11-20 kept.
   Still open: INS-01…06 on Windows Server 2022 (gate 5).
+
+## BUG-010 — Processed-signal counter ran ahead of the database (Low)
+
+- **Found:** 2026-11-22, the offline installer build stopped on a failing test
+  (`Threshold_fires_only_after_duration…`, earlier `Open_alerts_survive_an_engine_restart…`), each passing when re-run.
+- **Cause:** `AlertManager` added a batch to `ProcessedSignals` before persisting the alerts it raised or resolved. Tests
+  (and the System status page) took "processed" as "stored"; under load the database write came later.
+  No alert was lost or wrong — they were stored milliseconds later.
+- **Fix:** the batch is counted at the end of the engine round (after persisting and the periodic checks), in a
+  `finally` so a failed round still counts.
+- **Regression test:** `Processed_signal_count_never_runs_ahead_of_the_stored_alerts` — waits only on the counter and
+  checks the database, 25 raise/resolve rounds; fails on the first round without the fix. Alert tests 5× and the full
+  suite 2× green afterwards.
 
 ## Not bugs (investigated)
 
