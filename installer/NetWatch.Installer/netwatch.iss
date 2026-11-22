@@ -59,16 +59,18 @@ Compression=lzma2/max
 SolidCompression=yes
 WizardStyle=modern
 SetupLogging=yes
+SetupIconFile=..\..\branding\hit-siem.ico
 CloseApplications=no
 RestartApplications=no
 UninstallDisplayName={#ProductName}
-UninstallDisplayIcon={app}\NetWatch.Service.exe
+UninstallDisplayIcon={app}\hit-siem.ico
 
 [Languages]
 Name: "english"; MessagesFile: "compiler:Default.isl"
 
 [Files]
 Source: "{#SourceDir}\NetWatch.Service.exe"; DestDir: "{app}"; Flags: ignoreversion
+Source: "..\..\branding\hit-siem.ico"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#DocsDir}\*.md"; DestDir: "{app}\docs"; Flags: ignoreversion skipifsourcedoesntexist
 
 [Dirs]
@@ -76,9 +78,11 @@ Name: "{commonappdata}\NetWatch"; Flags: uninsneveruninstall
 
 [INI]
 Filename: "{app}\HIT SIEM Dashboard.url"; Section: "InternetShortcut"; Key: "URL"; String: "https://localhost:{#HttpsPort}/"
+Filename: "{app}\HIT SIEM Dashboard.url"; Section: "InternetShortcut"; Key: "IconFile"; String: "{app}\hit-siem.ico"
+Filename: "{app}\HIT SIEM Dashboard.url"; Section: "InternetShortcut"; Key: "IconIndex"; String: "0"
 
 [Icons]
-Name: "{group}\HIT SIEM Dashboard"; Filename: "{app}\HIT SIEM Dashboard.url"
+Name: "{group}\HIT SIEM Dashboard"; Filename: "{app}\HIT SIEM Dashboard.url"; IconFilename: "{app}\hit-siem.ico"
 Name: "{group}\HIT SIEM documentation"; Filename: "{app}\docs"
 Name: "{group}\HIT SIEM data folder"; Filename: "{commonappdata}\NetWatch"
 Name: "{group}\Uninstall HIT SIEM"; Filename: "{uninstallexe}"

@@ -5,7 +5,7 @@
     <RootNamespace>NetWatch.Service</RootNamespace>
     <AssemblyName>NetWatch.Service</AssemblyName>
     <Description>NetWatch Windows service host: collectors, alert engine, storage and the HTTPS web console in one process.</Description>
-    <ApplicationIcon />
+    <ApplicationIcon>..\..\branding\hit-siem.ico</ApplicationIcon>
     <ServerGarbageCollection>true</ServerGarbageCollection>
     <ConcurrentGarbageCollection>true</ConcurrentGarbageCollection>
 
