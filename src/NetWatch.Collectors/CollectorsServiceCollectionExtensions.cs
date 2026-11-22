@@ -46,6 +46,7 @@ public static class CollectorsServiceCollectionExtensions
         services.AddSingleton<DomainControllers.ForwardedEventsReader>();
         services.AddHostedService(sp => sp.GetRequiredService<DomainControllers.ForwardedEventsReader>());
 
+        services.AddSingleton<MacTableStore>();
         services.AddSingleton<PollResultProcessor>();
         services.AddSingleton<Snmp.SnmpHealthProfileStore>();
         services.AddSingleton<Hardware.IHardwareCollector, Hardware.HardwareCollector>();

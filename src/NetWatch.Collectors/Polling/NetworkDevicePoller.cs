@@ -158,6 +158,11 @@ public sealed class NetworkDevicePoller : IDevicePoller
             await Section("LLDP/CDP neighbours", async () => result.Neighbors = await NeighborCollector.ReadAsync(client, ct));
         }
 
+        if (request.ReadMacTable)
+        {
+            await Section("MAC address table", async () => result.MacTable = await MacTableCollector.ReadAsync(client, ct));
+        }
+
         await Section("interface counters", async () => result.Interfaces.AddRange(await InterfaceCollector.ReadCountersAsync(client, ct)));
         await Section("health", async () =>
         {

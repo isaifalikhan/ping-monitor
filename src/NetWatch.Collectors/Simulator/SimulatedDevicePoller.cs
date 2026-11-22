@@ -237,6 +237,11 @@ public sealed class SimulatedDevicePoller : IDevicePoller
             result.Neighbors = SimulateNeighbors(request.Device);
         }
 
+        if (request.ReadMacTable && d.Type == DeviceType.Switch)
+        {
+            result.MacTable = SimulateMacTable(request.Device.Id, d);
+        }
+
         if (request.RefreshInterfaces)
         {
             result.InterfaceMetadata = d.Ports
@@ -478,6 +483,42 @@ public sealed class SimulatedDevicePoller : IDevicePoller
     /// off the access ports in order (switch children on their own Te1/1/1, servers on NIC1). Cisco switches report
     /// their switch neighbours by CDP as well, which the parser de-duplicates.
     /// </summary>
+    /// <summary>
+    /// Learned MACs: one PC on each connected access port (a phone in VLAN 20 on every third), the MACs of the
+    /// switches below on uplinks; ARP gives every PC an address 10.&lt;switch&gt;.&lt;VLAN&gt;.&lt;port&gt;.
+    /// </summary>
+    private static Snmp.MacTableReading SimulateMacTable(int deviceId, SimDevice d)
+    {
+        var entries = new List<Snmp.MacEntryReading>();
+        var arp = new List<Snmp.ArpReading>();
+        string Mac(int prefix, int port) => $"3C:{prefix:X2}:{deviceId / 256 % 256:X2}:{deviceId % 256:X2}:{port / 256 % 256:X2}:{port % 256:X2}";
+        foreach (var p in d.Ports.Where(p => p.Connected && p.AdminUp))
+        {
+            var ifIndex = p.Spec.IfIndex;
+            if (p.Spec.IsUplink)
+            {
+                for (var i = 0; i < 24; i++)
+                {
+                    entries.Add(new Snmp.MacEntryReading(ifIndex, Mac(0xA0, (ifIndex * 32) + i), 10));
+                }
+
+                continue;
+            }
+
+            var pc = Mac(0x10, ifIndex);
+            entries.Add(new Snmp.MacEntryReading(ifIndex, pc, 10));
+            arp.Add(new Snmp.ArpReading($"10.{deviceId % 250}.10.{ifIndex % 250}", pc, 100010));
+            if (ifIndex % 3 == 0)
+            {
+                var phone = Mac(0x20, ifIndex);
+                entries.Add(new Snmp.MacEntryReading(ifIndex, phone, 20));
+                arp.Add(new Snmp.ArpReading($"10.{deviceId % 250}.20.{ifIndex % 250}", phone, 100020));
+            }
+        }
+
+        return new Snmp.MacTableReading(entries, arp);
+    }
+
     internal List<NeighborReading> SimulateNeighbors(DeviceSnapshot device)
     {
         var result = new List<NeighborReading>();

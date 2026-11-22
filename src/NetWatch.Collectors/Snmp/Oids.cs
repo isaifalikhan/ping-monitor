@@ -27,6 +27,25 @@ public static class Oids
     public const string IfOutErrors = "1.3.6.1.2.1.2.2.1.20";
     public const string IfLastChange = "1.3.6.1.2.1.2.2.1.9";
 
+    // BRIDGE-MIB (RFC 4188): bridge port -> ifIndex, and the learned MAC table without VLANs
+    public const string Dot1dBasePortIfIndex = "1.3.6.1.2.1.17.1.4.1.2";
+    public const string Dot1dTpFdbPort = "1.3.6.1.2.1.17.4.3.1.2";
+    public const string Dot1dTpFdbStatus = "1.3.6.1.2.1.17.4.3.1.3";
+
+    // Q-BRIDGE-MIB (RFC 4363): learned MAC table per filtering database (VLAN), and VLAN -> FDB id
+    public const string Dot1qTpFdbPort = "1.3.6.1.2.1.17.7.1.2.2.1.2";
+    public const string Dot1qTpFdbStatus = "1.3.6.1.2.1.17.7.1.2.2.1.3";
+    public const string Dot1qVlanFdbId = "1.3.6.1.2.1.17.7.1.4.2.1.3";
+
+    // IP-MIB ARP table (ipNetToMediaTable): MAC -> IPv4 on routed switches
+    public const string IpNetToMediaPhysAddress = "1.3.6.1.2.1.4.22.1.2";
+    public const string IpNetToMediaType = "1.3.6.1.2.1.4.22.1.4";
+
+    // TP-Link JetStream / Omada switches, TPLINK-SYSMONITOR-MIB (enterprise 11863): one row per unit of a stack
+    public const string TpLinkCpu5Seconds = "1.3.6.1.4.1.11863.6.4.1.1.1.1.2";
+    public const string TpLinkCpu1Minute = "1.3.6.1.4.1.11863.6.4.1.1.1.1.3";
+    public const string TpLinkMemoryUtilization = "1.3.6.1.4.1.11863.6.4.1.2.1.1.2";
+
     // EtherLike-MIB
     public const string Dot3StatsDuplexStatus = "1.3.6.1.2.1.10.7.2.1.19";
 
@@ -119,6 +138,7 @@ public static class VendorCatalog
         ("1.3.6.1.4.1.47196.", "HPE Aruba"),
         ("1.3.6.1.4.1.14823.", "Aruba"),
         ("1.3.6.1.4.1.2636.", "Juniper"),
+        ("1.3.6.1.4.1.11863.", "TP-Link"),
         ("1.3.6.1.4.1.2011.", "Huawei"),
         ("1.3.6.1.4.1.25506.", "H3C"),
         ("1.3.6.1.4.1.6486.", "Alcatel-Lucent"),

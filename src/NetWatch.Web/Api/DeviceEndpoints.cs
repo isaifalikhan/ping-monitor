@@ -6,6 +6,7 @@ using Microsoft.AspNetCore.Routing;
 using Microsoft.EntityFrameworkCore;
 using NetWatch.Collectors.Inventory;
 using NetWatch.Collectors.Live;
+using NetWatch.Collectors.Processing;
 using NetWatch.Collectors.Scheduling;
 using NetWatch.Core;
 using NetWatch.Core.Abstractions;
@@ -29,6 +30,8 @@ public static class DeviceEndpoints
         read.MapGet("/devices/{id:int}", GetAsync);
         read.MapGet("/devices/{id:int}/interfaces", InterfacesAsync);
         read.MapGet("/devices/{id:int}/sensors", SensorsAsync);
+        read.MapGet("/devices/{id:int}/mac-table", MacTable);
+        read.MapGet("/mac-search", MacSearch);
         read.MapGet("/devices/{id:int}/events", EventsAsync);
         read.MapGet("/devices/{id:int}/metrics", DeviceMetricsAsync);
         read.MapGet("/interfaces/{id:int}/metrics", InterfaceMetricsAsync);
@@ -190,6 +193,31 @@ public static class DeviceEndpoints
     private static async Task<IResult> SensorsAsync(int id, NetWatchDbContext db, CancellationToken ct) =>
         Results.Ok(await db.Sensors.AsNoTracking().Where(s => s.DeviceId == id).OrderBy(s => s.Kind).ThenBy(s => s.Name)
             .Select(s => new SensorDto(s.Id, s.Kind, s.Name, s.LastValue, s.Unit, s.LastState, s.LastSeenUtc)).ToListAsync(ct));
+
+    /// <summary>Learned MAC addresses of a switch, per port, with the IP from the ARP tables when known.</summary>
+    private static IResult MacTable(int id, MacTableStore store)
+    {
+        if (store.Get(id) is not { } table)
+        {
+            return Results.Ok(new MacTableDto(null, MacTableStore.RefreshInterval.TotalMinutes, []));
+        }
+
+        return Results.Ok(new MacTableDto(table.ReadUtc, MacTableStore.RefreshInterval.TotalMinutes,
+            table.Entries.Select(e => new MacEntryDto(e.Mac, e.Vlan, store.IpOf(e.Mac), e.InterfaceId, e.Port, table.MacsPerPort.GetValueOrDefault(e.IfIndex))).ToList()));
+    }
+
+    /// <summary>Where is a MAC (any notation or its last hex digits) or an IPv4 address connected?</summary>
+    private static IResult MacSearch(string? q, MacTableStore store)
+    {
+        var query = q?.Trim() ?? string.Empty;
+        if (query.Length is < 4 or > 64)
+        {
+            return HttpExtensions.Error("Enter at least 4 characters of a MAC address, or an IP address.");
+        }
+
+        return Results.Ok(store.Search(query).Select(r => new MacLocationDto(r.DeviceId, r.DeviceName, r.Port, r.InterfaceId, r.Mac, r.Vlan, r.Ip, r.MacsOnPort,
+            r.MacsOnPort <= MacTableStore.EdgePortMaxMacs, r.ReadUtc)));
+    }
 
     private static async Task<IResult> EventsAsync(int id, EventsDbContext events, int? limit, CancellationToken ct)
     {
@@ -577,3 +605,9 @@ public static class DeviceEndpoints
     private static IResult ImportTemplate() =>
         Results.File(System.Text.Encoding.UTF8.GetBytes(DeviceCsvParser.Template), "text/csv", "netwatch-devices-template.csv");
 }
+
+public sealed record MacEntryDto(string Mac, int? Vlan, string? Ip, int? InterfaceId, string Port, int MacsOnPort);
+
+public sealed record MacTableDto(DateTime? ReadUtc, double RefreshMinutes, IReadOnlyList<MacEntryDto> Entries);
+
+public sealed record MacLocationDto(int DeviceId, string DeviceName, string Port, int? InterfaceId, string Mac, int? Vlan, string? Ip, int MacsOnPort, bool EdgePort, DateTime ReadUtc);

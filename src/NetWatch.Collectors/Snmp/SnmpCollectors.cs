@@ -193,6 +193,7 @@ public static class HealthCollector
             "Cisco" => await CiscoAsync(client, ct),
             "HP" => await HpAsync(client, ct),
             "Juniper" => await JuniperAsync(client, ct),
+            "TP-Link" => await TpLinkAsync(client, ct),
             _ => new Health(null, null, new List<SensorReading>()),
         };
 
@@ -299,6 +300,17 @@ public static class HealthCollector
     };
 
     // ---------------------------------------------------------------- Juniper
+
+    // ---------------------------------------------------------------- TP-Link
+
+    private static async Task<Health> TpLinkAsync(SnmpClient client, CancellationToken ct)
+    {
+        var cpu1 = await InterfaceCollector.SafeWalk(client, Oids.TpLinkCpu1Minute, ct);
+        var cpu5 = cpu1.Count > 0 ? new Dictionary<string, ISnmpData>() : await InterfaceCollector.SafeWalk(client, Oids.TpLinkCpu5Seconds, ct);
+        var mem = await InterfaceCollector.SafeWalk(client, Oids.TpLinkMemoryUtilization, ct);
+        var (cpuPct, memPct) = TpLinkHealthParser.Parse(cpu1, cpu5, mem);
+        return new Health(cpuPct, memPct, new List<SensorReading>());
+    }
 
     private static async Task<Health> JuniperAsync(SnmpClient client, CancellationToken ct)
     {

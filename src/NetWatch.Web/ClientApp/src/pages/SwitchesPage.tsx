@@ -5,6 +5,7 @@ import { api } from '../api/client';
 import { portClass } from '../util/logic';
 import type { DeviceListItem, NetInterface } from '../api/types';
 import { StatusBadge, UtilBar } from '../components/Badges';
+import { MacSearch } from '../components/MacSearch';
 import { useLive, useLiveEvent } from '../live/LiveContext';
 import { fmtBps, fmtSpeed, ifStatusText } from '../util/format';
 
@@ -159,6 +160,8 @@ export function SwitchesPage() {
           </button>
         </div>
       </div>
+
+      <MacSearch />
       <div className="toolbar faint" style={{ marginBottom: 12, fontSize: 12.5 }}>
         <span className="port up" style={{ padding: '1px 8px' }}>up</span>
         <span className="port hot" style={{ padding: '1px 8px' }}>≥80%</span>

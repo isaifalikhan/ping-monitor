@@ -1075,3 +1075,31 @@ export interface TopologyNode {
   groupPath?: string | null;
   unreachableVia?: string | null;
 }
+
+export interface MacEntry {
+  mac: string;
+  vlan: number | null;
+  ip: string | null;
+  interfaceId: number | null;
+  port: string;
+  macsOnPort: number;
+}
+
+export interface MacTable {
+  readUtc: string | null;
+  refreshMinutes: number;
+  entries: MacEntry[];
+}
+
+export interface MacLocation {
+  deviceId: number;
+  deviceName: string;
+  port: string;
+  interfaceId: number | null;
+  mac: string;
+  vlan: number | null;
+  ip: string | null;
+  macsOnPort: number;
+  edgePort: boolean;
+  readUtc: string;
+}

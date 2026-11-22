@@ -43,6 +43,12 @@ public sealed partial class DiagnosticBundleService
         ("HP ProCurve sensors", "1.3.6.1.4.1.11.2.14.11.1.2.6"),
         ("ArubaOS-CX ARUBAWIRED", "1.3.6.1.4.1.47196.4.1.1.3.11"),
         ("Juniper jnxOperating", "1.3.6.1.4.1.2636.3.1.13.1"),
+        ("TP-Link sysMonitor (CPU, memory)", "1.3.6.1.4.1.11863.6.4"),
+        ("BRIDGE-MIB bridge port -> ifIndex", "1.3.6.1.2.1.17.1.4.1.2"),
+        ("Q-BRIDGE-MIB MAC table port", "1.3.6.1.2.1.17.7.1.2.2.1.2"),
+        ("Q-BRIDGE-MIB VLAN -> FDB id", "1.3.6.1.2.1.17.7.1.4.2.1.3"),
+        ("BRIDGE-MIB MAC table port", "1.3.6.1.2.1.17.4.3.1.2"),
+        ("ARP table (ipNetToMedia)", "1.3.6.1.2.1.4.22.1.2"),
         ("HPE CPQHLTH", "1.3.6.1.4.1.232.6.1"),
         ("Dell iDRAC status", "1.3.6.1.4.1.674.10892.5.2"),
     ];

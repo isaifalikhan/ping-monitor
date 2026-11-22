@@ -66,6 +66,7 @@ public sealed class PollResultProcessor
     private readonly HardwareResultProcessor? _hardware;
     private readonly TimeProvider _time;
     private readonly ILogger<PollResultProcessor> _logger;
+    private readonly MacTableStore _macTables;
     private readonly ConcurrentDictionary<int, DeviceRuntime> _runtime = new();
     private readonly ConcurrentDictionary<int, CounterSnapshot> _counters = new();
 
@@ -81,9 +82,11 @@ public sealed class PollResultProcessor
         VmwareResultProcessor vmware,
         DcResultProcessor dc,
         HardwareResultProcessor? hardware,
+        MacTableStore macTables,
         TimeProvider time,
         ILogger<PollResultProcessor> logger)
     {
+        _macTables = macTables;
         _scopeFactory = scopeFactory;
         _metrics = metrics;
         _alerts = alerts;
@@ -108,6 +111,7 @@ public sealed class PollResultProcessor
         public bool ForceInterfaceRefresh = true;
         public DateTime LastInterfaceRefreshUtc = DateTime.MinValue;
         public DateTime LastInventoryRefreshUtc = DateTime.MinValue;
+        public DateTime LastMacTableUtc = DateTime.MinValue;
         public Dictionary<int, InterfaceRuntime> ByIfIndex = new();
         public readonly Dictionary<string, SensorRuntime> Sensors = new(StringComparer.Ordinal);
     }
@@ -163,6 +167,7 @@ public sealed class PollResultProcessor
         _servers.Forget(deviceId);
         _dc.Forget(deviceId);
         _hardware?.Forget(deviceId);
+        _macTables.Forget(deviceId);
         try
         {
             _metrics.ForgetDevice(deviceId);
@@ -189,8 +194,11 @@ public sealed class PollResultProcessor
         var hardware = _hardware is null ? null : await _hardware.PrepareAsync(device, ct);
 
         var readNeighbors = refreshInterfaces && settings.DiscoverNeighbors && device.Type is DeviceType.Switch or DeviceType.Router or DeviceType.Firewall or DeviceType.Other;
+        // Learned MAC addresses per port (and ARP on routed switches) every 15 minutes.
+        var readMacTable = hasSnmp && device.Type is DeviceType.Switch or DeviceType.Router or DeviceType.Other &&
+            now - rt.LastMacTableUtc >= MacTableStore.RefreshInterval;
         return new PollRequest(device, snmp, refreshInterfaces, refreshInventory, settings.PingCount, settings.PingTimeoutMs, settings.SnmpTimeoutMs, settings.SnmpRetries,
-            server, hasSnmp && server is null && ServerResultProcessor.WantsSnmpStorage(device), vmware, dc, readNeighbors, hardware);
+            server, hasSnmp && server is null && ServerResultProcessor.WantsSnmpStorage(device), vmware, dc, readNeighbors, hardware, readMacTable);
     }
 
     public async Task ProcessAsync(PollRequest request, DevicePollResult result, CancellationToken ct)
@@ -340,6 +348,16 @@ public sealed class PollResultProcessor
         if (result.Neighbors is { } neighbors)
         {
             await SyncNeighborsAsync(db, device.Id, rt, neighbors, now, ct);
+        }
+
+        if (result.MacTable is { } macTable)
+        {
+            var entries = macTable.Entries.Select(e => rt.ByIfIndex.TryGetValue(e.IfIndex, out var port)
+                    ? new MacPortEntry(e.Mac, e.Vlan, e.IfIndex, port.Id, port.Name)
+                    : new MacPortEntry(e.Mac, e.Vlan, e.IfIndex, null, MacTableStore.PortLabel(e.IfIndex)))
+                .ToList();
+            _macTables.Update(device.Id, device.Name, now, entries, macTable.Arp);
+            rt.LastMacTableUtc = now;
         }
 
         // ---- interfaces -----------------------------------------------------------------

@@ -26,7 +26,8 @@ public sealed record PollRequest(
     Vmware.VmwarePollRequest? Vmware = null,
     DomainControllers.DcPollRequest? Dc = null,
     bool ReadNeighbors = false,
-    Hardware.HardwarePollRequest? Hardware = null);
+    Hardware.HardwarePollRequest? Hardware = null,
+    bool ReadMacTable = false);
 
 /// <summary>Raw interface counters and status from one poll.</summary>
 public sealed record InterfaceCounters(
@@ -93,6 +94,9 @@ public sealed class DevicePollResult
 
     /// <summary>LLDP/CDP neighbours, read together with the interface table (null = not read this cycle).</summary>
     public List<Snmp.NeighborReading>? Neighbors { get; set; }
+
+    /// <summary>Learned MAC addresses per port and ARP entries (null = not read this cycle).</summary>
+    public Snmp.MacTableReading? MacTable { get; set; }
 
     /// <summary>Server facts (WinRM/WMI, SSH or SNMP storage), or null for network devices.</summary>
     public Servers.ServerPollData? Server { get; set; }

@@ -15,6 +15,7 @@ import { useLive } from '../../live/LiveContext';
 import { fmtAgo, fmtBps, fmtDateTime, fmtDuration, fmtMs, fmtNum, fmtPct, fmtSpeed, ifStatusText, typeLabel } from '../../util/format';
 import { AlertDetailDialog } from '../alerts/AlertsPage';
 import { DeviceForm } from './DeviceForm';
+import { MacTablePanel } from './MacTablePanel';
 import { ServerPanel } from './ServerPanel';
 import { VmwarePanel } from './VmwarePanel';
 
@@ -30,7 +31,10 @@ interface LiveMetrics {
   interfaces: { id: number; operStatus: number; inBps?: number | null; outBps?: number | null; inUtilPct?: number | null; outUtilPct?: number | null }[];
 }
 
-type Tab = 'overview' | 'server' | 'interfaces' | 'sensors' | 'events' | 'alerts';
+type Tab = 'overview' | 'server' | 'interfaces' | 'macs' | 'sensors' | 'events' | 'alerts';
+
+const TAB_LABELS: Partial<Record<Tab, string>> = { macs: 'MAC addresses' };
+const MAC_TABLE_TYPES = ['Switch', 'Router', 'Other'];
 
 const SERVER_TYPES = ['Server', 'VM', 'DomainController', 'Hypervisor'];
 
@@ -402,9 +406,9 @@ export function DeviceDetailPage() {
       </div>
 
       <div className="tabs">
-        {(['overview', ...(isServer ? ['server'] : []), 'interfaces', 'sensors', 'events', 'alerts'] as Tab[]).map((t) => (
+        {(['overview', ...(isServer ? ['server'] : []), 'interfaces', ...(MAC_TABLE_TYPES.includes(d.type) ? ['macs'] : []), 'sensors', 'events', 'alerts'] as Tab[]).map((t) => (
           <button key={t} className={tab === t ? 'active' : ''} onClick={() => setTab(t)}>
-            {t[0].toUpperCase() + t.slice(1)}
+            {TAB_LABELS[t] ?? t[0].toUpperCase() + t.slice(1)}
             {t === 'interfaces' && interfaces.data ? ` (${interfaces.data.length})` : ''}
             {t === 'alerts' && openAlerts.length > 0 ? ` (${openAlerts.length})` : ''}
           </button>
@@ -491,6 +495,8 @@ export function DeviceDetailPage() {
       )}
 
       {tab === 'server' && <ServerPanel device={d} range={range} />}
+
+      {tab === 'macs' && <MacTablePanel deviceId={deviceId} />}
 
       {tab === 'interfaces' && (
         <div className="grid" style={{ gap: 16 }}>
