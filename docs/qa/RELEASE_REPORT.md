@@ -28,8 +28,8 @@ Stage lines:
 |---|---|---|---|
 | 1 | Build 0 errors / 0 warnings; all tests pass, none skipped; coverage targets | ✅ | 0/0 (Release, offline); xUnit 304/304, vitest 11/11, 0 skipped; coverage Core 94.6 %, Alerts 84.6 %, Collectors parsers 87.7 %, Data 90.4 % (§3) |
 | 2 | Every feature DONE in simulator mode | ✅ | §2: all A1–H9 and WP0–WP12 items Done or Pending pilot; nothing Stub/Partial/Not started |
-| 3 | 100 % of test cases PASS in the final regression | ❌ | 97 of 122 PASS; 12 NOT RUN, 10 PENDING PILOT, 2 PARTIAL, 1 FAIL (soak 1, BUG-006) — §4 |
-| 4 | 0 open Critical / High / Medium | ❌ | BUG-006 (Medium) open |
+| 3 | 100 % of test cases PASS in the final regression | ❌ | 97 of 122 PASS; 12 NOT RUN, 10 PENDING PILOT, 2 PARTIAL, 1 FAIL (soak 1, BUG-006; soak 2 on the final build PASS, §5a) — §4 |
+| 4 | 0 open Critical / High / Medium | ❌ | BUG-006 (Medium) open — not reproduced in soak 2, cause unproven |
 | 5 | Install, reboot, upgrade from 1.2.0, uninstall PASS on Windows Server 2022 | ❌ | NOT RUN: needs an admin VM; database upgrade from 1.2.0 passes (`UpgradeFrom120Tests`) |
 | 6 | Soak: no leaks, no overruns, recovery from every injected fault | ❌ | soak 1: 1 overrun; working set +35 MB over 3.5 h (not proven flat); fault recovery PASS (kill, DB lock, hung vCenter, missing DC); disk-full NOT RUN; final soak: §5 |
 | 7 | Security: permission matrix, no injection/XSS, no secrets in DB/logs/bundle, security review | ✅ | SEC-01…32; executed matrix 137 endpoints × 5 identities; 0 secret hits in DBs, logs, backup, bundle; `docs/security-review.md` |
@@ -152,8 +152,24 @@ counted at 90–95 %). Evidence = class/test; "QA" = added in this release QA.
 | Handles | 915 → 1,065 |
 | Database growth | 2.8 GB/day before retention at 4,000 DC events/min (≈ 0.9 GB/day expected at 1,000/min) |
 
-**Soak 2 (final build, same profile):** running at the time of writing; first 57 min: 0 overruns, 0 drops, working
-set 307 MB. Result to be appended here (§5a).
+**§5a — Soak 2** (final build `2afc75e` with overrun diagnostics, same profile, 244 min, 2026-11-21 23:46 → 2026-11-22 03:50 UTC):
+
+| Metric | Value |
+|---|---|
+| Polls | 74,860 (58 failed = the simulated 2 % timeout devices) |
+| Poll duration | decaying max 5.8–6.6 s; no poll reached the 55 s timeout |
+| Overruns | **0** — no "Poll overrun" log line |
+| Dropped samples / alert signals / receiver messages | 0 / 0 / 0 |
+| Metric write queue | average 111; short peaks up to 1,536 that drained by the next sample (each earlier peak did) |
+| CPU | 2.4 % of one core average |
+| Working set (hourly average) | 293 → 315 → 327 → 327 MB (flat in hours 3–4) |
+| Private bytes (hourly average) | 169 → 188 → 199 → 200 MB |
+| Handles | 887 → 995 (max 1,074) |
+| Log errors | only the 3 expected "cannot listen" on UDP 162 / UDP+TCP 514 (ports held by a pre-existing instance on this PC) |
+
+Result: REL-01 **PASS** on the final build. BUG-006 did not reproduce (1 overrun in ≈ 147,000 polls over both soaks),
+so its cause is still unproven and it stays open; memory flattening after ≈ 2 h is encouraging but 4 h does not prove
+the absence of a slow leak — the 24 h / one-week pilot run remains required.
 
 **Response times** with full simulator data: 42 main API endpoints max 41 ms, average 12 ms (30-day interface graph
 included). 500-row CSV import 122 ms.

@@ -14,7 +14,7 @@ black-box test → commit.
 | BUG-003 | Medium | Notification script that does not read stdin reported as failed ("The pipe is being closed"), exit code lost | Fixed | `QaNotificationTests.Script_failures_and_timeouts_are_reported_and_names_are_validated` |
 | BUG-004 | Low | SNMP connection test shows raw socket text for a closed UDP 161 | Fixed | `QaRegressionTests.Snmp_to_a_closed_udp_port_explains_that_the_agent_is_not_running` |
 | BUG-005 | Low | Misleading log "Open alert already exists" when the device was deleted meanwhile | Fixed | `QaAlertLifecycleTests.Signals_for_a_device_deleted_meanwhile_are_dropped_and_the_engine_keeps_working` |
-| BUG-006 | Medium | One poll overrun in 72,000 polls during the 2× soak; root cause not determined | **Open** (diagnostics added) | final soak (see TEST_RESULTS REL-01) |
+| BUG-006 | Medium | One poll overrun in 72,000 polls during the 2× soak; root cause not determined | **Open** (diagnostics added; not reproduced in soak 2) | soak 2: 0 overruns in 74,860 polls (TEST_RESULTS REL-01) |
 | BUG-007 | Low | SMTP connection errors do not name the server or the cause ("No such host is known.") | Fixed | `QaNotificationTests.Smtp_connection_failures_name_the_server_and_the_cause`; black-box `PLT-01` |
 | BUG-008 | High | `build.ps1 -Offline` fails at the test step (`dotnet test` has no `--source`) | Fixed | offline build re-run with empty NuGet cache and network blocked (TEST_RESULTS AIR-03) |
 
@@ -80,7 +80,10 @@ Totals: found 8 (Critical 0, High 1, Medium 4, Low 3) · fixed 7 · **open 1 Med
 - **Action taken:** `PollScheduler` now records when each poll was queued and started and logs at every overrun the
   device, stage (queued/running) and times. The final soak runs with this build.
 - **Why not fixed:** the root cause is not proven; changing scheduling without it would be guesswork.
-- **Status:** open → blocks GO (gate requires 0 open Medium).
+- **Soak 2 (final build, 244 min, same profile):** 0 overruns in 74,860 polls, no "Poll overrun" log line, so the
+  new diagnostics never fired. Total across both soaks: 1 overrun in ≈ 147,000 polls.
+- **Status:** open (not reproduced, cause unproven) → blocks GO (gate requires 0 open Medium). Closing it needs the
+  one-week pilot run with 0 overruns, or a captured "Poll overrun" log line to fix against.
 
 ## BUG-007 — SMTP connect errors without the server name (Low)
 

@@ -131,7 +131,7 @@ PENDING PILOT (passes with simulator/sample data; must be proven on real devices
 | ID | Result | Evidence |
 |---|---|---|
 | REL-01 (soak 1, 237 min) | **FAIL** (BUG-006) | 1 overrun in ≈ 72,000 polls; otherwise 0 dropped samples/alerts/messages, queue 0, CPU 2.5 % of one core, working set 307 → 342 MB, handles 915 → 1,065, DB growth 2.8 GB/day at 4,000 DC events/min |
-| REL-01 (soak 2, final build) | see RELEASE_REPORT | running at the time of writing |
+| REL-01 (soak 2, final build, 244 min) | **PASS** | 0 overruns in 74,860 polls, 0 dropped samples/alerts/messages, CPU 2.4 % of one core, working set hourly average 293 → 315 → 327 → 327 MB, handles 887 → 995, write-queue peaks drained (RELEASE_REPORT §5a) |
 | FLT-01 | PASS | `taskkill /F` during collection; `PRAGMA quick_check` ok on all 3 DBs; restart reloaded 37 open alerts and 6,332 counter states; polling resumed, 0 overruns |
 | FLT-02 | PASS | 3 DBs exclusively locked 45 s: reads OK, writes logged errors after 30 s busy timeout, ~35 polls counted failed, 0 overruns/drops; no error after release; integrity ok |
 | FLT-03 | PASS | see VMW-03 |
