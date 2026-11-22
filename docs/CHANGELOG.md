@@ -42,6 +42,11 @@ authorization enforced by tests; SNMP v2c warning.
 **Fixes**: vCenter events were never stored (query translation error); `--Https:Port` and `NETWATCH_*`
 environment variables now override `appsettings.json`.
 
+**Release QA fixes (2026-11-22)**: SMTP and syslog notifications are retried after a transient relay failure;
+e-mail addresses without a domain are refused; a notification script that ignores stdin no longer fails;
+`build.ps1 -Offline` works (it failed at the test step); clearer SMTP/SNMP connection-test errors; poll overruns are
+logged with device and timing. See docs/qa/BUGS.md.
+
 **Upgrade notes**: databases are upgraded automatically (migrations Phase4 … Wp9Kiosk). Built-in rules that
 already exist keep their thresholds: to use the 2.0 defaults set *AD replication failing* to 3600 s and *DC clock
 skew critical* to 120 s in *Settings → Alert rules*.
