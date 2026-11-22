@@ -17,10 +17,10 @@ black-box test → commit.
 | BUG-006 | Medium | One poll overrun in 72,000 polls during the 2× soak; root cause not determined | **Open** (diagnostics added; not reproduced in soak 2) | soak 2: 0 overruns in 74,860 polls (TEST_RESULTS REL-01) |
 | BUG-007 | Low | SMTP connection errors do not name the server or the cause ("No such host is known.") | Fixed | `QaNotificationTests.Smtp_connection_failures_name_the_server_and_the_cause`; black-box `PLT-01` |
 | BUG-008 | High | `build.ps1 -Offline` fails at the test step (`dotnet test` has no `--source`) | Fixed | offline build re-run with empty NuGet cache and network blocked (TEST_RESULTS AIR-03) |
-| BUG-009 | **Critical** | Reinstall/upgrade leaves every existing data file with an empty ACL; the service cannot start (found by the first real install, after rc1) | Fixed in rc2 (`7b6b9d8`); installed re-test pending | `QaInstallerAclTests` (3 tests) |
+| BUG-009 | **Critical** | Reinstall/upgrade leaves every existing data file with an empty ACL; the service cannot start (found by the first real install, after rc1) | Fixed in rc2 (`7b6b9d8`); **verified** on the owner's PC | `QaInstallerAclTests` (3 tests) |
 
 Totals: found 9 (Critical 1, High 1, Medium 4, Low 3) · fixed 8 · **open 1 Medium (BUG-006)**. BUG-009 was found after the
-QA run, by the first real installation; its fix is in `2.0.0-rc2` and still needs the installed-service re-test (admin).
+QA run, by the first real installation; its fix is in `2.0.0-rc2` and was verified by reinstalling rc2 over the damaged folder.
 
 ---
 
