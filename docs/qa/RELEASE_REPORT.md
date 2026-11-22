@@ -114,6 +114,7 @@ counted at 90–95 %). Evidence = class/test; "QA" = added in this release QA.
 | xUnit | 304 run / 304 passed / 0 failed / 0 skipped (was 266; +38 QA tests in 9 new files) |
 | vitest | 11 / 11 |
 | Black-box API | 53 / 53 against the release single-file exe |
+| Regression run 2 (HEAD `ddd3912`) | build 0/0 · xUnit 304/304 · vitest 11/11 · offline check pass · black-box 53/53 on the release exe · package hashes OK (TEST_RESULTS) |
 | Coverage (line) | Core 94.6 % (was 72.0) · Alerts 84.6 % excl. generated regex (was 55.5) · Collectors parsers 87.7 % · Data 90.4 % hand-written · Collectors overall 65.3 % · Web 58.8 % (Web and collectors transport code are exercised by the integration/black-box tests, not counted in a target) |
 
 ## 4. Test results summary (final regression)

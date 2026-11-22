@@ -19,6 +19,23 @@ PENDING PILOT (passes with simulator/sample data; must be proven on real devices
 | vitest (UI) | 11 | 11 | 0 | 0 |
 | Black-box API (`tests/blackbox/run.mjs`) against the **release exe** | 53 | 53 | 0 | 0 |
 
+**Regression run 2 (2026-11-22, on request; HEAD `ddd3912` = `2afc75e` + documentation only).**
+
+| Check | Result |
+|---|---|
+| `dotnet build -c Release --no-incremental` | 0 warnings, 0 errors |
+| xUnit (Release, with coverage) | 304 run / 304 passed / 0 failed / 0 skipped (4 min 20 s) |
+| Coverage (line) | Core 94.6 % · Alerts 84.8 % · Collectors parsers 92.0 % (files named `*Pars*`) · Data hand-written 90.1 % |
+| vitest (UI) | 11 / 11 |
+| `scripts/check-offline.mjs` | pass — no external resources |
+| Black-box API against the release exe (`rel-bin`, port 9444) | 53 / 53 passed in 372 s |
+| Release package `sha256sum -c SHA256SUMS.txt` | all 5 files OK |
+| Source scan for http(s) URLs | only device-targeted (`https://{target}`) and the local listener |
+
+Not repeated in run 2, because no product code changed since they ran on `2afc75e`: the 4-hour soak (soak 2 PASS,
+REL-01), fault injection, the 60-minute air-gap capture and the offline build. All NOT RUN and PENDING PILOT cases
+stay as recorded below; the case totals are unchanged (97 PASS / 1 FAIL / 12 NOT RUN / 10 PENDING PILOT / 2 PARTIAL).
+
 ## 2.1 Installation & service
 
 | ID | Result | Evidence |
