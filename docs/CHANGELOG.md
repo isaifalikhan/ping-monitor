@@ -1,5 +1,17 @@
 # Changelog
 
+## Unreleased
+
+- **DC Security log backfill:** on the first remote read of a DC, the last 24 h still in its Security log are read
+  as well (*Settings → General → Domain controllers*, 0–720 h, 0 = only new events). Backfilled events are stored
+  and searchable but raise no alerts.
+- **CSV export** of syslog, SNMP traps, Windows event logs and alerts with the same filters as the lists (newest
+  100,000 rows, audited), next to the existing DC security-event export.
+- **Longer search ranges:** 90 days and 1 year on *Events & logs* and *Alerts → History*, 90 and 365 days in the DC
+  event viewer. *Alerts → History* now filters by time range and text on the server, so alerts older than the newest
+  1,000 can be found.
+- Syslog and trap lists are sorted by time instead of by arrival order.
+
 ## 2.0.0
 
 **Domain controllers**

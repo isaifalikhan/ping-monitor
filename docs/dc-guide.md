@@ -75,6 +75,20 @@ successful logons**. *Settings → General → Domain controllers* changes the l
 (IP, CIDR such as `10.0.20.0/24`, or workstation name) whose successful logons are not stored, e.g.
 application servers. Failures are always stored.
 
+**First connection (backfill).** When NetWatch reads a DC remotely for the first time, it also reads the events of
+the last **24 hours** that are still in its Security log (*Settings → General → Domain controllers → On first
+connection, also read the last (h)*, 0–720; 0 = only new events). The history is read in batches of *max. Security
+events per poll* (5,000 by default), so a busy DC catches up over a few polls. Backfilled events are stored and
+searchable but **raise no alerts**, because they happened before monitoring started. How far back you can go is
+limited by the size of the DC's own Security log. DCs that use Windows Event Forwarding get whatever their
+subscription delivers (*Read existing events* in the subscription settings); after a restart NetWatch re-reads the
+last hour of ForwardedEvents.
+
+**Disk use.** Measured at 1,000 Security events per minute arriving from the DCs: with the default logon filter
+about 760 per minute are stored, **≈ 0.34 GB per day** (≈ 125 GB for the default 365-day event retention). Storing
+all logon types gives ≈ 0.45 GB per day. Each stored event takes about 310 bytes including indexes. *Settings →
+General → Data retention → Events* sets how long they are kept (7–3650 days).
+
 ## 5. Alerts
 
 | Rule | Default |

@@ -2524,7 +2524,8 @@ Audit policy needed on DCs (*Advanced Audit Policy Configuration → Audit Polic
 | CPU | ≈ 2–2.5 % of one core on average |
 | Memory (working set) | 262–342 MB; flat at ≈ 327 MB in hours 3–4 of soak 2 (24 h test outstanding) |
 | metrics.db growth | ≈ 1.2 GB/day before roll-up retention takes effect |
-| events.db growth | ≈ 0.9 GB/day at 1,000 DC events/min; ≈ 2.8 GB/day at 4,000/min |
+| events.db growth | whole events database ≈ 0.9 GB/day in the 2× test (1,000 DC events/min); ≈ 2.8 GB/day at 4,000/min |
+| DC security events alone (measured 2026-11-22, 1,000/min arriving) | default 4624 filter: ≈ 763 stored/min, ≈ 305 bytes each incl. indexes, **≈ 0.34 GB/day**; all logon types stored: ≈ 1,011/min, **≈ 0.45 GB/day** |
 | API response | 42 main endpoints: max 41 ms, average 12 ms; 500-row CSV import 122 ms |
 | This run (1× simulator, 188 devices, 6,332 interfaces) | 47 GET endpoints all HTTP 200 in ≤ 0.12 s; 304/304 unit and integration tests passed |
 
@@ -2534,7 +2535,7 @@ Audit policy needed on DCs (*Advanced Audit Policy Configuration → Audit Polic
 |---|---|
 | OS | Windows Server 2019, 2022 or 2025 (or Windows 10 1809+/11), 64-bit. Target: Windows Server 2022 |
 | CPU / RAM | **2 vCPU / 4 GB** up to the tested scale (≈ 300 devices, 12,500 interfaces) — measured use is < 3 % of one core and < 350 MB. The installation guide’s 4 vCPU / 8 GB for ≈ 1,000 devices is an estimate, not measured |
-| Disk (data drive) | Minimum 20 GB free to install. Metric history ≈ 4 MB per monitored interface when full (≈ 50 GB for 12,500 interfaces after 2 years). DC events add ≈ 0.9 GB per day at 1,000 events/min — with the default 365-day event retention that is ≈ 330 GB; reduce *event retention* (e.g. 90 days ≈ 80 GB) or the stored logon types if the disk is smaller. Keep backups on another disk |
+| Disk (data drive) | Minimum 20 GB free to install. Metric history ≈ 4 MB per monitored interface when full (≈ 50 GB for 12,500 interfaces after 2 years). DC security events add ≈ 0.34 GB per day at 1,000 events/min with the default logon filter (≈ 0.45 GB without it) — ≈ 125 GB (≈ 165 GB) with the default 365-day event retention; the whole events database grew ≈ 0.9 GB/day in the 2× test (≈ 330 GB for 365 days). Reduce *event retention* (90 days ≈ 80 GB) or the stored logon types if the disk is smaller. Keep backups on another disk |
 | Network | See table B |
 
 ## E. Data retention defaults

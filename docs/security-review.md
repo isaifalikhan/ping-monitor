@@ -49,7 +49,7 @@ hosts), **~12,470 interfaces**, 60 s poll interval, 64 parallel polls; **5 %** o
 | events.db growth | +17 MB / 30 min | +19 MB / 30 min (≈ 0.9 GB/day at this DC rate; purged after the event retention period) |
 | Warnings in the log | 6 × "Processing VMware data failed" (bug, fixed) | none (except ports 514/162 held by another process on the test PC) |
 
-Sizing: at this scale plan about **50 GB** for metric history plus the DC events: ≈ 0.9 GB/day at 1,000 events/min, i.e. **≈ 330 GB** with the default 365-day event retention (≈ 80 GB with 90 days) — for `C:ProgramDataNetWatch`, plus backups on
+Sizing: at this scale plan about **50 GB** for metric history plus the events: the whole events.db grew ≈ 0.9 GB/day in this test, of which the DC Security events are ≈ 0.34 GB/day at 1,000 events/min with the default 4624 filter (≈ 0.45 GB/day storing all logon types; measured separately, about 310 bytes per event). With the default 365-day event retention plan **≈ 330 GB** at this event mix (≈ 80 GB with 90 days) for `C:ProgramDataNetWatch`, plus backups on
 another disk. Real SNMP agents answer more slowly than the simulator; the 64 parallel polls leave ample headroom
 (average poll ≈ 0.35 s against a 60 s interval).
 

@@ -53,8 +53,8 @@ and no internet access, and it brings no external software or cloud services wit
 | Console response | Main pages’ data in ≤ 41 ms |
 
 A server with **2 vCPU and 4 GB RAM** is sufficient at this scale. Plan the disk for the history. Metrics take
-about 50 GB after two years for 12,500 interfaces. DC events take about 0.9 GB per day at 1,000 events per minute,
-so the event retention period sets most of the disk need.
+about 50 GB after two years for 12,500 interfaces. DC security events take about 0.34 GB per day at 1,000 events per
+minute with the default logon filter (0.45 GB without it), so the event retention period sets most of the disk need.
 
 ## Air-gap and security points
 

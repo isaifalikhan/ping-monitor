@@ -31,7 +31,7 @@ Disk use grows over the first months and then levels off:
 
 Interfaces you mark as not monitored are not stored. You can shorten retention under *Settings → General*.
 
-**Domain controller events** come on top: about 0.9 GB per day at 1,000 stored DC Security events per minute (measured). With the default event retention of 365 days that is about **330 GB**; with 90 days about 80 GB. Shorten *Event retention* or reduce the stored logon types (*Settings → General → Domain controllers*) if the data drive is smaller.
+**Domain controller events** come on top. Measured at 1,000 Security events per minute arriving from the DCs: with the default 4624 filter (logon types 2, 7, 10, 11) about 760 events/min are stored, **≈ 0.34 GB per day** (≈ 125 GB with the default 365-day event retention, ≈ 30 GB with 90 days); storing all logon types gives ≈ 0.45 GB per day (≈ 165 GB / 40 GB). Each stored event takes about 310 bytes including indexes. Real domains have far more network logons (type 3) than the simulator, so the filter usually saves more. Syslog, traps and Windows events use the same retention; in the 2× load test the whole events database grew ≈ 0.9 GB per day. Shorten *Event retention* or reduce the stored logon types (*Settings → General → Domain controllers*) if the data drive is smaller.
 
 ## 2. Network and firewall
 
