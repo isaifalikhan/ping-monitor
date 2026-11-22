@@ -130,8 +130,10 @@ QA run, by the first real installation; its fix is in `2.0.0-rc2` and was verifi
 - **Regression tests:** `QaInstallerAclTests` — runs the exact icacls arguments read from `netwatch.iss` on a folder
   with existing files and checks SYSTEM and Administrators full control on every entry and no Users/Everyone entry;
   reproduces the rc1 damage (empty ACL) and checks the repair; checks the service's exit code 6 and message.
-- **Still to do (needs administrator):** install rc2 over the damaged folder on the owner's PC → service starts with
-  the data kept; then INS-01…06 on Windows Server 2022.
+- **Verified 2026-11-22 12:32:** rc2 installed over the damaged folder on the owner's PC (Windows 11): installer
+  reported the service running; `Get-Service NetWatch` Running; event "Service started successfully"; no .NET Runtime
+  error since; dashboard `https://localhost:8443/` HTTP 200 and sign-in worked; data folder from 2026-11-20 kept.
+  Still open: INS-01…06 on Windows Server 2022 (gate 5).
 
 ## Not bugs (investigated)
 

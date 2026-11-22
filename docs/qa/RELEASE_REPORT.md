@@ -18,8 +18,8 @@ Release QA lead report. Inputs: [TEST_PLAN.md](TEST_PLAN.md), [TEST_RESULTS.md](
 - **Overall completion: 97 %** (96.7 %; unchanged since the last report — no feature was missing; QA added tests and
   fixed 7 bugs). 100 % in simulator mode; the rest is pilot work on real devices.
 - **Bugs:** found 9 — Critical 1, High 1, Medium 4, Low 3 · fixed 8 · **open: C/H/M/L = 0/0/1/0** (BUG-006).
-  BUG-009 (Critical, installer) was found after QA by the first real installation and is fixed in rc2; its installed
-  re-test is pending (admin).
+  BUG-009 (Critical, installer) was found after QA by the first real installation and is fixed in rc2; verified by
+  reinstalling rc2 over the damaged data folder on the owner's PC (service running, dashboard OK).
 - **Release package:** `release/2.0.0/` (installer, SHA256SUMS, release notes, install guide PDF, pilot checklist PDF,
   rollback). **No `v2.0.0` tag was created**, because the gate is NO-GO.
 
