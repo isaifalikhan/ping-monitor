@@ -58,3 +58,16 @@ fails, and bring out a **diagnostic bundle** (*Settings → Pilot tools*) for ev
 
 - [ ] *Settings → System status*: no overruns, no dropped samples, poll durations stable
 - [ ] Self-checks green; database growth roughly as expected (security-review.md, performance)
+
+## H. Items not executed in release QA (must pass before production — see docs/qa/RELEASE_REPORT.md)
+
+- [ ] **Installer on Windows Server 2022** (clean VM): service *NetWatch* Running, *Automatic (Delayed Start)*, recovery = restart; `Get-NetFirewallRule -DisplayName "NetWatch*"` shows 4 rules; `icacls C:\ProgramData\NetWatch` = SYSTEM + Administrators only; shortcut opens the console
+- [ ] **Reboot** after one day of collection: service starts by itself, *System status* polling resumes within 2 minutes, graphs continue
+- [ ] **Upgrade 1.2.0 → 2.0.0** with the real installer on a copy of production data (ROLLBACK.md §1 first): devices, users, credentials (connection test passes), alert history kept
+- [ ] **Uninstall keep / delete** and **re-install over kept data**
+- [ ] **Windows Event Log channel**: *Settings → Notifications → Event Log → Test* → entry in *Application* log, source *NetWatch*
+- [ ] **Browsers**: every page in Edge, Chrome and Firefox (F12 console without errors), 1080p and 4K, dark and light theme, page load < 2 s; pop-up + sound in two browsers; unplug the operator PC's network for 30 s → live updates resume
+- [ ] **Air gap**: enable Windows Firewall logging of dropped *and* allowed connections plus DNS client logging for 1 hour; only monitored devices, the SMTP relay and the DCs appear — no public DNS names, no CRL/OCSP
+- [ ] **Restore on a second server** with a portable backup and its password; credential connection tests pass there
+- [ ] **Disk almost full**: on a test server fill the data drive below the self-check threshold → *NetWatch disk space low* alert, no database error after freeing space
+- [ ] **Soak**: one week in production, *System status* shows 0 overruns (if an overrun occurs, attach the log lines "Poll overrun: …" — BUG-006)
