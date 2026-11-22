@@ -47,6 +47,31 @@ public sealed class QaMacTableTests
         Assert.Equal([new MacEntryReading(7, "01:02:03:04:05:06", 30)], entries);
     }
 
+    /// <summary>
+    /// TP-Link Omada 24-port + 4 SFP+ (sysObjectID 1.3.6.1.4.1.11863.5.106), from a real walk: bridge ports and ifIndexes are
+    /// 49153…49180, but dot1qTpFdbPort gives the port position 1…28. All MACs used to be dropped (empty MAC tab).
+    /// </summary>
+    [Fact]
+    public void Tp_link_omada_q_bridge_port_positions_resolve_to_the_bridge_ports_interfaces()
+    {
+        var basePorts = Rows(Enumerable.Range(49153, 28).Select(p => (p.ToString(), I(p))).ToArray());
+        var port = Rows(
+            ("210.208.70.12.166.101.85", I(10)),    // D0:46:0C:A6:65:55 on port 10 = gigabitEthernet 1/0/10 = ifIndex 49162
+            ("210.208.70.12.166.104.109", I(1)),    // port 1 = ifIndex 49153
+            ("210.208.70.12.166.193.163", I(25)),   // port 25 = first SFP+ = ifIndex 49177 (the uplink in the BRIDGE-MIB table too)
+            ("210.208.70.12.167.203.244", I(29)));  // no 29th port: dropped
+        var entries = MacTableParser.ParseQBridge(port, Rows(), Rows(), basePorts);
+
+        Assert.Equal(3, entries.Count);
+        Assert.Contains(new MacEntryReading(49162, "D0:46:0C:A6:65:55", 210), entries);
+        Assert.Contains(new MacEntryReading(49153, "D0:46:0C:A6:68:6D", 210), entries);
+        Assert.Contains(new MacEntryReading(49177, "D0:46:0C:A6:C1:A3", 210), entries);
+
+        // The VLAN-less BRIDGE-MIB table of the same switch reports bridge port 49177 directly.
+        Assert.Equal([new MacEntryReading(49177, "10:5A:95:C2:7B:BD", null)],
+            MacTableParser.ParseDot1d(Rows(("16.90.149.194.123.189", I(49177))), Rows(), basePorts));
+    }
+
     [Fact]
     public void Dot1d_table_is_the_fallback_without_vlans_and_skips_unknown_ports()
     {

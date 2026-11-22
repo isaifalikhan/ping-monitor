@@ -31,7 +31,9 @@ public static class MacTableCollector
         {
             entries = MacTableParser.ParseQBridge(qPorts, await W(Oids.Dot1qTpFdbStatus), await W(Oids.Dot1qVlanFdbId), basePorts);
         }
-        else
+
+        // No Q-BRIDGE table, or none of its ports could be resolved: use the VLAN-less BRIDGE-MIB table.
+        if (entries.Count == 0)
         {
             var dPorts = await W(Oids.Dot1dTpFdbPort);
             if (dPorts.Count > 0)
@@ -162,9 +164,27 @@ public static class MacTableParser
             return (int)port;
         }
 
-        return SnmpValues.Int64(basePortIfIndex.GetValueOrDefault(port.ToString(CultureInfo.InvariantCulture))) is { } ifIndex and > 0 and <= int.MaxValue
-            ? (int)ifIndex
-            : null;
+        if (SnmpValues.Int64(basePortIfIndex.GetValueOrDefault(port.ToString(CultureInfo.InvariantCulture))) is { } ifIndex and > 0 and <= int.MaxValue)
+        {
+            return (int)ifIndex;
+        }
+
+        // TP-Link Omada/JetStream: dot1dBasePort is 49153, 49154 … but dot1qTpFdbPort gives the port's position 1, 2 …
+        // (e.g. 25 = the 25th bridge port = 49177). Only used when the value is not a bridge port at all.
+        if (port <= basePortIfIndex.Count)
+        {
+            var nth = basePortIfIndex
+                .Select(kv => (Port: long.TryParse(kv.Key, NumberStyles.None, CultureInfo.InvariantCulture, out var p) ? p : -1, IfIndex: SnmpValues.Int64(kv.Value)))
+                .Where(x => x.Port > 0)
+                .OrderBy(x => x.Port)
+                .ElementAtOrDefault((int)port - 1);
+            if (nth.IfIndex is { } positional and > 0 and <= int.MaxValue)
+            {
+                return (int)positional;
+            }
+        }
+
+        return null;
     }
 
     private static List<MacEntryReading> Distinct(List<MacEntryReading> entries) =>
