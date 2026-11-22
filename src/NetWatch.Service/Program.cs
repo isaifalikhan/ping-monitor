@@ -43,11 +43,24 @@ public static class Program
         }
 
         var paths = new NetWatchPaths(cli.DataDir ?? Environment.GetEnvironmentVariable("NETWATCH_DATA") ?? NetWatchPaths.DefaultRoot);
-        paths.EnsureCreated();
-        EnsureSettingsFile(paths);
+        IConfigurationRoot fileConfig;
+        try
+        {
+            paths.EnsureCreated();
+            EnsureSettingsFile(paths);
+            fileConfig = new ConfigurationBuilder().AddJsonFile(paths.SettingsFile, optional: true).Build();
+            Log.Logger = CreateLogger(paths, fileConfig);
+        }
+        catch (Exception ex) when (ex is UnauthorizedAccessException or IOException)
+        {
+            // Nothing is logged yet (the log folder is inside the data folder): report on stderr and, when running as
+            // the Windows service, in the Application event log, instead of dying with an unhandled exception (BUG-009).
+            var message = DescribeDataFolderError(paths, ex);
+            Console.Error.WriteLine(message);
+            ReportToEventLog(message);
+            return 6;
+        }
 
-        var fileConfig = new ConfigurationBuilder().AddJsonFile(paths.SettingsFile, optional: true).Build();
-        Log.Logger = CreateLogger(paths, fileConfig);
         var startupLogger = new SerilogLoggerFactory(Log.Logger).CreateLogger("NetWatch.Startup");
 
         try
@@ -224,6 +237,31 @@ public static class Program
         }
 
         return logger.CreateLogger();
+    }
+
+    /// <summary>The start-up error shown when the data folder or one of its files cannot be read or written.</summary>
+    public static string DescribeDataFolderError(NetWatchPaths paths, Exception ex) =>
+        $"NetWatch cannot start: {ex.Message} The service account (SYSTEM) needs full control of the data folder " +
+        $"{paths.Root} and every file in it. Repair the permissions in an administrator PowerShell with:{Environment.NewLine}" +
+        $"  icacls \"{paths.Root}\" /setowner *S-1-5-32-544 /T /C /Q; icacls \"{paths.Root}\\*\" /reset /T /C /Q; Start-Service NetWatch" +
+        $"{Environment.NewLine}(or run the NetWatch installer again, which does the same).";
+
+    private static void ReportToEventLog(string message)
+    {
+        // Only as the Windows service; console runs and tests report on stderr only.
+        if (!OperatingSystem.IsWindows() || Environment.UserInteractive)
+        {
+            return;
+        }
+
+        try
+        {
+            System.Diagnostics.EventLog.WriteEntry(ServiceName, message, System.Diagnostics.EventLogEntryType.Error, 1000);
+        }
+        catch (Exception)
+        {
+            // The event source is registered by the installer; without it there is nowhere else to report.
+        }
     }
 
     /// <summary>Writes the default appsettings.json into the data folder on first start (kept on upgrade).</summary>

@@ -66,6 +66,17 @@ Run the matching test in *Settings → Pilot tools*. Each step shows the exact e
 |---|---|
 | none from this source | Device sends elsewhere or with another source address; UDP/TCP 514 or UDP 162 blocked; *System status* shows a listener not "listening" (another program uses the port) |
 
+## Service does not start
+
+Check *Event Viewer → Windows Logs → Application* (sources **NetWatch** and **.NET Runtime**) and the newest file in
+`C:\ProgramData\NetWatch\logs`.
+
+| Message | Cause and fix |
+|---|---|
+| NetWatch cannot start: Access to the path … is denied | The service account (SYSTEM) cannot read the data folder or a file in it. The 2.0.0-rc1 installer caused this on every reinstall or upgrade (BUG-009). Run the current installer again, or in an administrator PowerShell: `icacls C:\ProgramData\NetWatch /setowner *S-1-5-32-544 /T /C /Q; icacls "C:\ProgramData\NetWatch\*" /reset /T /C /Q; Start-Service NetWatch` |
+| Another NetWatch instance is already running on data folder … | A copy started from a console uses the same data folder: close it (`Get-Process NetWatch.Service`), then `Start-Service NetWatch` |
+| Cannot listen for SNMP traps / syslog (in the log, service keeps running) | Another program holds UDP 162 or UDP/TCP 514; the web console and polling still work |
+
 ## When nothing helps
 
 *Settings → Pilot tools → Download bundle*, with an SNMP walk of the affected devices ticked. It contains logs,

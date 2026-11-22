@@ -27,6 +27,14 @@
 #define ServiceDisplayName "NetWatch Monitoring Service"
 #define HttpsPort "8443"
 
+; Data-folder ACL (BUG-009), applied in three steps by SecureDataFolder. tests/NetWatch.Tests/QaInstallerAclTests.cs
+; runs these exact arguments. Never combine the (OI)(CI) grant with /T: the flags are invalid on files, so icacls
+; leaves every EXISTING file (databases, settings, certificates) with an empty ACL after /inheritance:r, and the
+; service can no longer start (reinstall/upgrade). The /reset step also repairs folders damaged that way.
+#define AclOwnerArgs "/setowner *S-1-5-32-544 /T /C /Q"
+#define AclRootArgs "/inheritance:r /grant:r *S-1-5-18:(OI)(CI)F *S-1-5-32-544:(OI)(CI)F /C /Q"
+#define AclChildArgs "/reset /T /C /Q"
+
 [Setup]
 AppId={{7E3F2B4A-5C1D-4E8A-9B6F-2D4C8A1E3F57}
 AppName=NetWatch
@@ -82,6 +90,7 @@ Type: files; Name: "{app}\NetWatch Dashboard.url"
 [Code]
 var
   FreshInstall: Boolean;
+  ServiceStarted: Boolean;
 
 function Run(const FileName, Params: String): Integer;
 var
@@ -146,9 +155,14 @@ var
   Dir: String;
 begin
   // Only SYSTEM (the service account) and local Administrators may read databases, certificates and logs.
+  //  1. Administrators own everything, so the next steps can rewrite any ACL (even an empty one).
+  //  2. The folder itself: protected ACL, SYSTEM + Administrators full control, inherited by everything below.
+  //  3. Every existing file and subfolder: explicit entries removed, inherits the folder ACL.
   Dir := ExpandConstant('{commonappdata}\NetWatch');
   ForceDirectories(Dir);
-  Run(ExpandConstant('{sys}\icacls.exe'), '"' + Dir + '" /inheritance:r /grant:r *S-1-5-18:(OI)(CI)F *S-1-5-32-544:(OI)(CI)F /T /C /Q');
+  Run(ExpandConstant('{sys}\icacls.exe'), '"' + Dir + '" {#AclOwnerArgs}');
+  Run(ExpandConstant('{sys}\icacls.exe'), '"' + Dir + '" {#AclRootArgs}');
+  Run(ExpandConstant('{sys}\icacls.exe'), '"' + Dir + '\*" {#AclChildArgs}');
 end;
 
 procedure InstallOrUpdateService();
@@ -183,9 +197,10 @@ begin
     SecureDataFolder();
     InstallOrUpdateService();
     AddFirewallRules();
-    Run(ExpandConstant('{sys}\net.exe'), 'start {#ServiceName}');
+    // "net start" waits for the service and returns 0 only when it is running.
+    ServiceStarted := Run(ExpandConstant('{sys}\net.exe'), 'start {#ServiceName}') = 0;
 
-    if FreshInstall then
+    if FreshInstall and ServiceStarted then
     begin
       // The service creates the initial admin password on its first start; wait for it (max ~60 s).
       PasswordFile := ExpandConstant('{commonappdata}\NetWatch\initial-admin-password.txt');
@@ -204,6 +219,16 @@ var
 begin
   if CurPageID = wpFinished then
   begin
+    if not ServiceStarted then
+    begin
+      WizardForm.FinishedLabel.Caption :=
+        'NetWatch is installed, but the "NetWatch" service did NOT start.' + #13#10#13#10 +
+        'The reason is in Event Viewer > Windows Logs > Application (sources "NetWatch" and ".NET Runtime") and in ' +
+        ExpandConstant('{commonappdata}\NetWatch\logs') + '.' + #13#10#13#10 +
+        'Fix the cause (see "Service does not start" in the troubleshooting guide), then run:' + #13#10 +
+        'Start-Service NetWatch';
+      Exit;
+    end;
     Text := 'NetWatch is installed and the "NetWatch" service is running.' + #13#10#13#10 +
             'Dashboard: https://' + GetComputerNameString() + ':{#HttpsPort}/' + #13#10#13#10;
     if FreshInstall then
