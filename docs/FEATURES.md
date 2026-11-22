@@ -42,12 +42,12 @@ because the browser on the build PC does not trust NetWatch’s self-signed cert
 | 6. VMware monitoring | 11 | 1 | 0 | 10 |
 | 7. Domain controller monitoring | 18 | 9 | 0 | 9 |
 | 8. Alerting | 20 | 18 | 0 | 2 |
-| 9. Dashboards and UI | 16 | 15 | 1 | 0 |
+| 9. Dashboards and UI | 17 | 16 | 1 | 0 |
 | 10. Reports | 12 | 10 | 1 | 1 |
 | 11. Backup and restore | 7 | 6 | 0 | 1 |
 | 12. Pilot and support tools | 5 | 5 | 0 | 0 |
 | 13. Installation and upgrade | 8 | 2 | 1 | 5 |
-| **Total available** | **174** | **105** | **9** | **60** |
+| **Total available** | **175** | **106** | **9** | **60** |
 | ⛔ Not available (table G) | 8 | | | |
 
 ## 1. Platform
@@ -148,7 +148,7 @@ because the browser on the build PC does not trust NetWatch’s self-signed cert
 | Field | Content |
 |---|---|
 | What it does | Old data is deleted every night according to the retention settings. |
-| How it works | Nightly job at 02:30 PKT: drops expired metric shards (whole tables), deletes old events, audit entries, closed alerts and expired sessions. |
+| How it works | Nightly job at 02:30 (server local time) and 2 min after each start: drops expired metric shards (whole tables); deletes device events, syslog, traps, Windows events, DC security events and vCenter events older than the event retention, audit entries, resolved/closed alerts (with history) and expired sessions. Open alerts are never purged. |
 | What you see | Settings → General → Retention. |
 | Alerts | — |
 | Configuration | Raw 7 days (1–60), 5-minute 90 days (7–730), hourly 730 days (30–3650), events 365 days, audit 365 days, closed alerts 365 days. |
@@ -1213,10 +1213,10 @@ because the browser on the build PC does not trust NetWatch’s self-signed cert
 | Field | Content |
 |---|---|
 | What it does | Reads the Security log of each DC directly, without an agent. |
-| How it works | Remote EventLogSession (RPC) with an XPath for the 26 event IDs (table 7.1) and `EventRecordID > bookmark`; first read starts at the newest record; max 5,000 events per poll. |
+| How it works | Remote EventLogSession (RPC) with an XPath for the 26 event IDs (table 7.1) and `EventRecordID > bookmark`; max 5,000 events per poll. First contact: reads the last 24 h still in the log (backfill, in batches; stored and searchable but no alerts), or only new events when the backfill is set to 0. |
 | What you see | Domain controllers page. |
 | Alerts | Rules A-38…A-48. |
-| Configuration | Settings → General → DC: read Security log (on), max 5,000 events/poll (100–50,000). |
+| Configuration | Settings → General → DC: read Security log (on), max 5,000 events/poll (100–50,000), backfill on first connection 24 h (0–720). |
 | Requirements | Domain account in Event Log Readers; firewall “Remote Event Log Management”. |
 | Permissions | Viewer, Operator, Admin |
 | Status | 🧪 Pending pilot — Parser tested with 26 sample exports; not yet with real DCs. |
@@ -1356,7 +1356,7 @@ because the browser on the build PC does not trust NetWatch’s self-signed cert
 | Field | Content |
 |---|---|
 | What it does | Search and filter all stored DC Security events. |
-| How it works | Filters: DC, event IDs, category, user, source (IP/workstation), group, free text, minimum severity, failed only, time range; quick presets (All, Failed logons, Successful logons, Lockouts/unlocks, Account changes, Group membership, Admin logons, Audit policy/log cleared, Directory changes); time presets 1 h, 24 h, 7 d, 30 d, all; paging; count capped at 10,000. |
+| How it works | Filters: DC, event IDs, category, user, source (IP/workstation), group, free text, minimum severity, failed only, time range; quick presets (All, Failed logons, Successful logons, Lockouts/unlocks, Account changes, Group membership, Admin logons, Audit policy/log cleared, Directory changes); time presets 1 h, 24 h, 7 d, 30 d, 90 d, 365 d, all; paging; count capped at 10,000. |
 | What you see | DC page → Security events. |
 | Alerts | — |
 | Configuration | — |
@@ -1849,7 +1849,7 @@ In addition, from the **Directory Service** and **DFS Replication** logs NetWatc
 
 | Field | Content |
 |---|---|
-| What it does | Tabs: Device events, Syslog, SNMP traps, Windows event logs, each with search and time filters. |
+| What it does | Tabs: Device events, Syslog, SNMP traps, Windows event logs, each with search and time ranges 1 h, 24 h, 7 d, 30 d, 90 d, 1 y or custom. |
 | How it works | `/api/events`, `/api/syslog`, `/api/traps`, `/api/windows-events` (page size up to 2,000). |
 | What you see | /events. |
 | Alerts | — |
@@ -1862,7 +1862,7 @@ In addition, from the **Directory Service** and **DFS Replication** logs NetWatc
 
 | Field | Content |
 |---|---|
-| What it does | Open and past alerts with filters, history, bulk acknowledge/close and comments. |
+| What it does | Open and past alerts with filters, history, bulk acknowledge/close and comments. History is searched on the server by time range (1 h … 1 y or custom) and text. |
 | How it works | `/api/alerts*`. |
 | What you see | /alerts. |
 | Alerts | — |
@@ -1930,6 +1930,19 @@ In addition, from the **Directory Service** and **DFS Replication** logs NetWatc
 | What it does | Switch between dark and light; first choice follows the operating system. |
 | How it works | Stored per browser (localStorage). |
 | What you see | Top bar toggle. |
+| Alerts | — |
+| Configuration | — |
+| Requirements | — |
+| Permissions | Viewer, Operator, Admin |
+| Status | ✅ Available |
+
+#### UI-17 · CSV export of searches
+
+| Field | Content |
+|---|---|
+| What it does | Export the current search of syslog, SNMP traps, Windows event logs, DC security events or alerts to CSV. |
+| How it works | `/api/syslog/export`, `/api/traps/export`, `/api/windows-events/export`, `/api/dc/security-events/export`, `/api/alerts/export` with the same filters as the lists; newest 100,000 rows; UTF-8 with BOM, PKT times, formula-injection safe; each export is audited. |
+| What you see | Export CSV button on Events, Alerts and DC Security events. |
 | Alerts | — |
 | Configuration | — |
 | Requirements | — |

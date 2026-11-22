@@ -213,7 +213,7 @@ public static class DcEndpoints
         }
     }
 
-    private static IQueryable<DcSecurityEvent> Filter(
+    internal static IQueryable<DcSecurityEvent> Filter(
         EventsDbContext events, int? deviceId, string? eventIds, string? category, string? user, string? source, string? group,
         string? search, Severity? minSeverity, bool? failedOnly, DateTime? from, DateTime? to)
     {

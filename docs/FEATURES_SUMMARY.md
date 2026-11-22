@@ -69,11 +69,11 @@ so the event retention period sets most of the disk need.
 
 | Status | Count | Meaning |
 |---|---|---|
-| ✅ Available | **105** | Works and verified |
+| ✅ Available | **106** | Works and verified |
 | 🟡 Limited | **9** | Works, with a stated limitation |
 | 🧪 Pending pilot | **60** | Works in the simulator, still to be confirmed on the real devices |
 | ⛔ Not available | **8** | Gaps, listed in FEATURES.md table G |
-| **Total features listed** | **182** | (174 available in some form) |
+| **Total features listed** | **183** | (175 available in some form) |
 
 Most of the 🧪 items are the device connections themselves: SNMP per vendor, WinRM, SSH, vSphere, Redfish, DC
 event logs, AD sign-in and the SMTP relay. The installer is also 🧪. The release report's current gate is

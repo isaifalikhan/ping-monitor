@@ -140,6 +140,7 @@
 "UI-13","9. Dashboards and UI","Settings","✅ Available",""
 "UI-14","9. Dashboards and UI","Account","✅ Available",""
 "UI-15","9. Dashboards and UI","Dark and light theme","✅ Available",""
+"UI-17","9. Dashboards and UI","CSV export of searches","✅ Available",""
 "UI-16","9. Dashboards and UI","Supported browsers and resolutions","🟡 Limited","Browser/4K testing is a pilot item; not checked in a browser during QA or this run."
 "RPT-01","10. Reports","Availability report","✅ Available",""
 "RPT-02","10. Reports","Alert history report","✅ Available",""

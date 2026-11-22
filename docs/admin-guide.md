@@ -110,7 +110,7 @@ a reinstall), collection stops with "host key changed" until an Admin clicks *Re
 *Server* tab.
 
 Windows event logs are read incrementally (bookmark per log); the first contact starts at the newest entry, so no
-history flood. *Events & logs → Windows event logs* lists them with filters.
+history flood (DC Security logs can backfill, see the DC guide). *Events & logs → Windows event logs* lists them with filters.
 
 **Dependencies:** set *Upstream device* (the switch a device connects through). When an upstream device is
 unreachable, alerts of the devices behind it are suppressed (they show "behind <switch>" in the device list); if a
@@ -304,11 +304,18 @@ snmp-server enable traps snmp linkdown linkup coldstart warmstart
 | Server monitoring | WinRM 5985 (DCOM fallback on), event logs Critical/Error, max 200 entries per log and poll, SSH 22, timeout 20 s |
 | VMware | Events and alarms imported, CPU ready collected, certificates pinned on first use, API timeout 60 s, max 500 events per poll |
 | Receivers | Syslog UDP/TCP 514, traps UDP 162, unknown sources stored, 2,000 messages/s |
-| Retention | Raw samples 7 days; 5-minute averages 90 days; hourly averages 730 days; events (device events, syslog, traps, Windows events), audit and closed alerts 365 days |
+| Retention (*Settings → General → Data retention*) | Raw samples 7 days; 5-minute averages 90 days; hourly averages 730 days; events (device events, syslog, traps, Windows events, DC security events, vCenter events) 365 days; audit 365 days; resolved/closed alerts 365 days (open alerts are never purged) |
 
 Retention runs every night at 02:30. Old data is removed in whole-day, month or year blocks, so it is fast and
 does not fragment the database. Changing *parallel polls* takes effect after a service restart; all other
 settings apply immediately.
+
+**Searching and exporting history.** Every stored event and alert can be searched for as far back as its
+retention allows. *Events & logs* (syslog, traps, Windows event logs) and *Alerts → History* have the ranges
+1 h, 24 h, 7 d, 30 d, 90 d and 1 y plus a custom from/to range; the DC *Security events* viewer has 1 h to 365 days
+and *All stored*. Each of these lists has **Export CSV**, which downloads the rows matching the current filters
+(newest 100,000, UTF-8 for Excel, times in PKT). Exports are recorded in the audit trail. *Alerts → History*
+searches on the server, so alerts older than the newest 1,000 are found by narrowing the range or the search text.
 
 *Settings → System* shows:
 
