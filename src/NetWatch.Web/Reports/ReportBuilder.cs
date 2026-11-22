@@ -45,7 +45,7 @@ public sealed class ReportBuilder
         {
             Title = ReportCatalog.NameOf(request.Type),
             Subtitle = (hasPeriod ? $"{Local(request.FromUtc)} – {Local(request.ToUtc)} PKT" : $"State at {Local(DateTime.UtcNow)} PKT")
-                       + scope + $" · generated {Local(DateTime.UtcNow)} PKT by NetWatch",
+                       + scope + $" · generated {Local(DateTime.UtcNow)} PKT by HIT SIEM",
         };
 
         var ctx = new Context(request, devices, paths, doc);

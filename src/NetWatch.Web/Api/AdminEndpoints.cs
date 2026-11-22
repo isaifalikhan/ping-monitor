@@ -357,7 +357,7 @@ public static class AdminEndpoints
 
         if (user.AuthSource != AuthSource.Local)
         {
-            return HttpExtensions.Error("Directory (AD) accounts have no NetWatch password; reset it in Active Directory.");
+            return HttpExtensions.Error("Directory (AD) accounts have no HIT SIEM password; reset it in Active Directory.");
         }
 
         if (PasswordService.Validate(input.Password, user.Username, settings.Security.MinPasswordLength) is { } error)

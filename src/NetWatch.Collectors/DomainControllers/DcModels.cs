@@ -57,7 +57,8 @@ public sealed record DcPollRequest(
     bool WinRmHttps,
     bool DcomFallback,
     TimeSpan Timeout,
-    bool CheckPorts = false);
+    bool CheckPorts = false,
+    int BackfillHours = 0);
 
 /// <summary>Everything the DC collector produced. Parts that failed stay null and carry an error text.</summary>
 public sealed class DcPollData
@@ -135,6 +136,12 @@ public static class DcLogs
     public const string DirectoryService = "Directory Service";
     public const string DfsReplication = "DFS Replication";
     public const string Forwarded = "ForwardedEvents";
+
+    /// <summary>
+    /// Not a log: bookmark row holding the newest Security record ID at first contact. Events up to it were
+    /// backfilled (already in the log before monitoring started) and are stored without raising alerts.
+    /// </summary>
+    public const string SecurityBackfillEnd = "Security (backfill end)";
 
     public static readonly IReadOnlyList<string> All = [Security, DirectoryService, DfsReplication];
 }

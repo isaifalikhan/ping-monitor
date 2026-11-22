@@ -191,6 +191,13 @@ export function GeneralTab() {
         note="Devices of type Domain controller with a Windows credential are read with that account (member of Event Log Readers). Successful logons (4624) are stored for investigation but never alerted on. Working hours are Asia/Karachi time."
         fields={[
           { key: 'maxSecurityEventsPerPoll', label: 'Max. Security events per DC and poll', min: 100, max: 50000 },
+          {
+            key: 'initialBackfillHours',
+            label: 'On first connection, also read the last (h) of the Security log',
+            min: 0,
+            max: 720,
+            hint: '0 = only new events. Backfilled events are searchable but raise no alerts. Only for DCs read remotely.',
+          },
           { key: 'replicationCheckMin', label: 'Check replication and clock every (min)', min: 1, max: 1440 },
           { key: 'replicationStaleHours', label: 'Alert when a partner has not replicated for (h)', min: 1, max: 336 },
           { key: 'checkServicePorts', label: 'Check LDAP 389, Kerberos 88 and DNS 53 on every poll', kind: 'bool' },

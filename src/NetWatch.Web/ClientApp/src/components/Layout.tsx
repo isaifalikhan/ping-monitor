@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
-import { Bell, BellOff, Boxes, Cable, FileText, GitFork, HardDrive, LayoutDashboard, LogOut, MonitorPlay, Moon, Network, ScrollText, Server, Settings, ShieldCheck, Siren, Sun, Wifi, WifiOff } from 'lucide-react';
+import { Bell, BellOff, Boxes, Cable, FileText, GitFork, HardDrive, LayoutDashboard, LogOut, MonitorPlay, Moon, ScrollText, Server, Settings, ShieldCheck, Siren, Sun, Wifi, WifiOff } from 'lucide-react';
+import { BrandMark } from './BrandMark';
 import { useEffect, useState, type ReactNode } from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
 import { api } from '../api/client';
@@ -118,10 +119,7 @@ export function Layout({ children }: { children: ReactNode }) {
   return (
     <div className="shell">
       <aside className="sidebar">
-        <div className="brand">
-          <Network size={22} />
-          <span>NetWatch</span>
-        </div>
+        <BrandMark size={26} />
         <nav className="nav">
           <NavLink to="/" end>
             <LayoutDashboard size={18} />

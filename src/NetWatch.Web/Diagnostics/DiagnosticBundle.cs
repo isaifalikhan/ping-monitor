@@ -114,7 +114,7 @@ public sealed partial class DiagnosticBundleService
 
             var json = new JsonSerializerOptions(JsonSerializerDefaults.Web) { WriteIndented = true };
             Text("README.txt",
-                $"NetWatch diagnostic bundle, {DateTime.UtcNow:u} UTC, server {Environment.MachineName}, version {typeof(DiagnosticBundleService).Assembly.GetName().Version}.\r\n" +
+                $"HIT SIEM diagnostic bundle, {DateTime.UtcNow:u} UTC, server {Environment.MachineName}, version {typeof(DiagnosticBundleService).Assembly.GetName().Version}.\r\n" +
                 "Contains logs (24 h), connection tests, SNMP walks, poll statistics, inventory and configuration.\r\n" +
                 "Every password, community, key and token was removed before writing; credential secrets are not included.\r\n");
 

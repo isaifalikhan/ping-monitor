@@ -369,7 +369,7 @@ public static class BackupRestore
     public static BackupManifest Validate(string zipPath, string? password = null)
     {
         using var zip = ZipFile.OpenRead(zipPath);
-        var manifestEntry = zip.GetEntry("manifest.json") ?? throw new InvalidDataException("Not a NetWatch backup (manifest.json missing).");
+        var manifestEntry = zip.GetEntry("manifest.json") ?? throw new InvalidDataException("Not a HIT SIEM backup (manifest.json missing).");
         BackupManifest manifest;
         using (var s = manifestEntry.Open())
         {
@@ -379,7 +379,7 @@ public static class BackupRestore
 
         if (manifest.Product != "NetWatch" || manifest.Files.All(f => f.Path != "data/netwatch.db"))
         {
-            throw new InvalidDataException("Not a NetWatch backup (configuration database missing).");
+            throw new InvalidDataException("Not a HIT SIEM backup (configuration database missing).");
         }
 
         foreach (var f in manifest.Files)
@@ -419,7 +419,7 @@ public static class BackupRestore
             BackupManifest manifest;
             using (var zip = ZipFile.OpenRead(zipPath))
             {
-                var manifestEntry = zip.GetEntry("manifest.json") ?? throw new InvalidDataException("Not a NetWatch backup (manifest.json missing).");
+                var manifestEntry = zip.GetEntry("manifest.json") ?? throw new InvalidDataException("Not a HIT SIEM backup (manifest.json missing).");
                 using (var s = manifestEntry.Open())
                 {
                     manifest = JsonSerializer.Deserialize<BackupManifest>(s, new JsonSerializerOptions(JsonSerializerDefaults.Web))
@@ -428,7 +428,7 @@ public static class BackupRestore
 
                 if (manifest.Product != "NetWatch" || manifest.Files.All(f => f.Path != "data/netwatch.db"))
                 {
-                    throw new InvalidDataException("Not a NetWatch backup (configuration database missing).");
+                    throw new InvalidDataException("Not a HIT SIEM backup (configuration database missing).");
                 }
 
                 foreach (var entry in zip.Entries)
@@ -529,7 +529,7 @@ public static class BackupRestore
             }
 
             return string.Create(CultureInfo.InvariantCulture,
-                $"Restored backup of {LocalTime.ToLocal(manifest.CreatedUtc):yyyy-MM-dd HH:mm} PKT (NetWatch {manifest.Version}, from {manifest.MachineName}{(manifest.IncludesMetrics ? string.Empty : ", without performance history")}). The previous files were moved to {keep}.")
+                $"Restored backup of {LocalTime.ToLocal(manifest.CreatedUtc):yyyy-MM-dd HH:mm} PKT (HIT SIEM {manifest.Version}, from {manifest.MachineName}{(manifest.IncludesMetrics ? string.Empty : ", without performance history")}). The previous files were moved to {keep}.")
                 + credentialNote
                 + (portableSecrets is not null || string.Equals(manifest.MachineName, Environment.MachineName, StringComparison.OrdinalIgnoreCase)
                     ? string.Empty

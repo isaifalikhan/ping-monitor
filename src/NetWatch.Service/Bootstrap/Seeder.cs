@@ -44,6 +44,18 @@ public static class Seeder
             logger.LogWarning("Created the initial 'admin' account. Its one-time password is in {File} (readable by Administrators only)", paths.InitialAdminPasswordFile);
         }
 
+        // Built-in rules renamed in a later version keep their settings: rename instead of adding a second copy.
+        foreach (var (oldName, newName) in DefaultRules.Renamed)
+        {
+            var rule = await db.AlertRules.FirstOrDefaultAsync(r => r.IsBuiltIn && r.Name == oldName, ct);
+            if (rule is not null && !await db.AlertRules.AnyAsync(r => r.Name == newName, ct))
+            {
+                rule.Name = newName;
+                await db.SaveChangesAsync(ct);
+                logger.LogInformation("Renamed built-in alert rule {Old} to {New}", oldName, newName);
+            }
+        }
+
         // Built-in rules: add any that are missing (also after upgrades that introduce new built-in rules).
         var existingKeys = await db.AlertRules.Where(r => r.IsBuiltIn).Select(r => r.Name).ToListAsync(ct);
         var missing = DefaultRules.Create(now).Where(r => !existingKeys.Contains(r.Name)).ToList();
@@ -125,7 +137,7 @@ public static class Seeder
     private static void WritePasswordFile(NetWatchPaths paths, string password) =>
         SecureFile.WriteRestricted(
             paths.InitialAdminPasswordFile,
-            $"NetWatch initial administrator account{Environment.NewLine}" +
+            $"HIT SIEM initial administrator account{Environment.NewLine}" +
             $"User name: admin{Environment.NewLine}" +
             $"Password:  {password}{Environment.NewLine}{Environment.NewLine}" +
             $"You must change this password at first sign-in. Delete this file afterwards.{Environment.NewLine}");

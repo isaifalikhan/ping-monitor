@@ -138,7 +138,7 @@ public static class StateKeys
         [DcReplicationFailed] = "AD replication failing (partner / naming context)",
         [DcReplicationStale] = "AD replication not successful for too long (partner / naming context)",
         [DcPortUnreachable] = "DC service port not reachable (LDAP 389, Kerberos 88, DNS 53)",
-        [SelfCheck] = "NetWatch self-check failing (disk, polling, storage, backups, certificate …)",
+        [SelfCheck] = "HIT SIEM self-check failing (disk, polling, storage, backups, certificate …)",
         [GpuProblem] = "GPU missing or driver error",
         [HardwareComponent] = "Server hardware component not OK (iLO / iDRAC)",
         [HardwareUnreachable] = "Management controller (iLO / iDRAC) not reachable",

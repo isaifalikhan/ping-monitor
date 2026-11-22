@@ -125,7 +125,7 @@ public static class CertificateManager
         }
 
         using var key = RSA.Create(3072);
-        var request = new CertificateRequest($"CN={fqdn}, O=NetWatch", key, HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1);
+        var request = new CertificateRequest($"CN={fqdn}, O=HIT SIEM", key, HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1);
         var san = new SubjectAlternativeNameBuilder();
         foreach (var name in new[] { host, fqdn, "localhost" }.Distinct(StringComparer.OrdinalIgnoreCase))
         {

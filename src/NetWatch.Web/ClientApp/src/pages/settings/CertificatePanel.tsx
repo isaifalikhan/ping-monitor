@@ -81,7 +81,7 @@ export function CertificatePanel() {
           <input type="password" autoComplete="new-password" value={password} onChange={(e) => setPassword(e.target.value)} />
         </label>
         <label className="check">
-          <input type="checkbox" checked={restart} onChange={(e) => setRestart(e.target.checked)} /> Restart NetWatch now to use it
+          <input type="checkbox" checked={restart} onChange={(e) => setRestart(e.target.checked)} /> Restart HIT SIEM now to use it
         </label>
       </div>
       <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
@@ -92,7 +92,7 @@ export function CertificatePanel() {
           <button
             className="danger"
             onClick={() =>
-              window.confirm('Remove the imported certificate? NetWatch uses its self-signed certificate after the next start.') &&
+              window.confirm('Remove the imported certificate? HIT SIEM uses its self-signed certificate after the next start.') &&
               void api.del('/api/settings/certificate').then(() => qc.invalidateQueries({ queryKey: ['certificate'] }))
             }
           >
@@ -111,7 +111,7 @@ export function CertificatePanel() {
               {w}
             </div>
           ))}
-          <div className="faint">{restart ? 'NetWatch restarts now; reload the page in a minute.' : 'Restart the NetWatch service to use it.'}</div>
+          <div className="faint">{restart ? 'HIT SIEM restarts now; reload the page in a minute.' : 'Restart the HIT SIEM service to use it.'}</div>
         </div>
       )}
     </div>

@@ -187,7 +187,7 @@ public sealed class ConnectionTestService
         }
 
         return message.Contains("timed out", StringComparison.OrdinalIgnoreCase) || message.Contains("Timeout", StringComparison.Ordinal)
-            ? $"{message} — check the community/v3 user, the switch's SNMP ACL (the NetWatch server's IP) and UDP 161 on firewalls"
+            ? $"{message} — check the community/v3 user, the switch's SNMP ACL (the HIT SIEM server's IP) and UDP 161 on firewalls"
             : message;
     }
 

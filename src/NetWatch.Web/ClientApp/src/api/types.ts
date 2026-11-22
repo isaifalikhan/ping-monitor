@@ -965,6 +965,7 @@ export interface DcSettings {
   successfulLogonTypes: number[];
   excludeComputerAccounts: boolean;
   maxSecurityEventsPerPoll: number;
+  initialBackfillHours: number;
   replicationCheckMin: number;
   workingDays: string;
   workingHoursStart: string;

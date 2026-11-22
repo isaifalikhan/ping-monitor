@@ -208,7 +208,7 @@ public sealed class LdapAuthenticator
             Attr(entry, "sAMAccountName") ?? sam,
             Attr(entry, "displayName"),
             Attr(entry, "mail"),
-            role is null ? "The account is not a member of any group mapped to a NetWatch role." : null,
+            role is null ? "The account is not a member of any group mapped to a HIT SIEM role." : null,
             matched);
     }
 

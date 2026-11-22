@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { Maximize, Minimize, Volume2, VolumeX, X } from 'lucide-react';
+import { PRODUCT_NAME } from '../brand';
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api, qs } from '../api/client';
@@ -97,7 +98,7 @@ export function NocPage() {
   return (
     <div className="noc">
       <header className="noc-head">
-        <strong>NetWatch NOC</strong>
+        <strong>{PRODUCT_NAME} NOC</strong>
         <span className={connected ? 'noc-live' : 'noc-live off'}>{connected ? '● live' : '● reconnecting'}</span>
         <span style={{ flex: 1 }} />
         <Clock />

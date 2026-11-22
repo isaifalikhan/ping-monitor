@@ -69,7 +69,7 @@ public sealed class ForwardedEventsReader : BackgroundService
                 }
 
                 LastError = ex is UnauthorizedAccessException
-                    ? "Access denied: add the NetWatch service account to the local \"Event Log Readers\" group."
+                    ? "Access denied: add the HIT SIEM service account (SYSTEM) to the local \"Event Log Readers\" group."
                     : ex.Message;
             }
         }

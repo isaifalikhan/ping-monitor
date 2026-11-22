@@ -38,6 +38,42 @@ public sealed class AlertService
 
     public async Task<PagedResult<AlertDto>> ListAsync(AlertQuery q, CancellationToken ct)
     {
+        var query = Filter(q);
+        var pageSize = Math.Clamp(q.PageSize, 1, 1000);
+        var page = Math.Max(1, q.Page);
+        var total = await query.CountAsync(ct);
+
+        // Severity is stored as text, so sort open alerts by severity in memory after paging by time.
+        var rows = await query
+            .OrderByDescending(a => a.FirstSeenUtc)
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
+            .ToListAsync(ct);
+
+        var names = await DeviceNamesAsync(rows.Select(r => r.DeviceId), ct);
+        var items = rows
+            .OrderByDescending(a => a.State is AlertState.Active or AlertState.Acknowledged)
+            .ThenByDescending(a => a.Severity)
+            .ThenByDescending(a => a.FirstSeenUtc)
+            .Select(a => AlertDto.From(a, a.DeviceId is { } d ? names.GetValueOrDefault(d) : null))
+            .ToList();
+        return new PagedResult<AlertDto>(items, total, page, pageSize);
+    }
+
+    /// <summary>All alerts matching the filters, newest first (at most <paramref name="maxRows"/>), for CSV export.</summary>
+    public async Task<IReadOnlyList<AlertDto>> ExportAsync(AlertQuery q, int maxRows, CancellationToken ct)
+    {
+        var rows = await Filter(q).OrderByDescending(a => a.FirstSeenUtc).ThenByDescending(a => a.Id).Take(maxRows).ToListAsync(ct);
+        var names = await DeviceNamesAsync(rows.Select(r => r.DeviceId), ct);
+        return rows.Select(a => AlertDto.From(a, a.DeviceId is { } d ? names.GetValueOrDefault(d) : null)).ToList();
+    }
+
+    /// <summary>
+    /// Filters of the alert list. A time range selects alerts that were open at any moment inside it
+    /// (last seen after the start, first seen before the end).
+    /// </summary>
+    private IQueryable<Alert> Filter(AlertQuery q)
+    {
         var query = _db.Alerts.AsNoTracking().AsQueryable();
         if (q.States is { Count: > 0 })
         {
@@ -72,25 +108,7 @@ public sealed class AlertService
             query = query.Where(a => a.FirstSeenUtc < to);
         }
 
-        var pageSize = Math.Clamp(q.PageSize, 1, 1000);
-        var page = Math.Max(1, q.Page);
-        var total = await query.CountAsync(ct);
-
-        // Severity is stored as text, so sort open alerts by severity in memory after paging by time.
-        var rows = await query
-            .OrderByDescending(a => a.FirstSeenUtc)
-            .Skip((page - 1) * pageSize)
-            .Take(pageSize)
-            .ToListAsync(ct);
-
-        var names = await DeviceNamesAsync(rows.Select(r => r.DeviceId), ct);
-        var items = rows
-            .OrderByDescending(a => a.State is AlertState.Active or AlertState.Acknowledged)
-            .ThenByDescending(a => a.Severity)
-            .ThenByDescending(a => a.FirstSeenUtc)
-            .Select(a => AlertDto.From(a, a.DeviceId is { } d ? names.GetValueOrDefault(d) : null))
-            .ToList();
-        return new PagedResult<AlertDto>(items, total, page, pageSize);
+        return query;
     }
 
     public async Task<(AlertDto Alert, IReadOnlyList<AlertHistoryDto> History)?> GetAsync(long id, CancellationToken ct)

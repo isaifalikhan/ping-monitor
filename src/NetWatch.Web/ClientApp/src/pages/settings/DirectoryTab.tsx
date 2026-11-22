@@ -86,7 +86,7 @@ export function DirectoryTab() {
         <div className="card-body">
           <ErrorBox error={error} />
           <div className="muted" style={{ marginBottom: 10 }}>
-            Users sign in with their AD account (user, DOMAIN\user or user@domain). NetWatch binds as the user, so no directory service account or stored password is needed. The role is
+            Users sign in with their AD account (user, DOMAIN\user or user@domain). HIT SIEM binds as the user, so no directory service account or stored password is needed. The role is
             taken from the mapped AD groups at every sign-in (nested groups count); accounts in no mapped group are refused. Local accounts such as “admin” keep working.
           </div>
           <div className="form-grid">
@@ -152,7 +152,7 @@ export function DirectoryTab() {
                       className="mono"
                       style={{ width: '100%' }}
                       value={m.groupDn}
-                      placeholder="CN=NetWatch Admins,OU=Groups,DC=corp,DC=local"
+                      placeholder="CN=HIT SIEM Admins,OU=Groups,DC=corp,DC=local"
                       onChange={(e) => set('roleMappings', s.roleMappings.map((x, j) => (j === i ? { ...x, groupDn: e.target.value } : x)))}
                     />
                   </td>

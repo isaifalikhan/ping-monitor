@@ -1,6 +1,6 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { CheckCheck, XCircle } from 'lucide-react';
-import { useMemo, useState } from 'react';
+import { CheckCheck, Download, XCircle } from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api, qs } from '../../api/client';
 import type { Alert, AlertHistory, Paged, Severity } from '../../api/types';
@@ -9,6 +9,7 @@ import { useAuth } from '../../auth/AuthContext';
 import { SeverityBadge } from '../../components/Badges';
 import { DataTable, type Column } from '../../components/DataTable';
 import { ErrorBox, Modal } from '../../components/Modal';
+import { rangeFor, SEARCH_RANGES, TimeRange, type TimeRangeValue } from '../../components/TimeRange';
 import { fmtAgo, fmtDateTime, fmtDuration, toMs } from '../../util/format';
 
 type View = 'active' | 'acknowledged' | 'history';
@@ -211,10 +212,25 @@ export function AlertsPage() {
   const [selected, setSelected] = useState<Set<string | number>>(new Set());
   const [dialog, setDialog] = useState<'ack' | 'close' | null>(null);
   const [detail, setDetail] = useState<number | null>(null);
+  const [range, setRange] = useState<TimeRangeValue>(() => rangeFor('30d'));
+  const [term, setTerm] = useState('');
+  useEffect(() => {
+    const t = setTimeout(() => setTerm(search.trim()), 300);
+    return () => clearTimeout(t);
+  }, [search]);
 
+  // History is searched on the server (time range + text) so alerts beyond the newest 1,000 are found too.
+  const history = view === 'history';
+  const filters = {
+    state: viewStates[view],
+    minSeverity: minSeverity || undefined,
+    from: history ? range.from.toISOString() : undefined,
+    to: history && range.key === 'custom' ? range.to.toISOString() : undefined,
+    search: history ? term || undefined : undefined,
+  };
   const q = useQuery({
-    queryKey: ['alerts', 'list', view, minSeverity],
-    queryFn: () => api.get<Paged<Alert>>(`/api/alerts${qs({ state: viewStates[view], minSeverity, pageSize: view === 'history' ? 1000 : 2000 })}`),
+    queryKey: ['alerts', 'list', filters],
+    queryFn: () => api.get<Paged<Alert>>(`/api/alerts${qs({ ...filters, pageSize: history ? 1000 : 2000 })}`),
     refetchInterval: 30000,
   });
 
@@ -297,7 +313,13 @@ export function AlertsPage() {
             </option>
           ))}
         </select>
-        <span className="muted">{rows.length} alert(s)</span>
+        {history && <TimeRange value={range} onChange={setRange} presets={SEARCH_RANGES} />}
+        <a className="btn" href={`/api/alerts/export${qs({ ...filters, search: term || undefined })}`} download title="Download the alerts matching these filters as CSV (newest 100,000)">
+          <Download size={14} /> Export CSV
+        </a>
+        <span className="muted">
+          {rows.length} alert(s){q.data && q.data.total > (q.data.items?.length ?? 0) ? ` (newest ${q.data.items.length} of ${q.data.total}; narrow the range or search)` : ''}
+        </span>
       </div>
       <ErrorBox error={q.error} />
       <div className="card">

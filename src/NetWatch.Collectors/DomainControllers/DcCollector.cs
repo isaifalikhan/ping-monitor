@@ -124,8 +124,22 @@ public sealed class DcCollector : IDcCollector
     {
         if (!request.Bookmarks.TryGetValue(DcLogs.Security, out var last))
         {
-            // First contact: start at the newest record (no flood of history).
-            data.NewBookmarks[DcLogs.Security] = NewestRecordId(session, DcLogs.Security) ?? 0;
+            // First contact: start at the newest record, or — with a backfill window — just before the oldest
+            // catalogued event of the window, so the next polls read that history in batches of MaxSecurityEvents.
+            var newestRecord = NewestRecordId(session, DcLogs.Security) ?? 0;
+            long? oldestInWindow = null;
+            if (request.BackfillHours > 0)
+            {
+                using var reader = new EventLogReader(new EventLogQuery(DcLogs.Security, PathType.LogName, BackfillXPath(request.BackfillHours)) { Session = session });
+                using var first = reader.ReadEvent();
+                oldestInWindow = first?.RecordId;
+            }
+
+            foreach (var (log, recordId) in FirstContactBookmarks(newestRecord, oldestInWindow))
+            {
+                data.NewBookmarks[log] = recordId;
+            }
+
             return;
         }
 
@@ -181,6 +195,20 @@ public sealed class DcCollector : IDcCollector
 
         data.NewBookmarks[log] = newest;
     }
+
+    /// <summary>XPath for the catalogued Security events written within the last <paramref name="hours"/> hours (oldest first).</summary>
+    internal static string BackfillXPath(int hours) =>
+        string.Create(CultureInfo.InvariantCulture, $"*[System[({SecurityXPathIds}) and TimeCreated[timediff(@SystemTime) <= {(long)hours * 3_600_000}]]]");
+
+    /// <summary>
+    /// Bookmarks written on the first Security-log contact. Without history in the window the read starts after
+    /// the newest record; otherwise just before the oldest event of the window, and the newest record ID is kept
+    /// as the end of the backfill (those events are stored but raise no alerts).
+    /// </summary>
+    internal static IReadOnlyList<(string Log, long RecordId)> FirstContactBookmarks(long newestRecordId, long? oldestInWindowRecordId) =>
+        oldestInWindowRecordId is { } oldest && oldest <= newestRecordId
+            ? [(DcLogs.Security, Math.Max(0, oldest - 1)), (DcLogs.SecurityBackfillEnd, newestRecordId)]
+            : [(DcLogs.Security, newestRecordId)];
 
     private static long? NewestRecordId(EventLogSession session, string log)
     {

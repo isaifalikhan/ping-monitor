@@ -253,6 +253,12 @@ public sealed class DcSettings
     public bool ExcludeComputerAccounts { get; set; } = true;
     public int MaxSecurityEventsPerPoll { get; set; } = 5000;
 
+    /// <summary>
+    /// On the first remote read of a DC's Security log, also read the events of this many hours that are still
+    /// in the log (0 = only new events). Backfilled events are stored and searchable but raise no alerts.
+    /// </summary>
+    public int InitialBackfillHours { get; set; } = 24;
+
     /// <summary>Alert when a partner / naming context has not replicated successfully for this many hours.</summary>
     public int ReplicationStaleHours { get; set; } = 3;
 
@@ -282,6 +288,7 @@ public sealed class DcSettings
         SuccessfulLogonIgnoreSources = SuccessfulLogonIgnoreSources.Where(d => !string.IsNullOrWhiteSpace(d)).Select(d => d.Trim())
             .Distinct(StringComparer.OrdinalIgnoreCase).Take(500).ToList();
         MaxSecurityEventsPerPoll = Math.Clamp(MaxSecurityEventsPerPoll, 100, 50_000);
+        InitialBackfillHours = Math.Clamp(InitialBackfillHours, 0, 24 * 30);
         ReplicationCheckMin = Math.Clamp(ReplicationCheckMin, 1, 1440);
         ReplicationStaleHours = Math.Clamp(ReplicationStaleHours, 1, 24 * 14);
         SuccessfulLogonTypes = SuccessfulLogonTypes.Where(t => t is >= 0 and <= 13).Distinct().ToList();

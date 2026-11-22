@@ -227,7 +227,7 @@ public static class OverviewEndpoints
     }
 
     private static IResult Info(SettingsService settings) =>
-        Results.Ok(new { product = "NetWatch", version = Version(), timeZone = "Asia/Karachi", repeatSoundEveryMin = settings.Alerting.RepeatSoundEveryMin });
+        Results.Ok(new { product = "HIT SIEM", version = Version(), timeZone = "Asia/Karachi", repeatSoundEveryMin = settings.Alerting.RepeatSoundEveryMin });
 
     private static string Version() =>
         typeof(OverviewEndpoints).Assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion?.Split('+')[0] ?? "1.0.0";

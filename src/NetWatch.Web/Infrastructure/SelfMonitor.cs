@@ -168,7 +168,7 @@ public sealed class SelfMonitorService : BackgroundService
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Could not create the NetWatch self-monitoring device");
+            _logger.LogWarning(ex, "Could not create the HIT SIEM self-monitoring device");
         }
 
         using var timer = new PeriodicTimer(TimeSpan.FromMinutes(1));
@@ -284,7 +284,7 @@ public sealed class SelfMonitorService : BackgroundService
         var now = DateTime.UtcNow;
         var device = new Device
         {
-            Name = $"{Environment.MachineName} (NetWatch)",
+            Name = $"{Environment.MachineName} (HIT SIEM)",
             IpAddress = "127.0.0.1",
             Type = DeviceType.Other,
             Os = OsKind.Windows,
@@ -293,7 +293,7 @@ public sealed class SelfMonitorService : BackgroundService
             StatusSinceUtc = now,
             CreatedUtc = now,
             UpdatedUtc = now,
-            Notes = "Created automatically: NetWatch monitors itself (disk, polling, storage, backups, certificate). Do not delete.",
+            Notes = "Created automatically: HIT SIEM monitors itself (disk, polling, storage, backups, certificate). Do not delete.",
             Tags = [new DeviceTag { Tag = SelfTag }],
         };
         db.Devices.Add(device);

@@ -196,6 +196,11 @@ h3 {
   color: var(--accent);
 }
 
+.brand-logo {
+  object-fit: contain;
+  flex: none;
+}
+
 .nav {
   padding: 10px 8px;
   display: flex;

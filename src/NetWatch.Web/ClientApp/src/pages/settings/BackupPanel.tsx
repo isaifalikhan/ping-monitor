@@ -49,7 +49,7 @@ export function SelfCheckPanel({ checks, checkedUtc, selfDeviceId }: { checks: S
         </table>
         {checks.length === 0 && <div className="muted">The first check runs about a minute after start.</div>}
         <p className="muted">
-          Checked every minute{checkedUtc ? ` (last ${fmtAgo(checkedUtc)})` : ''}. A failing check raises the alert “NetWatch self-check failing” on the device{' '}
+          Checked every minute{checkedUtc ? ` (last ${fmtAgo(checkedUtc)})` : ''}. A failing check raises the alert “HIT SIEM self-check failing” on the device{' '}
           {selfDeviceId ? <Link to={`/devices/${selfDeviceId}`}>for this server</Link> : 'for this server'}, so it reaches the usual notification channels.
         </p>
         <ErrorBox error={save.error} />
@@ -87,7 +87,7 @@ export function BackupPanel() {
     if (password) portable.mutate(password);
   };
   const askRestore = (name: string) => {
-    if (window.prompt(`Restore ${name}? ALL current data (devices, alerts, history, settings) is replaced. NetWatch stops and restores at the next start. Type RESTORE to continue.`) !== 'RESTORE') return;
+    if (window.prompt(`Restore ${name}? ALL current data (devices, alerts, history, settings) is replaced. HIT SIEM stops and restores at the next start. Type RESTORE to continue.`) !== 'RESTORE') return;
     const password = name.includes('-portable') ? (window.prompt('Portable credential password (leave empty to keep the credentials encrypted for the original server):') ?? '') : '';
     restore.mutate({ name, password });
   };
@@ -118,9 +118,9 @@ export function BackupPanel() {
         {restore.data && <div style={{ color: 'var(--warn)', marginBottom: 8 }}>{restore.data.message}</div>}
         {d?.lastError && <div style={{ color: 'var(--crit)', marginBottom: 8 }}>Last backup failed: {d.lastError}</div>}
         <p className="muted" style={{ marginTop: 0 }}>
-          A backup is a zip with consistent copies of the three databases (taken while NetWatch keeps running), appsettings.json and the certificate, plus a checksum manifest.
+          A backup is a zip with consistent copies of the three databases (taken while HIT SIEM keeps running), appsettings.json and the certificate, plus a checksum manifest.
           Stored in <span className="mono">{d?.settings.folder || d?.defaultFolder}</span>
-          {d?.nextRunUtc ? `; next automatic backup ${fmtDateTime(d.nextRunUtc)} PKT` : ''}. Restore here (NetWatch restarts) or with the service stopped:{' '}
+          {d?.nextRunUtc ? `; next automatic backup ${fmtDateTime(d.nextRunUtc)} PKT` : ''}. Restore here (HIT SIEM restarts) or with the service stopped:{' '}
           <span className="mono">NetWatch.Service.exe --restore &lt;file&gt; [--restore-password]</span>.
         </p>
         {settings && (
@@ -143,8 +143,8 @@ export function BackupPanel() {
               </label>
               <label className="field wide">
                 <span>Folder (empty = data folder\backups)</span>
-                <input className="mono" value={settings.folder ?? ''} onChange={(e) => setSettings({ ...settings, folder: e.target.value })} placeholder="E:\Backups\NetWatch or \\backupserver\netwatch" />
-                <span className="hint">Use another disk or a share so a disk failure does not take the backups with it. The NetWatch service account needs write access.</span>
+                <input className="mono" value={settings.folder ?? ''} onChange={(e) => setSettings({ ...settings, folder: e.target.value })} placeholder="E:\Backups\HIT SIEM or \\backupserver\netwatch" />
+                <span className="hint">Use another disk or a share so a disk failure does not take the backups with it. The HIT SIEM service account needs write access.</span>
               </label>
             </div>
             <button className="small" disabled={save.isPending} onClick={() => save.mutate(settings)}>

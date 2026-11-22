@@ -151,10 +151,10 @@ public sealed partial class ReportService
                 }
                 else
                 {
-                    var subject = $"NetWatch report: {s.Name} ({LocalTime.ToLocal(from):yyyy-MM-dd} – {LocalTime.ToLocal(to.AddSeconds(-1)):yyyy-MM-dd})";
+                    var subject = $"HIT SIEM report: {s.Name} ({LocalTime.ToLocal(from):yyyy-MM-dd} – {LocalTime.ToLocal(to.AddSeconds(-1)):yyyy-MM-dd})";
                     var body = $"Scheduled report \"{s.Name}\" ({ReportCatalog.NameOf(s.ReportType)}) for {LocalTime.ToLocal(from):yyyy-MM-dd HH:mm} – {LocalTime.ToLocal(to):yyyy-MM-dd HH:mm} PKT.\r\n\r\n"
-                               + (content.Length <= MaxAttachmentBytes ? "The report is attached." : $"The report is too large to attach; it is saved on the NetWatch server as {relative}.")
-                               + "\r\n\r\n-- NetWatch";
+                               + (content.Length <= MaxAttachmentBytes ? "The report is attached." : $"The report is too large to attach; it is saved on the HIT SIEM server as {relative}.")
+                               + "\r\n\r\n-- HIT SIEM";
                     var attachments = content.Length <= MaxAttachmentBytes ? new List<(string, byte[], string)> { (Path.GetFileName(path), content, mime) } : [];
                     await _mail.SendAsync(s.EmailTo, subject, body, attachments, ct);
                     status += $"; e-mailed to {s.EmailTo}";

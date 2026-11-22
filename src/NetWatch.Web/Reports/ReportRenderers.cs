@@ -131,7 +131,7 @@ public static class PdfReportRenderer
         {
             pdf.SelectPage(i);
             pdf.Line(Margin, PdfWriter.PageHeight - 34, Margin + ContentWidth, PdfWriter.PageHeight - 34, Rule);
-            pdf.Text(Margin, PdfWriter.PageHeight - 30, PdfWriter.Fit($"NetWatch · {doc.Title}", ContentWidth - 80, 7.5), 7.5, color: Muted);
+            pdf.Text(Margin, PdfWriter.PageHeight - 30, PdfWriter.Fit($"HIT SIEM · {doc.Title}", ContentWidth - 80, 7.5), 7.5, color: Muted);
             pdf.TextRight(Margin + ContentWidth, PdfWriter.PageHeight - 30, $"Page {i + 1} of {pdf.PageCount}", 7.5, color: Muted);
         }
 

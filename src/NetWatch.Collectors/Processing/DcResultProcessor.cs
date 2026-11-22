@@ -118,7 +118,8 @@ public sealed class DcResultProcessor
             servers.WinRmHttps,
             servers.DcomFallback,
             TimeSpan.FromSeconds(servers.TimeoutSec),
-            dc.CheckServicePorts);
+            dc.CheckServicePorts,
+            dc.InitialBackfillHours);
     }
 
     public async Task ProcessAsync(DeviceSnapshot device, DevicePollResult result, NetWatchDbContext db, EventsDbContext events, CancellationToken ct)
@@ -150,7 +151,7 @@ public sealed class DcResultProcessor
             }
         }
 
-        await IngestSecurityAsync(device, dc.SecurityEvents, events, ct);
+        await IngestSecurityAsync(device, dc.SecurityEvents, events, ct, rt.Bookmarks.GetValueOrDefault(DcLogs.SecurityBackfillEnd));
         await DirectoryEventsAsync(device, rt, dc, events, now, ct);
         await InfoAsync(device, dc, db, now, ct);
         if (dc.ReplicationChecked && dc.Replication is { } links)
@@ -183,7 +184,8 @@ public sealed class DcResultProcessor
     /// Filters, stores and publishes Security-log events of one DC (remote reads and Windows Event Forwarding).
     /// Duplicates (same DC and record ID) are skipped. Returns the number stored.
     /// </summary>
-    public async Task<int> IngestSecurityAsync(DeviceSnapshot device, IReadOnlyList<DcSecurityReading> readings, EventsDbContext events, CancellationToken ct)
+    /// <param name="backfillEndRecordId">Events with a record ID up to this value were backfilled on first contact: stored, but no alerts (0 = none).</param>
+    public async Task<int> IngestSecurityAsync(DeviceSnapshot device, IReadOnlyList<DcSecurityReading> readings, EventsDbContext events, CancellationToken ct, long backfillEndRecordId = 0)
     {
         if (readings.Count == 0)
         {
@@ -233,7 +235,8 @@ public sealed class DcResultProcessor
             });
 
             // Successful logons and ticket requests are stored for investigation but not evaluated by rules (volume).
-            if (IsSuccessfulAuthentication(r))
+            // Backfilled history (already in the log before monitoring started) is not evaluated either.
+            if (IsSuccessfulAuthentication(r) || r.RecordId <= backfillEndRecordId)
             {
                 continue;
             }
@@ -477,7 +480,7 @@ public sealed class DcResultProcessor
         using var scope = _scopeFactory.CreateScope();
         var events = scope.ServiceProvider.GetRequiredService<EventsDbContext>();
         var db = scope.ServiceProvider.GetRequiredService<NetWatchDbContext>();
-        var logs = DcLogs.All.ToList();
+        var logs = DcLogs.All.Append(DcLogs.SecurityBackfillEnd).ToList();
         rt.Bookmarks = await events.EventBookmarks.AsNoTracking().Where(b => b.DeviceId == deviceId && logs.Contains(b.LogName))
             .ToDictionaryAsync(b => b.LogName, b => b.LastRecordId, StringComparer.OrdinalIgnoreCase, ct);
         rt.LastReplicationCheckUtc = await db.DcInfos.AsNoTracking().Where(i => i.DeviceId == deviceId)

@@ -8,6 +8,7 @@ using NetWatch.Collectors.Live;
 using NetWatch.Core;
 using NetWatch.Core.Abstractions;
 using NetWatch.Core.Alerts;
+using NetWatch.Core.Entities;
 using NetWatch.Core.Monitoring;
 using NetWatch.Data.Config;
 using NetWatch.Data.Events;
@@ -232,7 +233,7 @@ public static class ServerEndpoints
     }
 }
 
-/// <summary>Received and collected events: syslog, SNMP traps, Windows event-log entries (server-side filtered and paged).</summary>
+/// <summary>Received and collected events: syslog, SNMP traps, Windows event-log entries (server-side filtered and paged, CSV export).</summary>
 public static class EventEndpoints
 {
     public sealed record SyslogDto(long Id, DateTime ReceivedUtc, DateTime? MessageUtc, string SourceIp, int? DeviceId, string? DeviceName, int Facility, int Severity, string SeverityName, string? Hostname, string? AppName, string Message);
@@ -243,8 +244,11 @@ public static class EventEndpoints
     {
         var read = app.MapGroup("/api").RequireAuthorization(Policies.Viewer);
         read.MapGet("/syslog", SyslogAsync);
+        read.MapGet("/syslog/export", ExportSyslogAsync);
         read.MapGet("/traps", TrapsAsync);
+        read.MapGet("/traps/export", ExportTrapsAsync);
         read.MapGet("/windows-events", WindowsEventsAsync);
+        read.MapGet("/windows-events/export", ExportWindowsEventsAsync);
     }
 
     private static (int Page, int Size) Paging(int? page, int? pageSize) => (Math.Max(1, page ?? 1), Math.Clamp(pageSize ?? 200, 1, 2000));
@@ -255,8 +259,10 @@ public static class EventEndpoints
         return list.Count == 0 ? new Dictionary<int, string>() : await db.Devices.AsNoTracking().Where(d => list.Contains(d.Id)).ToDictionaryAsync(d => d.Id, d => d.Name, ct);
     }
 
+    // ------------------------------------------------------------------ syslog
+
     /// <param name="maxSeverity">Syslog severity threshold: 3 = error and worse (0–3).</param>
-    private static async Task<IResult> SyslogAsync(EventsDbContext events, NetWatchDbContext db, int? deviceId, int? maxSeverity, string? search, string? source, DateTime? from, DateTime? to, int? page, int? pageSize, CancellationToken ct)
+    internal static IQueryable<SyslogMessage> FilterSyslog(EventsDbContext events, int? deviceId, int? maxSeverity, string? search, string? source, DateTime? from, DateTime? to)
     {
         var q = events.SyslogMessages.AsNoTracking().AsQueryable();
         if (deviceId is { } d)
@@ -292,18 +298,40 @@ public static class EventEndpoints
             q = q.Where(x => x.ReceivedUtc < tu);
         }
 
+        return q;
+    }
+
+    private static async Task<IResult> SyslogAsync(EventsDbContext events, NetWatchDbContext db, int? deviceId, int? maxSeverity, string? search, string? source, DateTime? from, DateTime? to, int? page, int? pageSize, CancellationToken ct)
+    {
+        var q = FilterSyslog(events, deviceId, maxSeverity, search, source, from, to);
         var (p, size) = Paging(page, pageSize);
 
         // Counting millions of rows is slow; report "more" instead of an exact total beyond 10,000.
         var total = await q.Take(10_001).CountAsync(ct);
-        var rows = await q.OrderByDescending(x => x.Id).Skip((p - 1) * size).Take(size).ToListAsync(ct);
+        var rows = await q.OrderByDescending(x => x.ReceivedUtc).ThenByDescending(x => x.Id).Skip((p - 1) * size).Take(size).ToListAsync(ct);
         var names = await NamesAsync(db, rows.Select(r => r.DeviceId), ct);
         var items = rows.Select(r => new SyslogDto(r.Id, r.ReceivedUtc, r.MessageUtc, r.SourceIp, r.DeviceId, r.DeviceId is { } id ? names.GetValueOrDefault(id) : null,
             r.Facility, r.SyslogSeverity, SeverityMapping.SyslogSeverityName(r.SyslogSeverity), r.Hostname, r.AppName, r.Message)).ToList();
         return Results.Ok(new { items, total, page = p, pageSize = size, totalCapped = total > 10_000 });
     }
 
-    private static async Task<IResult> TrapsAsync(EventsDbContext events, NetWatchDbContext db, int? deviceId, Severity? minSeverity, string? search, DateTime? from, DateTime? to, int? page, int? pageSize, CancellationToken ct)
+    private static async Task<IResult> ExportSyslogAsync(EventsDbContext events, NetWatchDbContext db, HttpContext http, AuditWriter audit, int? deviceId, int? maxSeverity, string? search, string? source,
+        DateTime? from, DateTime? to, CancellationToken ct)
+    {
+        var rows = await FilterSyslog(events, deviceId, maxSeverity, search, source, from, to)
+            .OrderByDescending(x => x.ReceivedUtc).ThenByDescending(x => x.Id).Take(CsvExport.MaxRows).ToListAsync(ct);
+        var names = await NamesAsync(db, rows.Select(r => r.DeviceId), ct);
+        var bytes = CsvExport.Write(
+            ["Received (PKT)", "Message time (PKT)", "Source IP", "Device", "Facility", "Severity", "Host name", "App", "Message"],
+            rows.Select(r => (IReadOnlyList<string?>)[CsvExport.Time(r.ReceivedUtc), CsvExport.Time(r.MessageUtc), r.SourceIp, r.DeviceId is { } id ? names.GetValueOrDefault(id) : null,
+                r.Facility.Inv(), SeverityMapping.SyslogSeverityName(r.SyslogSeverity), r.Hostname, r.AppName, r.Message]));
+        await audit.WriteAsync(http.Actor(), "SyslogExported", "Syslog", null, $"{rows.Count.Inv()} rows");
+        return Results.File(bytes, "text/csv; charset=utf-8", CsvExport.FileName("syslog"));
+    }
+
+    // ------------------------------------------------------------------ traps
+
+    internal static IQueryable<SnmpTrap> FilterTraps(EventsDbContext events, int? deviceId, Severity? minSeverity, string? search, DateTime? from, DateTime? to)
     {
         var q = events.SnmpTraps.AsNoTracking().AsQueryable();
         if (deviceId is { } d)
@@ -335,16 +363,38 @@ public static class EventEndpoints
             q = q.Where(x => x.ReceivedUtc < tu);
         }
 
+        return q;
+    }
+
+    private static async Task<IResult> TrapsAsync(EventsDbContext events, NetWatchDbContext db, int? deviceId, Severity? minSeverity, string? search, DateTime? from, DateTime? to, int? page, int? pageSize, CancellationToken ct)
+    {
+        var q = FilterTraps(events, deviceId, minSeverity, search, from, to);
         var (p, size) = Paging(page, pageSize);
         var total = await q.Take(10_001).CountAsync(ct);
-        var rows = await q.OrderByDescending(x => x.Id).Skip((p - 1) * size).Take(size).ToListAsync(ct);
+        var rows = await q.OrderByDescending(x => x.ReceivedUtc).ThenByDescending(x => x.Id).Skip((p - 1) * size).Take(size).ToListAsync(ct);
         var names = await NamesAsync(db, rows.Select(r => r.DeviceId), ct);
         var items = rows.Select(r => new TrapDto(r.Id, r.ReceivedUtc, r.SourceIp, r.DeviceId, r.DeviceId is { } id ? names.GetValueOrDefault(id) : null,
             r.Version, r.TrapOid, r.TrapName, r.Severity, r.Summary, r.VarbindsJson)).ToList();
         return Results.Ok(new { items, total, page = p, pageSize = size, totalCapped = total > 10_000 });
     }
 
-    private static async Task<IResult> WindowsEventsAsync(EventsDbContext events, NetWatchDbContext db, int? deviceId, int? maxLevel, int? eventId, string? search, DateTime? from, DateTime? to, int? page, int? pageSize, CancellationToken ct)
+    private static async Task<IResult> ExportTrapsAsync(EventsDbContext events, NetWatchDbContext db, HttpContext http, AuditWriter audit, int? deviceId, Severity? minSeverity, string? search,
+        DateTime? from, DateTime? to, CancellationToken ct)
+    {
+        var rows = await FilterTraps(events, deviceId, minSeverity, search, from, to)
+            .OrderByDescending(x => x.ReceivedUtc).ThenByDescending(x => x.Id).Take(CsvExport.MaxRows).ToListAsync(ct);
+        var names = await NamesAsync(db, rows.Select(r => r.DeviceId), ct);
+        var bytes = CsvExport.Write(
+            ["Received (PKT)", "Source IP", "Device", "Version", "Trap OID", "Trap", "Severity", "Summary"],
+            rows.Select(r => (IReadOnlyList<string?>)[CsvExport.Time(r.ReceivedUtc), r.SourceIp, r.DeviceId is { } id ? names.GetValueOrDefault(id) : null,
+                r.Version, r.TrapOid, r.TrapName, r.Severity.ToString(), r.Summary]));
+        await audit.WriteAsync(http.Actor(), "TrapsExported", "SnmpTraps", null, $"{rows.Count.Inv()} rows");
+        return Results.File(bytes, "text/csv; charset=utf-8", CsvExport.FileName("snmp-traps"));
+    }
+
+    // ------------------------------------------------------------------ Windows event logs
+
+    internal static IQueryable<WindowsEventEntry> FilterWindowsEvents(EventsDbContext events, int? deviceId, int? maxLevel, int? eventId, string? search, DateTime? from, DateTime? to)
     {
         var q = events.WindowsEvents.AsNoTracking().AsQueryable();
         if (deviceId is { } d)
@@ -380,11 +430,31 @@ public static class EventEndpoints
             q = q.Where(x => x.TimestampUtc < tu);
         }
 
+        return q;
+    }
+
+    private static async Task<IResult> WindowsEventsAsync(EventsDbContext events, NetWatchDbContext db, int? deviceId, int? maxLevel, int? eventId, string? search, DateTime? from, DateTime? to, int? page, int? pageSize, CancellationToken ct)
+    {
+        var q = FilterWindowsEvents(events, deviceId, maxLevel, eventId, search, from, to);
         var (p, size) = Paging(page, pageSize);
         var total = await q.Take(10_001).CountAsync(ct);
         var rows = await q.OrderByDescending(x => x.TimestampUtc).ThenByDescending(x => x.Id).Skip((p - 1) * size).Take(size).ToListAsync(ct);
         var names = await NamesAsync(db, rows.Select(r => (int?)r.DeviceId), ct);
         var items = rows.Select(r => new WindowsEventDto(r.Id, r.TimestampUtc, r.DeviceId, names.GetValueOrDefault(r.DeviceId), r.LogName, r.Provider, r.EventId, r.Level, r.Message)).ToList();
         return Results.Ok(new { items, total, page = p, pageSize = size, totalCapped = total > 10_000 });
+    }
+
+    private static async Task<IResult> ExportWindowsEventsAsync(EventsDbContext events, NetWatchDbContext db, HttpContext http, AuditWriter audit, int? deviceId, int? maxLevel, int? eventId, string? search,
+        DateTime? from, DateTime? to, CancellationToken ct)
+    {
+        var rows = await FilterWindowsEvents(events, deviceId, maxLevel, eventId, search, from, to)
+            .OrderByDescending(x => x.TimestampUtc).ThenByDescending(x => x.Id).Take(CsvExport.MaxRows).ToListAsync(ct);
+        var names = await NamesAsync(db, rows.Select(r => (int?)r.DeviceId), ct);
+        var bytes = CsvExport.Write(
+            ["Time (PKT)", "Server", "Log", "Provider", "Event ID", "Level", "Message"],
+            rows.Select(r => (IReadOnlyList<string?>)[CsvExport.Time(r.TimestampUtc), names.GetValueOrDefault(r.DeviceId), r.LogName, r.Provider, r.EventId.Inv(),
+                r.Level switch { 1 => "Critical", 2 => "Error", 3 => "Warning", _ => "Information" }, r.Message]));
+        await audit.WriteAsync(http.Actor(), "WindowsEventsExported", "WindowsEvents", null, $"{rows.Count.Inv()} rows");
+        return Results.File(bytes, "text/csv; charset=utf-8", CsvExport.FileName("windows-events"));
     }
 }

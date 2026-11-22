@@ -39,6 +39,8 @@ const RANGES: { key: string; label: string; hours?: number }[] = [
   { key: '24h', label: 'Last 24 hours', hours: 24 },
   { key: '7d', label: 'Last 7 days', hours: 168 },
   { key: '30d', label: 'Last 30 days', hours: 720 },
+  { key: '90d', label: 'Last 90 days', hours: 2160 },
+  { key: '1y', label: 'Last 365 days', hours: 8760 },
   { key: 'all', label: 'All stored' },
 ];
 
@@ -625,7 +627,7 @@ function AuditTab() {
     <div className="card card-body" style={{ maxWidth: 1000, lineHeight: 1.55 }}>
       <h3 style={{ marginTop: 0 }}>Recommended audit policy for domain controllers</h3>
       <p>
-        NetWatch can only show what the domain controllers record. Configure these <strong>Advanced Audit Policy</strong> settings in the <em>Default Domain Controllers Policy</em> (or a
+        HIT SIEM can only show what the domain controllers record. Configure these <strong>Advanced Audit Policy</strong> settings in the <em>Default Domain Controllers Policy</em> (or a
         dedicated GPO linked to the Domain Controllers OU): <em>Computer Configuration → Policies → Windows Settings → Security Settings → Advanced Audit Policy Configuration → Audit Policies</em>.
         Also enable <em>Security Options → “Audit: Force audit policy subcategory settings to override audit policy category settings”</em>.
       </p>
@@ -635,7 +637,7 @@ function AuditTab() {
             <th>Category</th>
             <th>Subcategory</th>
             <th>Setting</th>
-            <th>Events NetWatch uses</th>
+            <th>Events HIT SIEM uses</th>
           </tr>
         </thead>
         <tbody>
@@ -655,7 +657,7 @@ function AuditTab() {
       <h4>Security log size</h4>
       <p>
         A busy DC writes thousands of events per minute. Set the Security log to at least <strong>1 GB</strong> (4 GB on large domains) with “Overwrite events as needed”, so events are not
-        overwritten between two NetWatch polls (<em>Event Log → Maximum security log size</em> in the same GPO).
+        overwritten between two HIT SIEM polls (<em>Event Log → Maximum security log size</em> in the same GPO).
       </p>
       <h4>Least-privilege collection account</h4>
       <ul>
@@ -669,10 +671,10 @@ function AuditTab() {
       </ul>
       <h4>Windows Event Forwarding (optional)</h4>
       <p>
-        Instead of reading each DC remotely, the DCs can push their Security events to the NetWatch server: create a source-initiated subscription on the NetWatch server (Event Viewer →
+        Instead of reading each DC remotely, the DCs can push their Security events to the HIT SIEM server: create a source-initiated subscription on the HIT SIEM server (Event Viewer →
         Subscriptions) for the event IDs above with destination log <em>ForwardedEvents</em>, point the DCs to it via the GPO <em>Windows Components → Event Forwarding → Configure target
         Subscription Manager</em>, add the <em>Network Service</em> account to the DCs’ Event Log Readers group, then enable <em>Settings → General → Domain controllers → Use Windows Event
-        Forwarding</em>. The NetWatch service account needs to read the local ForwardedEvents log (local Event Log Readers group).
+        Forwarding</em>. The HIT SIEM service account needs to read the local ForwardedEvents log (local Event Log Readers group).
       </p>
     </div>
   );

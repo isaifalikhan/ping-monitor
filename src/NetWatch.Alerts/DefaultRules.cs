@@ -11,6 +11,12 @@ namespace NetWatch.Alerts;
 /// </summary>
 public static class DefaultRules
 {
+    /// <summary>Built-in rules whose name changed; the seeder renames the existing rule (keeping its settings).</summary>
+    public static readonly IReadOnlyList<(string Old, string New)> Renamed =
+    [
+        ("NetWatch self-check failing", "HIT SIEM self-check failing"),
+    ];
+
     public static IReadOnlyList<AlertRule> Create(DateTime nowUtc)
     {
         var important = new RuleScope { ImportantInterfacesOnly = true }.ToJson();
@@ -106,7 +112,7 @@ public static class DefaultRules
             State("Management controller unreachable", "The server's iLO / iDRAC did not answer Redfish (or SNMP) for 15 minutes.", StateKeys.HardwareUnreachable, Severity.Warning, 900, all),
 
             // ---- Phase 5: self-monitoring
-            State("NetWatch self-check failing", "A NetWatch self-check fails: data disk space, polling backlog, dropped samples or signals, message storm, certificate expiry, backups, scheduled reports, notifications or event forwarding.", StateKeys.SelfCheck, Severity.Major, 120, all),
+            State("HIT SIEM self-check failing", "A HIT SIEM self-check fails: data disk space, polling backlog, dropped samples or signals, message storm, certificate expiry, backups, scheduled reports, notifications or event forwarding.", StateKeys.SelfCheck, Severity.Major, 120, all),
         ];
 
         AlertRule Threshold(string name, string key, ComparisonOperator op, double threshold, double? clear, int durationSec, Severity severity, string scope) => new()

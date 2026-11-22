@@ -14,7 +14,7 @@
 
   Output:
       artifacts\publish\NetWatch.Service.exe      self-contained, single file, win-x64
-      artifacts\NetWatch-Setup-<version>.exe       installer (requires Inno Setup 6)
+      artifacts\HIT-SIEM-Setup-<version>.exe       installer (requires Inno Setup 6)
 
 .PARAMETER Version
   Product version stamped into the exe and the installer (e.g. 1.0.0).
@@ -181,7 +181,7 @@ if (-not $SkipInstaller) {
         Write-Warning 'Inno Setup 6 (ISCC.exe) not found: installer skipped. Install Inno Setup 6 or pass -InnoSetupCompiler <path>.'
     } else {
         Invoke-Checked $iscc @("/DAppVersion=$Version", "/DNumericVersion=$($Version -replace '-.*$', '')", "/DSourceDir=$publishDir", "/DDocsDir=$(Join-Path $root 'docs')", "/O$artifacts", '/Q', $installerScript)
-        $setup = Join-Path $artifacts "NetWatch-Setup-$Version.exe"
+        $setup = Join-Path $artifacts "HIT-SIEM-Setup-$Version.exe"
         Invoke-Sign $setup
         Write-Host ("    {0} ({1:N1} MB)" -f $setup, ((Get-Item $setup).Length / 1MB))
     }

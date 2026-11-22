@@ -38,7 +38,7 @@ public static class Program
         var version = typeof(Program).Assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion?.Split('+')[0] ?? "1.0.0";
         if (cli.Version)
         {
-            Console.WriteLine($"NetWatch {version}");
+            Console.WriteLine($"HIT SIEM {version}");
             return 0;
         }
 
@@ -76,7 +76,7 @@ public static class Program
             {
                 if (instanceLock is null)
                 {
-                    Console.Error.WriteLine("NetWatch is running on this data folder. Stop the service first: Stop-Service NetWatch");
+                    Console.Error.WriteLine("HIT SIEM is running on this data folder. Stop the service first: Stop-Service NetWatch");
                     return 3;
                 }
 
@@ -104,11 +104,11 @@ public static class Program
 
             if (instanceLock is null && !cli.ResetAdmin)
             {
-                Log.Fatal("Another NetWatch instance is already running on data folder {DataDir}", paths.Root);
+                Log.Fatal("Another HIT SIEM instance is already running on data folder {DataDir}", paths.Root);
                 return 5;
             }
 
-            Log.Information("NetWatch {Version} starting (data folder {DataDir}, PID {Pid})", version, paths.Root, Environment.ProcessId);
+            Log.Information("HIT SIEM {Version} starting (data folder {DataDir}, PID {Pid})", version, paths.Root, Environment.ProcessId);
 
             // A restore requested from the web console runs now, before any database is opened.
             var restoreOutcome = Data.Backup.PendingRestore.RunIfPending(paths, new Data.Security.DpapiSecretProtector());
@@ -173,7 +173,7 @@ public static class Program
                 Console.WriteLine();
                 Console.WriteLine($"    {password}");
                 Console.WriteLine();
-                Console.WriteLine($"It was also written to {paths.InitialAdminPasswordFile}. Restart the NetWatch service if it is running.");
+                Console.WriteLine($"It was also written to {paths.InitialAdminPasswordFile}. Restart the HIT SIEM service (NetWatch) if it is running.");
                 return 0;
             }
 
@@ -199,12 +199,12 @@ public static class Program
 
             Log.Information("Web console listening on https://{Host}:{Port}/", Environment.MachineName, port);
             await app.RunAsync();
-            Log.Information("NetWatch stopped");
+            Log.Information("HIT SIEM stopped");
             return 0;
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            Log.Fatal(ex, "NetWatch terminated unexpectedly");
+            Log.Fatal(ex, "HIT SIEM terminated unexpectedly");
             return 1;
         }
         finally
@@ -241,10 +241,10 @@ public static class Program
 
     /// <summary>The start-up error shown when the data folder or one of its files cannot be read or written.</summary>
     public static string DescribeDataFolderError(NetWatchPaths paths, Exception ex) =>
-        $"NetWatch cannot start: {ex.Message} The service account (SYSTEM) needs full control of the data folder " +
+        $"HIT SIEM cannot start: {ex.Message} The service account (SYSTEM) needs full control of the data folder " +
         $"{paths.Root} and every file in it. Repair the permissions in an administrator PowerShell with:{Environment.NewLine}" +
         $"  icacls \"{paths.Root}\" /setowner *S-1-5-32-544 /T /C /Q; icacls \"{paths.Root}\\*\" /reset /T /C /Q; Start-Service NetWatch" +
-        $"{Environment.NewLine}(or run the NetWatch installer again, which does the same).";
+        $"{Environment.NewLine}(or run the HIT SIEM installer again, which does the same).";
 
     private static void ReportToEventLog(string message)
     {
@@ -296,7 +296,7 @@ public static class Program
         Console.WriteLine();
         Console.WriteLine("Password stored (DPAPI, machine scope). Now set Https:CertificatePath in");
         Console.WriteLine($"  {paths.SettingsFile}");
-        Console.WriteLine($"to \"{Path.GetFullPath(pfx).Replace("\\", "\\\\")}\" and restart the NetWatch service.");
+        Console.WriteLine($"to \"{Path.GetFullPath(pfx).Replace("\\", "\\\\")}\" and restart the HIT SIEM service (NetWatch).");
         return 0;
     }
 

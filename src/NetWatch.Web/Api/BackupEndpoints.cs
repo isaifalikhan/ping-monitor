@@ -126,7 +126,7 @@ public static class BackupEndpoints
             Environment.ExitCode = 75;
             lifetime.StopApplication();
         });
-        return Results.Accepted(value: new { message = "Restore scheduled. NetWatch stops now and restores the backup when it starts again (the Windows service restarts by itself within a minute)." });
+        return Results.Accepted(value: new { message = "Restore scheduled. HIT SIEM stops now and restores the backup when it starts again (the Windows service restarts by itself within a minute)." });
     }
 
     private static async Task<IResult> DownloadAsync(string name, BackupService backups, HttpContext http, AuditWriter audit)
@@ -172,7 +172,7 @@ public static class BackupEndpoints
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
             {
-                return Results.BadRequest(new { error = $"NetWatch cannot write to {folder}: {ex.Message}" });
+                return Results.BadRequest(new { error = $"HIT SIEM cannot write to {folder}: {ex.Message}" });
             }
         }
 

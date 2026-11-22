@@ -1,4 +1,5 @@
-import { Network } from 'lucide-react';
+import { BrandMark } from '../components/BrandMark';
+import { ORG_NAME } from '../brand';
 import { useEffect, useState, type FormEvent } from 'react';
 import { useAuth } from '../auth/AuthContext';
 
@@ -34,11 +35,8 @@ export function LoginPage() {
   return (
     <div className="login-wrap">
       <form className="login" onSubmit={submit}>
-        <div className="brand">
-          <Network size={26} />
-          <span>NetWatch</span>
-        </div>
-        <div className="muted">Infrastructure monitoring — sign in to continue.</div>
+        <BrandMark size={44} />
+        <div className="muted">{ORG_NAME} — infrastructure and security monitoring. Sign in to continue.</div>
         {error && <div className="error-box">{error}</div>}
         <label className="field">
           <span>User name</span>

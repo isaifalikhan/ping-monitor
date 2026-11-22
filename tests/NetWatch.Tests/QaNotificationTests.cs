@@ -76,7 +76,7 @@ public sealed class QaNotificationTests : IAsyncLifetime
         Assert.Equal("relay-user", mail.User);
         Assert.Equal("Relay-Secret-1!", mail.Password);
         Assert.Equal(["<noc@corp.local>", "<it@corp.local>"], mail.Recipients); // the invalid address is skipped
-        Assert.Contains("Subject: [NetWatch] RAISED Critical: Core switch down", mail.Data);
+        Assert.Contains("Subject: [HIT SIEM] RAISED Critical: Core switch down", mail.Data);
         Assert.Contains("Device:     CORE-SW-01", mail.Data);
         Assert.Contains(" PKT", mail.Data); // local time zone shown
     }
@@ -202,7 +202,7 @@ public sealed class QaNotificationTests : IAsyncLifetime
         var received = Encoding.UTF8.GetString((await udp.ReceiveAsync().WaitAsync(TimeSpan.FromSeconds(5))).Buffer);
 
         Assert.StartsWith("<131>1 ", received); // local0 (16*8) + error (3)
-        Assert.Contains("NetWatch - ALERT [netwatch@32473 event=\"RAISED\" id=\"42\" severity=\"Major\" state=\"Active\" device=\"SW \\\"A\\\" [x\\]\\\\y\"]", received);
+        Assert.Contains("HIT-SIEM - ALERT [netwatch@32473 event=\"RAISED\" id=\"42\" severity=\"Major\" state=\"Active\" device=\"SW \\\"A\\\" [x\\]\\\\y\"]", received);
         Assert.DoesNotContain('\n', received);
         Assert.EndsWith("Line1 Line2: No answer to ping for 3 polls", received);
 

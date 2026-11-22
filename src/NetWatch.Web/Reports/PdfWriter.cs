@@ -147,7 +147,7 @@ public sealed class PdfWriter
         BeginObject(4);
         Write("<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >>\nendobj\n");
         BeginObject(5);
-        var info = new StringBuilder("<< /Producer (NetWatch) /Title (");
+        var info = new StringBuilder("<< /Producer (HIT SIEM) /Title (");
         AppendEscaped(info, title);
         info.Append(CultureInfo.InvariantCulture, $") /CreationDate (D:{DateTime.UtcNow:yyyyMMddHHmmss}Z) >>\nendobj\n");
         WriteWinAnsi(output, info.ToString());

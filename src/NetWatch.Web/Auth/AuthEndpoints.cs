@@ -82,12 +82,12 @@ public static class AuthEndpoints
             if (result.Role is not { } role)
             {
                 await audit.WriteAsync(new AuditActor(user?.Id, username, ip), "LoginDenied", details: result.Error);
-                return Error("Your account is not in a directory group that has access to NetWatch.", StatusCodes.Status403Forbidden);
+                return Error("Your account is not in a directory group that has access to HIT SIEM.", StatusCodes.Status403Forbidden);
             }
 
             if (user is { IsEnabled: false })
             {
-                await audit.WriteAsync(new AuditActor(user.Id, user.Username, ip), "LoginFailed", details: "User disabled in NetWatch");
+                await audit.WriteAsync(new AuditActor(user.Id, user.Username, ip), "LoginFailed", details: "User disabled in HIT SIEM");
                 return Error("Invalid user name or password.", StatusCodes.Status401Unauthorized);
             }
 

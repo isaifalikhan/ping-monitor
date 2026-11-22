@@ -24,7 +24,11 @@
 #endif
 
 #define ServiceName "NetWatch"
-#define ServiceDisplayName "NetWatch Monitoring Service"
+; Product branding (visible names). Internal names (service "NetWatch", NetWatch.Service.exe, C:\ProgramData\NetWatch,
+; firewall rule names, AppId) stay unchanged so upgrades from NetWatch-branded versions keep working.
+#define ProductName "HIT SIEM"
+#define Publisher "Heavy Industries Taxila"
+#define ServiceDisplayName "HIT SIEM"
 #define HttpsPort "8443"
 
 ; Data-folder ACL (BUG-009), applied in three steps by SecureDataFolder. tests/NetWatch.Tests/QaInstallerAclTests.cs
@@ -37,27 +41,27 @@
 
 [Setup]
 AppId={{7E3F2B4A-5C1D-4E8A-9B6F-2D4C8A1E3F57}
-AppName=NetWatch
+AppName={#ProductName}
 AppVersion={#AppVersion}
-AppVerName=NetWatch {#AppVersion}
-AppPublisher=NetWatch
+AppVerName={#ProductName} {#AppVersion}
+AppPublisher={#Publisher}
 VersionInfoVersion={#NumericVersion}
 DefaultDirName={autopf}\NetWatch
-DefaultGroupName=NetWatch
+DefaultGroupName={#ProductName}
 DisableProgramGroupPage=yes
 DisableDirPage=auto
 PrivilegesRequired=admin
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 MinVersion=10.0.17763
-OutputBaseFilename=NetWatch-Setup-{#AppVersion}
+OutputBaseFilename=HIT-SIEM-Setup-{#AppVersion}
 Compression=lzma2/max
 SolidCompression=yes
 WizardStyle=modern
 SetupLogging=yes
 CloseApplications=no
 RestartApplications=no
-UninstallDisplayName=NetWatch
+UninstallDisplayName={#ProductName}
 UninstallDisplayIcon={app}\NetWatch.Service.exe
 
 [Languages]
@@ -71,21 +75,26 @@ Source: "{#DocsDir}\*.md"; DestDir: "{app}\docs"; Flags: ignoreversion skipifsou
 Name: "{commonappdata}\NetWatch"; Flags: uninsneveruninstall
 
 [INI]
-Filename: "{app}\NetWatch Dashboard.url"; Section: "InternetShortcut"; Key: "URL"; String: "https://localhost:{#HttpsPort}/"
+Filename: "{app}\HIT SIEM Dashboard.url"; Section: "InternetShortcut"; Key: "URL"; String: "https://localhost:{#HttpsPort}/"
 
 [Icons]
-Name: "{group}\NetWatch Dashboard"; Filename: "{app}\NetWatch Dashboard.url"
-Name: "{group}\NetWatch documentation"; Filename: "{app}\docs"
-Name: "{group}\NetWatch data folder"; Filename: "{commonappdata}\NetWatch"
-Name: "{group}\Uninstall NetWatch"; Filename: "{uninstallexe}"
+Name: "{group}\HIT SIEM Dashboard"; Filename: "{app}\HIT SIEM Dashboard.url"
+Name: "{group}\HIT SIEM documentation"; Filename: "{app}\docs"
+Name: "{group}\HIT SIEM data folder"; Filename: "{commonappdata}\NetWatch"
+Name: "{group}\Uninstall HIT SIEM"; Filename: "{uninstallexe}"
 
 [Registry]
 ; Event-log source for the optional "Windows Event Log" notification channel (message file of the .NET Framework,
 ; present on every supported Windows version).
 Root: HKLM; Subkey: "SYSTEM\CurrentControlSet\Services\EventLog\Application\NetWatch"; ValueType: expandsz; ValueName: "EventMessageFile"; ValueData: "%SystemRoot%\Microsoft.NET\Framework64\v4.0.30319\EventLogMessages.dll"; Flags: uninsdeletekey
 
-[UninstallDelete]
+[InstallDelete]
+; Upgrade from the NetWatch-branded versions: remove the old Start-menu folder and dashboard link.
+Type: filesandordirs; Name: "{autoprograms}\NetWatch"
 Type: files; Name: "{app}\NetWatch Dashboard.url"
+
+[UninstallDelete]
+Type: files; Name: "{app}\HIT SIEM Dashboard.url"
 
 [Code]
 var
@@ -174,7 +183,7 @@ begin
     Sc('config {#ServiceName} ' + BinPath + ' start= delayed-auto DisplayName= "{#ServiceDisplayName}"')
   else
     Sc('create {#ServiceName} ' + BinPath + ' start= delayed-auto DisplayName= "{#ServiceDisplayName}"');
-  Sc('description {#ServiceName} "NetWatch infrastructure monitoring: collectors, alerting and the web console (HTTPS port {#HttpsPort})."');
+  Sc('description {#ServiceName} "HIT SIEM (Heavy Industries Taxila) infrastructure and security monitoring: collectors, alerting and the web console (HTTPS port {#HttpsPort})."');
   Sc('failure {#ServiceName} reset= 86400 actions= restart/60000/restart/60000/restart/300000');
   // Also restart after a clean stop with a non-zero exit code (used by "restore from the web console").
   Sc('failureflag {#ServiceName} 1');
@@ -222,14 +231,14 @@ begin
     if not ServiceStarted then
     begin
       WizardForm.FinishedLabel.Caption :=
-        'NetWatch is installed, but the "NetWatch" service did NOT start.' + #13#10#13#10 +
+        '{#ProductName} is installed, but its Windows service ("NetWatch") did NOT start.' + #13#10#13#10 +
         'The reason is in Event Viewer > Windows Logs > Application (sources "NetWatch" and ".NET Runtime") and in ' +
         ExpandConstant('{commonappdata}\NetWatch\logs') + '.' + #13#10#13#10 +
         'Fix the cause (see "Service does not start" in the troubleshooting guide), then run:' + #13#10 +
         'Start-Service NetWatch';
       Exit;
     end;
-    Text := 'NetWatch is installed and the "NetWatch" service is running.' + #13#10#13#10 +
+    Text := '{#ProductName} is installed and its Windows service ("NetWatch") is running.' + #13#10#13#10 +
             'Dashboard: https://' + GetComputerNameString() + ':{#HttpsPort}/' + #13#10#13#10;
     if FreshInstall then
       Text := Text + 'Sign in as "admin" with the one-time password stored in:' + #13#10 +
@@ -257,7 +266,7 @@ begin
     DataDir := ExpandConstant('{commonappdata}\NetWatch');
     if DirExists(DataDir) and (not UninstallSilent()) then
     begin
-      if MsgBox('Also delete all NetWatch data?' + #13#10#13#10 +
+      if MsgBox('Also delete all {#ProductName} data?' + #13#10#13#10 +
                 DataDir + #13#10#13#10 +
                 'This removes the databases (devices, alerts, history), settings, certificates, backups and logs. ' +
                 'This cannot be undone. Choose "No" to keep the data for a later re-installation.',

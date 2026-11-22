@@ -138,7 +138,7 @@ public sealed class NotificationDispatcher : BackgroundService, INotificationSin
         var raised = items.Count(i => i.Kind != NotificationKind.Resolved);
         var resolved = items.Count - raised;
         var worst = items.Max(i => i.Alert.Severity);
-        var subject = $"[NetWatch] {items.Count} alert notifications ({raised} raised/escalated, {resolved} resolved, worst {worst})";
+        var subject = $"[HIT SIEM] {items.Count} alert notifications ({raised} raised/escalated, {resolved} resolved, worst {worst})";
         var sb = new StringBuilder();
         foreach (var n in items.OrderByDescending(i => i.Alert.Severity).ThenBy(i => i.Alert.FirstSeenUtc))
         {
@@ -155,8 +155,8 @@ public sealed class NotificationDispatcher : BackgroundService, INotificationSin
         var s = _settings.Notifications;
         var now = DateTime.UtcNow;
         var test = new AlertNotification(NotificationKind.Test, new AlertDto(
-            0, null, null, Environment.MachineName, null, Severity.Info, AlertState.Active, "NetWatch test notification",
-            "This is a test message from the NetWatch notification settings.", null, false, now, now, 1,
+            0, null, null, Environment.MachineName, null, Severity.Info, AlertState.Active, "HIT SIEM test notification",
+            "This is a test message from the HIT SIEM notification settings.", null, false, now, now, 1,
             null, null, null, null, null, null, false, 0, null));
         try
         {

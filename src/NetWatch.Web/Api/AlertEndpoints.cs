@@ -22,6 +22,7 @@ public static class AlertEndpoints
         var read = app.MapGroup("/api").RequireAuthorization(Policies.Viewer);
         read.MapGet("/alerts", ListAsync);
         read.MapGet("/alerts/summary", Summary);
+        read.MapGet("/alerts/export", ExportAsync);
         read.MapGet("/alerts/{id:long}", GetAsync);
         read.MapGet("/rules", ListRulesAsync);
         read.MapGet("/rules/keys", RuleKeys);
@@ -39,15 +40,32 @@ public static class AlertEndpoints
 
     private static async Task<IResult> ListAsync(AlertService alerts, string? state, Severity? minSeverity, int? deviceId, string? search, DateTime? from, DateTime? to, int? page, int? pageSize, CancellationToken ct)
     {
-        var states = (state ?? string.Empty)
+        var result = await alerts.ListAsync(new AlertQuery(ParseStates(state), minSeverity, deviceId, search, from?.ToUniversalTime(), to?.ToUniversalTime(), page ?? 1, pageSize ?? 200), ct);
+        return Results.Ok(result);
+    }
+
+    /// <summary>CSV of the alerts matching the same filters as the list (newest first, at most 100,000 rows).</summary>
+    private static async Task<IResult> ExportAsync(AlertService alerts, HttpContext http, AuditWriter audit, string? state, Severity? minSeverity, int? deviceId, string? search,
+        DateTime? from, DateTime? to, CancellationToken ct)
+    {
+        var rows = await alerts.ExportAsync(new AlertQuery(ParseStates(state), minSeverity, deviceId, search, from?.ToUniversalTime(), to?.ToUniversalTime()), CsvExport.MaxRows, ct);
+        var bytes = CsvExport.Write(
+            ["First seen (PKT)", "Last seen (PKT)", "Severity", "State", "Device", "Title", "Message", "Occurrences", "Acknowledged by", "Acknowledged (PKT)", "Comment",
+             "Resolved (PKT)", "Closed (PKT)", "Closed by", "Escalated (PKT)", "Flapping"],
+            rows.Select(a => (IReadOnlyList<string?>)[CsvExport.Time(a.FirstSeenUtc), CsvExport.Time(a.LastSeenUtc), a.Severity.ToString(), a.State.ToString(), a.DeviceName, a.Title,
+                a.Message, a.OccurrenceCount.Inv(), a.AckByUsername, CsvExport.Time(a.AckUtc), a.AckComment, CsvExport.Time(a.ResolvedUtc), CsvExport.Time(a.ClosedUtc),
+                a.ClosedByUsername, CsvExport.Time(a.EscalatedUtc), a.IsFlapping ? "yes" : "no"]));
+        await audit.WriteAsync(http.Actor(), "AlertsExported", "Alert", null, $"{rows.Count.Inv()} rows");
+        return Results.File(bytes, "text/csv; charset=utf-8", CsvExport.FileName("alerts"));
+    }
+
+    private static List<AlertState> ParseStates(string? state) =>
+        (state ?? string.Empty)
             .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
             .Select(s => Enum.TryParse<AlertState>(s, true, out var v) ? v : (AlertState?)null)
             .Where(s => s.HasValue)
             .Select(s => s!.Value)
             .ToList();
-        var result = await alerts.ListAsync(new AlertQuery(states, minSeverity, deviceId, search, from?.ToUniversalTime(), to?.ToUniversalTime(), page ?? 1, pageSize ?? 200), ct);
-        return Results.Ok(result);
-    }
 
     private static IResult Summary(IActiveAlertIndex index)
     {

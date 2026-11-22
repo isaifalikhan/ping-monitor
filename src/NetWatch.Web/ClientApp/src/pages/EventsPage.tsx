@@ -1,4 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
+import { Download } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { api, qs } from '../api/client';
@@ -6,7 +7,7 @@ import type { DeviceEvent, DeviceListItem, PagedEvents, Severity, SyslogEntry, T
 import { SEVERITIES } from '../api/types';
 import { SeverityBadge } from '../components/Badges';
 import { ErrorBox, Modal } from '../components/Modal';
-import { rangeFor, TimeRange, type TimeRangeValue } from '../components/TimeRange';
+import { rangeFor, SEARCH_RANGES, TimeRange, type TimeRangeValue } from '../components/TimeRange';
 import { fmtDateTime } from '../util/format';
 
 type Tab = 'device' | 'syslog' | 'traps' | 'windows';
@@ -148,6 +149,16 @@ export function EventsPage() {
     refetchInterval: 30000,
   });
 
+  // CSV export with the same filters as the list (not for device events).
+  const exportHref =
+    tab === 'syslog'
+      ? `/api/syslog/export${qs({ ...filters, maxSeverity: severity || undefined })}`
+      : tab === 'traps'
+        ? `/api/traps/export${qs({ ...filters, minSeverity: severity || undefined })}`
+        : tab === 'windows'
+          ? `/api/windows-events/export${qs({ ...filters, maxLevel: severity || undefined })}`
+          : null;
+
   const setParam = (key: string, value: string) => {
     const next = new URLSearchParams(params);
     if (value) next.set(key, value);
@@ -208,7 +219,12 @@ export function EventsPage() {
           </select>
         )}
         <input type="search" placeholder="Search text…" value={search} onChange={(e) => setSearch(e.target.value)} />
-        <TimeRange value={range} onChange={setRange} />
+        <TimeRange value={range} onChange={setRange} presets={SEARCH_RANGES} />
+        {exportHref && (
+          <a className="btn" href={exportHref} download title="Download the entries matching these filters as CSV (newest 100,000)">
+            <Download size={14} /> Export CSV
+          </a>
+        )}
       </div>
 
       {tab === 'device' && (

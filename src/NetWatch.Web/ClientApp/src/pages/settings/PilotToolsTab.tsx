@@ -219,7 +219,7 @@ export function PilotToolsTab() {
             <span className="faint">{fmtDateTime(r.timestampUtc)}</span>
           </div>
         ))}
-        {history.data?.length === 0 && <div className="faint">No tests run since NetWatch started.</div>}
+        {history.data?.length === 0 && <div className="faint">No tests run since HIT SIEM started.</div>}
       </div>
     </div>
   );

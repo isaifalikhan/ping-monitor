@@ -28,7 +28,7 @@ internal static class NotificationText
     };
 
     public static string Subject(AlertNotification n) =>
-        $"[NetWatch] {Verb(n.Kind)} {n.Alert.Severity}: {n.Alert.Title}";
+        $"[HIT SIEM] {Verb(n.Kind)} {n.Alert.Severity}: {n.Alert.Title}";
 
     public static string Body(AlertNotification n)
     {
@@ -116,7 +116,7 @@ internal static class SyslogForwardChannel
         var sd = string.Create(CultureInfo.InvariantCulture,
             $"[netwatch@32473 event=\"{Esc(NotificationText.Verb(n.Kind))}\" id=\"{a.Id}\" severity=\"{a.Severity}\" state=\"{a.State}\" device=\"{Esc(a.DeviceName ?? "-")}\"]");
         var msg = $"{a.Title}: {a.Message}".Replace('\r', ' ').Replace('\n', ' ');
-        return string.Create(CultureInfo.InvariantCulture, $"<{pri}>1 {ts} {hostname} NetWatch - ALERT {sd} {msg}");
+        return string.Create(CultureInfo.InvariantCulture, $"<{pri}>1 {ts} {hostname} HIT-SIEM - ALERT {sd} {msg}");
     }
 
     private static string Esc(string value) => value.Replace("\\", "\\\\").Replace("\"", "\\\"").Replace("]", "\\]");
