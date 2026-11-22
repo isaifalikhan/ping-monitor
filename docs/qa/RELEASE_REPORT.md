@@ -3,6 +3,11 @@ passes every test that could be run here (304/304 automated, 53/53 black-box on 
 has never been executed on Windows Server 2022, one Medium bug (BUG-006) is open, and 12 test cases could not be run
 on this build PC. See §1 for exactly what blocks GO.
 
+> **Update 2026-11-22 — rc2.** The first real installation of rc1 found **BUG-009 (Critical)**: a reinstall or upgrade
+> left every existing data file with an empty ACL, so the service could not start. Fixed in `7b6b9d8` with 3
+> regression tests (xUnit now 307/307); the installer in `release/2.0.0/` is rebuilt from that commit (rc2, see
+> SHA256SUMS.txt). This confirms gate 5: the installer tests on Windows Server 2022 are a real blocker, not a formality.
+
 # NetWatch 2.0.0 — release report (2026-11-22)
 
 Release QA lead report. Inputs: [TEST_PLAN.md](TEST_PLAN.md), [TEST_RESULTS.md](TEST_RESULTS.md),
@@ -12,7 +17,9 @@ Release QA lead report. Inputs: [TEST_PLAN.md](TEST_PLAN.md), [TEST_RESULTS.md](
   checkout of that commit with `build.ps1 -Offline`. Later commits change documentation only.
 - **Overall completion: 97 %** (96.7 %; unchanged since the last report — no feature was missing; QA added tests and
   fixed 7 bugs). 100 % in simulator mode; the rest is pilot work on real devices.
-- **Bugs:** found 8 — Critical 0, High 1, Medium 4, Low 3 · fixed 7 · **open: C/H/M/L = 0/0/1/0** (BUG-006).
+- **Bugs:** found 9 — Critical 1, High 1, Medium 4, Low 3 · fixed 8 · **open: C/H/M/L = 0/0/1/0** (BUG-006).
+  BUG-009 (Critical, installer) was found after QA by the first real installation and is fixed in rc2; its installed
+  re-test is pending (admin).
 - **Release package:** `release/2.0.0/` (installer, SHA256SUMS, release notes, install guide PDF, pilot checklist PDF,
   rollback). **No `v2.0.0` tag was created**, because the gate is NO-GO.
 
@@ -30,7 +37,7 @@ Stage lines:
 | 2 | Every feature DONE in simulator mode | ✅ | §2: all A1–H9 and WP0–WP12 items Done or Pending pilot; nothing Stub/Partial/Not started |
 | 3 | 100 % of test cases PASS in the final regression | ❌ | 97 of 122 PASS; 12 NOT RUN, 10 PENDING PILOT, 2 PARTIAL, 1 FAIL (soak 1, BUG-006; soak 2 on the final build PASS, §5a) — §4 |
 | 4 | 0 open Critical / High / Medium | ❌ | BUG-006 (Medium) open — not reproduced in soak 2, cause unproven |
-| 5 | Install, reboot, upgrade from 1.2.0, uninstall PASS on Windows Server 2022 | ❌ | NOT RUN: needs an admin VM; database upgrade from 1.2.0 passes (`UpgradeFrom120Tests`) |
+| 5 | Install, reboot, upgrade from 1.2.0, uninstall PASS on Windows Server 2022 | ❌ | NOT RUN: needs an admin VM; database upgrade from 1.2.0 passes (`UpgradeFrom120Tests`). rc1 reinstall FAILED on the owner's PC (BUG-009, fixed in rc2) |
 | 6 | Soak: no leaks, no overruns, recovery from every injected fault | ❌ | soak 1: 1 overrun; working set +35 MB over 3.5 h (not proven flat); fault recovery PASS (kill, DB lock, hung vCenter, missing DC); disk-full NOT RUN; final soak: §5 |
 | 7 | Security: permission matrix, no injection/XSS, no secrets in DB/logs/bundle, security review | ✅ | SEC-01…32; executed matrix 137 endpoints × 5 identities; 0 secret hits in DBs, logs, backup, bundle; `docs/security-review.md` |
 | 8 | Air gap: zero outbound internet attempts; offline build | ⚠️ | 0 non-loopback TCP connections in 60 min ✅; offline build from clean checkout ✅; DNS/CRL/OCSP attempts not observable without admin (AIR-04 NOT RUN) |

@@ -45,6 +45,7 @@ stay as recorded below; the case totals are unchanged (97 PASS / 1 FAIL / 12 NOT
 | INS-03 | **NOT RUN** | needs the installed service |
 | INS-04 | PASS (database) / **NOT RUN** (installer) | `UpgradeFrom120Tests.A_120_database_upgrades_with_its_data`: real 1.2.0 schema + data → all migrations, data kept. Installer-over-1.2.0 not executed |
 | INS-05 | **NOT RUN** | needs the installer |
+| INS-REINSTALL (owner's PC, rc1, 2026-11-22) | **FAIL** (BUG-009) | rc1 installed over an existing `C:\ProgramData\NetWatch`: every data file left with an empty ACL, service stopped ("Access to the path … appsettings.json is denied"). Fixed in rc2 (`7b6b9d8`); `QaInstallerAclTests` 3/3 PASS. Re-test with the rc2 installer: PENDING (admin) |
 | INS-06 | PASS | `StartupTests`; `--self-test` on a restored data folder exit 0 ("Self-test passed") |
 | INS-07 | **NOT RUN** | all runtime tests used console mode (`UseWindowsService` host; same code path except SCM) |
 | INS-08 | PASS | `ApiAuthIntegrationTests`, black-box SEC-05 (403 until changed) |

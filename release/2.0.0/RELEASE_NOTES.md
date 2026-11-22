@@ -3,6 +3,10 @@
 **Status of this package: RELEASE CANDIDATE — NO-GO for production installation until the open items in
 `docs/qa/RELEASE_REPORT.md` are closed** (installer tests on Windows Server 2022, BUG-006, pilot items).
 
+**This is rc2** (built from commit `7b6b9d8`). It fixes **BUG-009 (Critical)** in rc1: installing over an existing
+`C:\ProgramData\NetWatch` (reinstall or upgrade) left every data file unreadable, so the service could not start.
+rc2 repairs such a folder when it is installed over it. Do not use the rc1 installer.
+
 NetWatch is an offline monitoring service for an air-gapped network: one Windows service with its own HTTPS
 console, three SQLite databases, one installer, no internet access at install or run time.
 

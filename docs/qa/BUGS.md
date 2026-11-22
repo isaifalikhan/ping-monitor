@@ -17,8 +17,10 @@ black-box test → commit.
 | BUG-006 | Medium | One poll overrun in 72,000 polls during the 2× soak; root cause not determined | **Open** (diagnostics added; not reproduced in soak 2) | soak 2: 0 overruns in 74,860 polls (TEST_RESULTS REL-01) |
 | BUG-007 | Low | SMTP connection errors do not name the server or the cause ("No such host is known.") | Fixed | `QaNotificationTests.Smtp_connection_failures_name_the_server_and_the_cause`; black-box `PLT-01` |
 | BUG-008 | High | `build.ps1 -Offline` fails at the test step (`dotnet test` has no `--source`) | Fixed | offline build re-run with empty NuGet cache and network blocked (TEST_RESULTS AIR-03) |
+| BUG-009 | **Critical** | Reinstall/upgrade leaves every existing data file with an empty ACL; the service cannot start (found by the first real install, after rc1) | Fixed in rc2 (`7b6b9d8`); installed re-test pending | `QaInstallerAclTests` (3 tests) |
 
-Totals: found 8 (Critical 0, High 1, Medium 4, Low 3) · fixed 7 · **open 1 Medium (BUG-006)**.
+Totals: found 9 (Critical 1, High 1, Medium 4, Low 3) · fixed 8 · **open 1 Medium (BUG-006)**. BUG-009 was found after the
+QA run, by the first real installation; its fix is in `2.0.0-rc2` and still needs the installed-service re-test (admin).
 
 ---
 
@@ -102,6 +104,34 @@ Totals: found 8 (Critical 0, High 1, Medium 4, Low 3) · fixed 7 · **open 1 Med
 - **Fix:** restore from the kit with `dotnet restore --source`, then `dotnet test --no-restore`.
 - **Regression test:** the offline build itself, run with an empty `NUGET_PACKAGES` folder (only the kit can be
   used) and HTTP(S) forced to a dead proxy (`127.0.0.1:9`); see TEST_RESULTS AIR-03.
+
+## BUG-009 — Reinstall/upgrade makes the data files unreadable; service cannot start (Critical)
+
+- **Found:** 2026-11-22, first installation of `NetWatch-Setup-2.0.0.exe` (rc1) on the owner's Windows 11 PC, where
+  `C:\ProgramData\NetWatch` already existed from an installation on 2026-11-20. Release QA missed it because the
+  installer tests (INS-01…06) were NOT RUN (no administrator rights, no Windows Server 2022 VM).
+- **Steps:** install NetWatch and let the service start once (it creates settings, databases and the certificate);
+  run the installer again (reinstall, or any upgrade including 1.2.0 → 2.0.0).
+- **Expected:** service running; data kept, readable by SYSTEM and Administrators only.
+- **Actual:** service *Stopped*. Application log: ".NET Runtime — System.UnauthorizedAccessException: Access to the
+  path 'C:\ProgramData\NetWatch\appsettings.json' is denied", then the Service Control Manager timeout. `icacls` on the
+  file lists **no entries at all**. The installer's last page still said "the service is running".
+- **Cause:** `SecureDataFolder` ran `icacls <dir> /inheritance:r /grant:r *S-1-5-18:(OI)(CI)F *S-1-5-32-544:(OI)(CI)F /T`.
+  With /T the command is applied to every file as well; on files the (OI)(CI) inheritance flags are invalid, so the
+  grant is dropped after /inheritance:r has already removed the inherited entries — every existing file ends with an
+  empty ACL, while folders keep theirs. A first install is unaffected because the folder is still empty at that point.
+  Reproduced on a test folder with the exact command.
+- **Fix (`7b6b9d8`):** three steps — `/setowner` Administrators `/T`; the grant on the folder only (no /T); then
+  `<dir>\* /reset /T`, so every file and subfolder inherits the folder ACL. This also repairs folders damaged by rc1.
+  The installer now checks the result of `net start` and, if the service did not start, says so and where to look.
+  The service catches an unreadable data folder and reports it on stderr and in the Application event log (source
+  NetWatch, ID 1000) with the repair command and exit code 6, instead of an unlogged crash. Troubleshooting guide: new
+  section "Service does not start".
+- **Regression tests:** `QaInstallerAclTests` — runs the exact icacls arguments read from `netwatch.iss` on a folder
+  with existing files and checks SYSTEM and Administrators full control on every entry and no Users/Everyone entry;
+  reproduces the rc1 damage (empty ACL) and checks the repair; checks the service's exit code 6 and message.
+- **Still to do (needs administrator):** install rc2 over the damaged folder on the owner's PC → service starts with
+  the data kept; then INS-01…06 on Windows Server 2022.
 
 ## Not bugs (investigated)
 
