@@ -5,6 +5,7 @@ import { Link } from 'react-router-dom';
 import { api, qs } from '../api/client';
 import type { MacLocation } from '../api/types';
 import { fmtAgo } from '../util/format';
+import { MacTypeBadge } from '../pages/devices/MacTablePanel';
 import { ErrorBox } from './Modal';
 
 /** "Where is this device plugged in?" — search the learned MAC tables of all switches by MAC or IP address. */
@@ -48,6 +49,7 @@ export function MacSearch() {
               <thead>
                 <tr>
                   <th>MAC address</th>
+                  <th>Type</th>
                   <th>IP address</th>
                   <th>Switch</th>
                   <th>Port</th>
@@ -60,11 +62,14 @@ export function MacSearch() {
                 {q.data.map((r) => (
                   <tr key={`${r.deviceId}|${r.port}|${r.vlan}|${r.mac}`}>
                     <td className="mono">{r.mac}</td>
+                    <td>
+                      <MacTypeBadge entry={r} />
+                    </td>
                     <td className="mono">{r.ip ?? '—'}</td>
                     <td>
                       <Link to={`/devices/${r.deviceId}?tab=macs`}>{r.deviceName}</Link>
                     </td>
-                    <td>{r.port}</td>
+                    <td>{r.interfaceId ? <Link to={`/devices/${r.deviceId}?tab=interfaces&if=${r.interfaceId}`}>{r.port}</Link> : r.port}</td>
                     <td>{r.vlan ?? '—'}</td>
                     <td>{r.edgePort ? <strong>access port (connected here)</strong> : <span className="faint">uplink/trunk · {r.macsOnPort} MACs</span>}</td>
                     <td className="faint">{fmtAgo(r.readUtc)}</td>

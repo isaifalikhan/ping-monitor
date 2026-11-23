@@ -203,7 +203,7 @@ public static class DeviceEndpoints
         }
 
         return Results.Ok(new MacTableDto(table.ReadUtc, MacTableStore.RefreshInterval.TotalMinutes,
-            table.Entries.Select(e => new MacEntryDto(e.Mac, e.Vlan, store.IpOf(e.Mac), e.InterfaceId, e.Port, table.MacsPerPort.GetValueOrDefault(e.IfIndex))).ToList()));
+            table.Entries.Select(e => new MacEntryDto(e.Mac, e.Vlan, store.IpOf(e.Mac), e.InterfaceId, e.Port, table.MacsPerPort.GetValueOrDefault(e.IfIndex), e.Static)).ToList()));
     }
 
     /// <summary>Where is a MAC (any notation or its last hex digits) or an IPv4 address connected?</summary>
@@ -216,7 +216,7 @@ public static class DeviceEndpoints
         }
 
         return Results.Ok(store.Search(query).Select(r => new MacLocationDto(r.DeviceId, r.DeviceName, r.Port, r.InterfaceId, r.Mac, r.Vlan, r.Ip, r.MacsOnPort,
-            r.MacsOnPort <= MacTableStore.EdgePortMaxMacs, r.ReadUtc)));
+            r.MacsOnPort <= MacTableStore.EdgePortMaxMacs, r.ReadUtc, r.Static)));
     }
 
     private static async Task<IResult> EventsAsync(int id, EventsDbContext events, int? limit, CancellationToken ct)
@@ -606,8 +606,8 @@ public static class DeviceEndpoints
         Results.File(System.Text.Encoding.UTF8.GetBytes(DeviceCsvParser.Template), "text/csv", "netwatch-devices-template.csv");
 }
 
-public sealed record MacEntryDto(string Mac, int? Vlan, string? Ip, int? InterfaceId, string Port, int MacsOnPort);
+public sealed record MacEntryDto(string Mac, int? Vlan, string? Ip, int? InterfaceId, string Port, int MacsOnPort, bool Static);
 
 public sealed record MacTableDto(DateTime? ReadUtc, double RefreshMinutes, IReadOnlyList<MacEntryDto> Entries);
 
-public sealed record MacLocationDto(int DeviceId, string DeviceName, string Port, int? InterfaceId, string Mac, int? Vlan, string? Ip, int MacsOnPort, bool EdgePort, DateTime ReadUtc);
+public sealed record MacLocationDto(int DeviceId, string DeviceName, string Port, int? InterfaceId, string Mac, int? Vlan, string? Ip, int MacsOnPort, bool EdgePort, DateTime ReadUtc, bool Static);

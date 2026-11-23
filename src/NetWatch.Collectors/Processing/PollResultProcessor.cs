@@ -353,8 +353,8 @@ public sealed class PollResultProcessor
         if (result.MacTable is { } macTable)
         {
             var entries = macTable.Entries.Select(e => rt.ByIfIndex.TryGetValue(e.IfIndex, out var port)
-                    ? new MacPortEntry(e.Mac, e.Vlan, e.IfIndex, port.Id, port.Name)
-                    : new MacPortEntry(e.Mac, e.Vlan, e.IfIndex, null, MacTableStore.PortLabel(e.IfIndex)))
+                    ? new MacPortEntry(e.Mac, e.Vlan, e.IfIndex, port.Id, port.Name, e.Static)
+                    : new MacPortEntry(e.Mac, e.Vlan, e.IfIndex, null, MacTableStore.PortLabel(e.IfIndex), e.Static))
                 .ToList();
             _macTables.Update(device.Id, device.Name, now, entries, macTable.Arp);
             rt.LastMacTableUtc = now;

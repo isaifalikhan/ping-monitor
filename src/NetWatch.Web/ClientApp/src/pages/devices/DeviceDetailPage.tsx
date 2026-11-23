@@ -16,6 +16,7 @@ import { fmtAgo, fmtBps, fmtDateTime, fmtDuration, fmtMs, fmtNum, fmtPct, fmtSpe
 import { AlertDetailDialog } from '../alerts/AlertsPage';
 import { DeviceForm } from './DeviceForm';
 import { MacTablePanel } from './MacTablePanel';
+import { PortDetail } from './PortDetail';
 import { ServerPanel } from './ServerPanel';
 import { VmwarePanel } from './VmwarePanel';
 
@@ -500,6 +501,7 @@ export function DeviceDetailPage() {
 
       {tab === 'interfaces' && (
         <div className="grid" style={{ gap: 16 }}>
+          {selectedIface && <PortDetail deviceId={deviceId} iface={selectedIface} onClose={() => selectIf(null)} />}
           {selectedIface && <InterfaceChart iface={selectedIface} range={range} />}
           <div className="card">
             <DataTable
@@ -514,7 +516,7 @@ export function DeviceDetailPage() {
             />
           </div>
           <div className="faint" style={{ fontSize: 12 }}>
-            Click a row to show its graphs. ★ marks important ports (uplinks, server ports): only these raise port-down alerts by default.
+            Click a row to show the port details, its MAC addresses and graphs. ★ marks important ports (uplinks, server ports): only these raise port-down alerts by default.
           </div>
         </div>
       )}

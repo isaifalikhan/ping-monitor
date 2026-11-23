@@ -3,9 +3,9 @@ using Lextm.SharpSnmpLib;
 
 namespace NetWatch.Collectors.Snmp;
 
-/// <summary>One MAC address the switch has learned on a port. <paramref name="Vlan"/> is null when the switch only has
-/// the VLAN-less BRIDGE-MIB table.</summary>
-public sealed record MacEntryReading(int IfIndex, string Mac, int? Vlan);
+/// <summary>One MAC address on a port. <paramref name="Vlan"/> is null when the switch only has the VLAN-less BRIDGE-MIB
+/// table. <paramref name="Static"/>: configured on the switch (static address / MAC binding) rather than learned.</summary>
+public sealed record MacEntryReading(int IfIndex, string Mac, int? Vlan, bool Static = false);
 
 /// <summary>One ARP entry (IPv4 -> MAC) from a routed switch.</summary>
 public sealed record ArpReading(string Ip, string Mac, int IfIndex);
@@ -42,6 +42,13 @@ public static class MacTableCollector
             }
         }
 
+        // Configured (static) addresses: some switches list them only in the static tables, not in the learned table.
+        var qStatic = await W(Oids.Dot1qStaticUnicastAllowedToGoTo);
+        var statics = qStatic.Count > 0
+            ? MacTableParser.ParseQStatic(qStatic, await W(Oids.Dot1qStaticUnicastStatus), await W(Oids.Dot1qVlanFdbId), basePorts)
+            : MacTableParser.ParseDot1dStatic(await W(Oids.Dot1dStaticAllowedToGoTo), await W(Oids.Dot1dStaticStatus), basePorts);
+        entries = MacTableParser.Merge(entries, statics);
+
         var arp = MacTableParser.ParseArp(await W(Oids.IpNetToMediaPhysAddress), await W(Oids.IpNetToMediaType));
         return new MacTableReading(entries, arp);
     }
@@ -50,8 +57,19 @@ public static class MacTableCollector
 /// <summary>Pure parsers for the MAC and ARP tables (unit tested with constructed SNMP rows).</summary>
 public static class MacTableParser
 {
-    /// <summary>Rows learned dynamically (3) or of unknown origin (1, "other"); self (4), mgmt (5) and invalid (2) are skipped.</summary>
-    private static bool IsLearned(ISnmpData? status) => SnmpValues.Int64(status) is null or 1 or 3;
+    /// <summary>
+    /// dot1dTpFdbStatus / dot1qTpFdbStatus: learned (3) and other (1) are dynamic, mgmt (5) is a configured static
+    /// address; self (4, the switch's own MACs) and invalid (2) are skipped. Null = not a MAC to show.
+    /// </summary>
+    private static bool? IsStatic(ISnmpData? status) => SnmpValues.Int64(status) switch
+    {
+        null or 1 or 3 => false,
+        5 => true,
+        _ => null,
+    };
+
+    /// <summary>Static entries allowed to go to more ports than this are flooding/multicast rules, not a location.</summary>
+    private const int MaxStaticPorts = 4;
 
     /// <summary>dot1qTpFdbPort is indexed by "fdbId.m1.m2.m3.m4.m5.m6". dot1qVlanFdbId ("timeMark.vlanId" -> fdbId) turns
     /// the FDB id into the VLAN id where they differ (e.g. Juniper); without it the FDB id is the VLAN id (TP-Link, HP).</summary>
@@ -75,14 +93,14 @@ public static class MacTableParser
         foreach (var (key, value) in fdbPort)
         {
             var parts = key.Split('.');
-            if (parts.Length != 7 || !IsLearned(fdbStatus.GetValueOrDefault(key)) || MacFromIndex(parts.AsSpan(1)) is not { } mac ||
+            if (parts.Length != 7 || IsStatic(fdbStatus.GetValueOrDefault(key)) is not { } isStatic || MacFromIndex(parts.AsSpan(1)) is not { } mac ||
                 !long.TryParse(parts[0], NumberStyles.None, CultureInfo.InvariantCulture, out var fdbId) ||
                 ResolveIfIndex(value, basePortIfIndex) is not { } ifIndex)
             {
                 continue;
             }
 
-            result.Add(new MacEntryReading(ifIndex, mac, vlanOfFdb.TryGetValue(fdbId, out var vlan) ? vlan : (int)fdbId));
+            result.Add(new MacEntryReading(ifIndex, mac, vlanOfFdb.TryGetValue(fdbId, out var vlan) ? vlan : (int)fdbId, isStatic));
         }
 
         return Distinct(result);
@@ -98,16 +116,130 @@ public static class MacTableParser
         foreach (var (key, value) in fdbPort)
         {
             var parts = key.Split('.');
-            if (parts.Length != 6 || !IsLearned(fdbStatus.GetValueOrDefault(key)) || MacFromIndex(parts) is not { } mac ||
+            if (parts.Length != 6 || IsStatic(fdbStatus.GetValueOrDefault(key)) is not { } isStatic || MacFromIndex(parts) is not { } mac ||
                 ResolveIfIndex(value, basePortIfIndex) is not { } ifIndex)
             {
                 continue;
             }
 
-            result.Add(new MacEntryReading(ifIndex, mac, null));
+            result.Add(new MacEntryReading(ifIndex, mac, null, isStatic));
         }
 
         return Distinct(result);
+    }
+
+    /// <summary>
+    /// dot1qStaticUnicastAllowedToGoTo is indexed by "fdbId.m1..m6.receivePort" and holds a PortList bitmap of the ports
+    /// the address is bound to. dot1qStaticUnicastStatus 2 = invalid.
+    /// </summary>
+    public static List<MacEntryReading> ParseQStatic(
+        IReadOnlyDictionary<string, ISnmpData> allowedToGoTo,
+        IReadOnlyDictionary<string, ISnmpData> status,
+        IReadOnlyDictionary<string, ISnmpData> vlanFdbId,
+        IReadOnlyDictionary<string, ISnmpData> basePortIfIndex)
+    {
+        var vlanOfFdb = VlanOfFdb(vlanFdbId);
+        var result = new List<MacEntryReading>();
+        foreach (var (key, value) in allowedToGoTo)
+        {
+            var parts = key.Split('.');
+            if (parts.Length != 8 || SnmpValues.Int64(status.GetValueOrDefault(key)) == 2 || MacFromIndex(parts.AsSpan(1, 6)) is not { } mac ||
+                !long.TryParse(parts[0], NumberStyles.None, CultureInfo.InvariantCulture, out var fdbId))
+            {
+                continue;
+            }
+
+            var vlan = vlanOfFdb.TryGetValue(fdbId, out var v) ? v : (int)fdbId;
+            foreach (var ifIndex in PortListIfIndexes(value, basePortIfIndex))
+            {
+                result.Add(new MacEntryReading(ifIndex, mac, vlan, Static: true));
+            }
+        }
+
+        return Distinct(result);
+    }
+
+    /// <summary>dot1dStaticAllowedToGoTo is indexed by "m1..m6.receivePort" (PortList bitmap); dot1dStaticStatus 2 = invalid.</summary>
+    public static List<MacEntryReading> ParseDot1dStatic(
+        IReadOnlyDictionary<string, ISnmpData> allowedToGoTo,
+        IReadOnlyDictionary<string, ISnmpData> status,
+        IReadOnlyDictionary<string, ISnmpData> basePortIfIndex)
+    {
+        var result = new List<MacEntryReading>();
+        foreach (var (key, value) in allowedToGoTo)
+        {
+            var parts = key.Split('.');
+            if (parts.Length != 7 || SnmpValues.Int64(status.GetValueOrDefault(key)) == 2 || MacFromIndex(parts.AsSpan(0, 6)) is not { } mac)
+            {
+                continue;
+            }
+
+            foreach (var ifIndex in PortListIfIndexes(value, basePortIfIndex))
+            {
+                result.Add(new MacEntryReading(ifIndex, mac, null, Static: true));
+            }
+        }
+
+        return Distinct(result);
+    }
+
+    /// <summary>Learned entries plus static ones; an address in both is marked static (it is configured on the switch).</summary>
+    public static List<MacEntryReading> Merge(List<MacEntryReading> learned, List<MacEntryReading> statics)
+    {
+        if (statics.Count == 0)
+        {
+            return learned;
+        }
+
+        var staticKeys = statics.Select(s => (s.IfIndex, s.Mac)).ToHashSet();
+        var merged = learned.Select(e => !e.Static && staticKeys.Contains((e.IfIndex, e.Mac)) ? e with { Static = true } : e).ToList();
+        var present = merged.Select(e => (e.IfIndex, e.Mac)).ToHashSet();
+        merged.AddRange(statics.Where(s => !present.Contains((s.IfIndex, s.Mac))));
+        return Distinct(merged);
+    }
+
+    /// <summary>PortList (RFC 4363): one bit per bridge port, most significant bit of the first octet = port 1.</summary>
+    private static List<int> PortListIfIndexes(ISnmpData portList, IReadOnlyDictionary<string, ISnmpData> basePortIfIndex)
+    {
+        var ports = new List<int>();
+        if (portList is not OctetString s)
+        {
+            return ports;
+        }
+
+        var bytes = s.GetRaw();
+        for (var i = 0; i < bytes.Length; i++)
+        {
+            for (var bit = 0; bit < 8; bit++)
+            {
+                if ((bytes[i] & (0x80 >> bit)) != 0)
+                {
+                    ports.Add((i * 8) + bit + 1);
+                }
+            }
+        }
+
+        if (ports.Count is 0 or > MaxStaticPorts)
+        {
+            return [];
+        }
+
+        return ports.Select(p => ResolveIfIndex(new Integer32(p), basePortIfIndex)).OfType<int>().ToList();
+    }
+
+    private static Dictionary<long, int> VlanOfFdb(IReadOnlyDictionary<string, ISnmpData> vlanFdbId)
+    {
+        var vlanOfFdb = new Dictionary<long, int>();
+        foreach (var (key, value) in vlanFdbId)
+        {
+            var parts = key.Split('.');
+            if (parts.Length == 2 && int.TryParse(parts[1], NumberStyles.None, CultureInfo.InvariantCulture, out var vlan) && SnmpValues.Int64(value) is { } fdb)
+            {
+                vlanOfFdb.TryAdd(fdb, vlan);
+            }
+        }
+
+        return vlanOfFdb;
     }
 
     /// <summary>ipNetToMediaPhysAddress is indexed by "ifIndex.a.b.c.d"; ipNetToMediaType 2 = invalid.</summary>

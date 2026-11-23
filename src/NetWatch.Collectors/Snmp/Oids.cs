@@ -37,6 +37,12 @@ public static class Oids
     public const string Dot1qTpFdbStatus = "1.3.6.1.2.1.17.7.1.2.2.1.3";
     public const string Dot1qVlanFdbId = "1.3.6.1.2.1.17.7.1.4.2.1.3";
 
+    // Configured (static) unicast addresses: Q-BRIDGE dot1qStaticUnicastTable and BRIDGE-MIB dot1dStaticTable (PortList bitmaps)
+    public const string Dot1qStaticUnicastAllowedToGoTo = "1.3.6.1.2.1.17.7.1.3.1.1.3";
+    public const string Dot1qStaticUnicastStatus = "1.3.6.1.2.1.17.7.1.3.1.1.4";
+    public const string Dot1dStaticAllowedToGoTo = "1.3.6.1.2.1.17.5.1.1.3";
+    public const string Dot1dStaticStatus = "1.3.6.1.2.1.17.5.1.1.4";
+
     // IP-MIB ARP table (ipNetToMediaTable): MAC -> IPv4 on routed switches
     public const string IpNetToMediaPhysAddress = "1.3.6.1.2.1.4.22.1.2";
     public const string IpNetToMediaType = "1.3.6.1.2.1.4.22.1.4";

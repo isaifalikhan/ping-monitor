@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { useEffect, useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { api } from '../api/client';
 import { portClass } from '../util/logic';
 import type { DeviceListItem, NetInterface } from '../api/types';
@@ -29,6 +29,7 @@ function SwitchPorts({ device }: { device: DeviceListItem }) {
   const { joinDevice } = useLive();
   const q = useQuery({ queryKey: ['device', device.id, 'interfaces'], queryFn: () => api.get<NetInterface[]>(`/api/devices/${device.id}/interfaces`) });
   const [live, setLive] = useState<LiveMetrics | null>(null);
+  const navigate = useNavigate();
   useEffect(() => joinDevice(device.id), [device.id, joinDevice]);
   useLiveEvent<LiveMetrics>('deviceMetrics', (m) => m.deviceId === device.id && setLive(m));
 
@@ -66,7 +67,12 @@ function SwitchPorts({ device }: { device: DeviceListItem }) {
               <div
                 key={p.id}
                 className={portClass(p)}
-                title={`${p.name}${p.alias ? ` — ${p.alias}` : ''}\n${p.adminStatus !== 1 ? 'admin down' : ifStatusText(p.operStatus)}, ${fmtSpeed(p.speedBps)}bps, ${duplexText(p.duplex)} duplex\nIn ${fmtBps(p.inBps)} / Out ${fmtBps(p.outBps)}\n${p.flapCount24h ?? 0} up/down change(s) in 24 h`}
+                role="button"
+                tabIndex={0}
+                style={{ cursor: 'pointer' }}
+                onClick={() => navigate(`/devices/${device.id}?tab=interfaces&if=${p.id}`)}
+                onKeyDown={(e) => e.key === 'Enter' && navigate(`/devices/${device.id}?tab=interfaces&if=${p.id}`)}
+                title={`${p.name}${p.alias ? ` — ${p.alias}` : ''}\n${p.adminStatus !== 1 ? 'admin down' : ifStatusText(p.operStatus)}, ${fmtSpeed(p.speedBps)}bps, ${duplexText(p.duplex)} duplex\nIn ${fmtBps(p.inBps)} / Out ${fmtBps(p.outBps)}\n${p.flapCount24h ?? 0} up/down change(s) in 24 h\nClick for port details and MAC addresses`}
               >
                 <div className="pn">{shortName(p.name)}</div>
                 <div className="pu">{p.operStatus === 1 ? `${Math.round(Math.max(p.inUtilPct ?? 0, p.outUtilPct ?? 0))}%` : '·'}</div>
@@ -87,7 +93,7 @@ function SwitchPorts({ device }: { device: DeviceListItem }) {
             </thead>
             <tbody>
               {uplinks.map((p) => (
-                <tr key={p.id}>
+                <tr key={p.id} style={{ cursor: 'pointer' }} onClick={() => navigate(`/devices/${device.id}?tab=interfaces&if=${p.id}`)}>
                   <td>
                     {p.name} <span className="muted">{p.alias}</span>
                   </td>

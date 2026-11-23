@@ -508,6 +508,14 @@ public sealed class SimulatedDevicePoller : IDevicePoller
             var pc = Mac(0x10, ifIndex);
             entries.Add(new Snmp.MacEntryReading(ifIndex, pc, 10));
             arp.Add(new Snmp.ArpReading($"10.{deviceId % 250}.10.{ifIndex % 250}", pc, 100010));
+            if (ifIndex % 5 == 0)
+            {
+                // A printer/camera with a static (configured) address on every fifth access port.
+                var device = Mac(0x30, ifIndex);
+                entries.Add(new Snmp.MacEntryReading(ifIndex, device, 10, Static: true));
+                arp.Add(new Snmp.ArpReading($"10.{deviceId % 250}.30.{ifIndex % 250}", device, 100030));
+            }
+
             if (ifIndex % 3 == 0)
             {
                 var phone = Mac(0x20, ifIndex);

@@ -72,6 +72,51 @@ public sealed class QaMacTableTests
             MacTableParser.ParseDot1d(Rows(("16.90.149.194.123.189", I(49177))), Rows(), basePorts));
     }
 
+    /// <summary>Static (configured) addresses used to be dropped: status 5 in the learned table, and the static tables were not read.</summary>
+    [Fact]
+    public void Static_mac_addresses_are_shown_and_marked_besides_the_learned_ones()
+    {
+        var basePorts = Rows(Enumerable.Range(49153, 28).Select(p => (p.ToString(), I(p))).ToArray());
+
+        // Learned table: a learned PC on port 3, a static printer (mgmt = 5) on port 7, the switch's own MAC (self = 4).
+        var learned = MacTableParser.ParseQBridge(
+            Rows(("210.0.17.34.0.0.3", I(3)), ("210.0.17.34.0.0.7", I(7)), ("210.0.17.34.0.0.99", I(1))),
+            Rows(("210.0.17.34.0.0.3", I(3)), ("210.0.17.34.0.0.7", I(5)), ("210.0.17.34.0.0.99", I(4))),
+            Rows(), basePorts);
+        Assert.Equal(
+            [new MacEntryReading(49155, "00:11:22:00:00:03", 210, Static: false), new MacEntryReading(49159, "00:11:22:00:00:07", 210, Static: true)],
+            learned);
+
+        // Static unicast table (fdbId.mac.receivePort -> PortList): a camera bound to port 12 (byte 2, bit 0x10), silent so not
+        // in the learned table; the printer again (port 7 = 0x02 in byte 1); a flooding rule to 8 ports is ignored.
+        static ISnmpData PortList(params byte[] b) => new OctetString(b);
+        var statics = MacTableParser.ParseQStatic(
+            Rows(("210.0.17.34.0.0.12.0", PortList(0x00, 0x10, 0x00, 0x00)),
+                 ("210.0.17.34.0.0.7.0", PortList(0x02, 0x00, 0x00, 0x00)),
+                 ("210.1.0.94.0.0.1.0", PortList(0xFF, 0x00, 0x00, 0x00))),
+            Rows(("210.0.17.34.0.0.12.0", I(3))), Rows(), basePorts);
+        Assert.Equal(
+            [new MacEntryReading(49159, "00:11:22:00:00:07", 210, Static: true), new MacEntryReading(49164, "00:11:22:00:00:0C", 210, Static: true)],
+            statics);
+
+        // Merged: learned PC stays dynamic, printer once (static), the silent camera is added.
+        var merged = MacTableParser.Merge(learned, statics);
+        Assert.Equal(3, merged.Count);
+        Assert.Contains(new MacEntryReading(49155, "00:11:22:00:00:03", 210, Static: false), merged);
+        Assert.Contains(new MacEntryReading(49159, "00:11:22:00:00:07", 210, Static: true), merged);
+        Assert.Contains(new MacEntryReading(49164, "00:11:22:00:00:0C", 210, Static: true), merged);
+
+        // A learned address that is also configured statically is shown once, as static.
+        Assert.Equal([new MacEntryReading(49155, "00:11:22:00:00:03", 210, Static: true)],
+            MacTableParser.Merge([new MacEntryReading(49155, "00:11:22:00:00:03", 210)], [new MacEntryReading(49155, "00:11:22:00:00:03", 210, Static: true)]));
+
+        // BRIDGE-MIB static table (mac.receivePort -> PortList), invalid (2) rows skipped.
+        Assert.Equal([new MacEntryReading(49154, "00:11:22:00:00:05", null, Static: true)],
+            MacTableParser.ParseDot1dStatic(
+                Rows(("0.17.34.0.0.5.0", PortList(0x40)), ("0.17.34.0.0.6.0", PortList(0x40))),
+                Rows(("0.17.34.0.0.6.0", I(2))), basePorts));
+    }
+
     [Fact]
     public void Dot1d_table_is_the_fallback_without_vlans_and_skips_unknown_ports()
     {

@@ -1083,6 +1083,8 @@ export interface MacEntry {
   interfaceId: number | null;
   port: string;
   macsOnPort: number;
+  /** Configured on the switch (static address / MAC binding) rather than learned. */
+  static: boolean;
 }
 
 export interface MacTable {
@@ -1102,4 +1104,5 @@ export interface MacLocation {
   macsOnPort: number;
   edgePort: boolean;
   readUtc: string;
+  static: boolean;
 }

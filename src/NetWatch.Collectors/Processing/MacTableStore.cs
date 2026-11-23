@@ -6,7 +6,8 @@ using NetWatch.Collectors.Snmp;
 namespace NetWatch.Collectors.Processing;
 
 /// <summary>A learned MAC address on one port, resolved to the NetWatch interface.</summary>
-public sealed record MacPortEntry(string Mac, int? Vlan, int IfIndex, int? InterfaceId, string Port);
+/// <summary>A MAC address on one port, resolved to the NetWatch interface. Static = configured on the switch.</summary>
+public sealed record MacPortEntry(string Mac, int? Vlan, int IfIndex, int? InterfaceId, string Port, bool Static = false);
 
 /// <summary>The MAC table of one switch as last read.</summary>
 public sealed record DeviceMacTable(int DeviceId, string DeviceName, DateTime ReadUtc, IReadOnlyList<MacPortEntry> Entries)
@@ -17,7 +18,7 @@ public sealed record DeviceMacTable(int DeviceId, string DeviceName, DateTime Re
 }
 
 /// <summary>Where a MAC address was found.</summary>
-public sealed record MacLocation(int DeviceId, string DeviceName, string Port, int? InterfaceId, string Mac, int? Vlan, string? Ip, int MacsOnPort, DateTime ReadUtc);
+public sealed record MacLocation(int DeviceId, string DeviceName, string Port, int? InterfaceId, string Mac, int? Vlan, string? Ip, int MacsOnPort, DateTime ReadUtc, bool Static = false);
 
 /// <summary>
 /// Latest MAC address table per switch and the ARP entries seen on routed switches. Kept in memory: the tables are
@@ -85,7 +86,7 @@ public sealed class MacTableStore
                 var match = macsForIp is not null ? macsForIp.Contains(e.Mac) : e.Mac.Replace(":", string.Empty, StringComparison.Ordinal).Contains(hex, StringComparison.Ordinal);
                 if (match)
                 {
-                    result.Add(new MacLocation(table.DeviceId, table.DeviceName, e.Port, e.InterfaceId, e.Mac, e.Vlan, IpOf(e.Mac), table.MacsPerPort.GetValueOrDefault(e.IfIndex), table.ReadUtc));
+                    result.Add(new MacLocation(table.DeviceId, table.DeviceName, e.Port, e.InterfaceId, e.Mac, e.Vlan, IpOf(e.Mac), table.MacsPerPort.GetValueOrDefault(e.IfIndex), table.ReadUtc, e.Static));
                 }
             }
         }
