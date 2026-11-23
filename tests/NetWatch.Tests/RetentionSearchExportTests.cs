@@ -169,10 +169,22 @@ public sealed class RetentionSearchExportTests : IAsyncLifetime
         // Empty log.
         Assert.Equal([(DcLogs.Security, 0L)], DcCollector.FirstContactBookmarks(0, null));
 
-        var xpath = DcCollector.BackfillXPath(24);
-        Assert.Contains("TimeCreated[timediff(@SystemTime) <= 86400000]", xpath, StringComparison.Ordinal);
-        Assert.Contains("EventID=4625", xpath, StringComparison.Ordinal);
-        Assert.Contains("EventID=1102", xpath, StringComparison.Ordinal);
+        var xpaths = DcCollector.BackfillXPaths(24);
+        Assert.All(xpaths, x => Assert.Contains("TimeCreated[timediff(@SystemTime) <= 86400000]", x, StringComparison.Ordinal));
+        Assert.Contains(xpaths, x => x.Contains("EventID=4625", StringComparison.Ordinal));
+        Assert.Contains(xpaths, x => x.Contains("EventID=1102", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void Security_queries_stay_under_the_event_log_xpath_limit_and_cover_every_catalogued_id()
+    {
+        // Windows rejects an XPath with more than about 20 EventID conditions ("The specified query is invalid").
+        var xpaths = DcCollector.SecurityXPaths("EventRecordID > 5");
+        Assert.All(xpaths, x => Assert.InRange(System.Text.RegularExpressions.Regex.Count(x, "EventID="), 1, 10));
+        var ids = xpaths.SelectMany(x => System.Text.RegularExpressions.Regex.Matches(x, @"EventID=(\d+)").Select(m => int.Parse(m.Groups[1].Value, System.Globalization.CultureInfo.InvariantCulture)))
+            .Order().ToList();
+        Assert.Equal(DcEventCatalog.Events.Keys.Order().ToList(), ids);
+        Assert.All(xpaths, x => Assert.EndsWith("and EventRecordID > 5]]", x, StringComparison.Ordinal));
     }
 
     [Fact]

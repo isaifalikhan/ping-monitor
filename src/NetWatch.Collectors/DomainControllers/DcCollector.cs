@@ -21,7 +21,19 @@ namespace NetWatch.Collectors.DomainControllers;
 /// </summary>
 public sealed class DcCollector : IDcCollector
 {
-    private static readonly string SecurityXPathIds = string.Join(" or ", DcEventCatalog.Events.Keys.Order().Select(id => string.Create(CultureInfo.InvariantCulture, $"EventID={id}")));
+    /// <summary>
+    /// The Windows event log refuses an XPath with more than about 20 EventID conditions ("The specified query is
+    /// invalid"), and the catalog has more. So the IDs are queried in groups and the results merged by record ID.
+    /// </summary>
+    private const int IdsPerQuery = 10;
+
+    private static readonly string[] SecurityXPathIdGroups = DcEventCatalog.Events.Keys.Order().Chunk(IdsPerQuery)
+        .Select(group => string.Join(" or ", group.Select(id => string.Create(CultureInfo.InvariantCulture, $"EventID={id}"))))
+        .ToArray();
+
+    /// <summary>One XPath per group of catalogued Security event IDs, each with <paramref name="condition"/> added.</summary>
+    internal static IReadOnlyList<string> SecurityXPaths(string condition) =>
+        SecurityXPathIdGroups.Select(ids => $"*[System[({ids}) and {condition}]]").ToArray();
 
     private readonly ILogger<DcCollector> _logger;
     private readonly TimeProvider _time;
@@ -130,9 +142,15 @@ public sealed class DcCollector : IDcCollector
             long? oldestInWindow = null;
             if (request.BackfillHours > 0)
             {
-                using var reader = new EventLogReader(new EventLogQuery(DcLogs.Security, PathType.LogName, BackfillXPath(request.BackfillHours)) { Session = session });
-                using var first = reader.ReadEvent();
-                oldestInWindow = first?.RecordId;
+                foreach (var xpath in BackfillXPaths(request.BackfillHours))
+                {
+                    using var reader = new EventLogReader(new EventLogQuery(DcLogs.Security, PathType.LogName, xpath) { Session = session });
+                    using var first = reader.ReadEvent();
+                    if (first?.RecordId is { } id && (oldestInWindow is null || id < oldestInWindow))
+                    {
+                        oldestInWindow = id;
+                    }
+                }
             }
 
             foreach (var (log, recordId) in FirstContactBookmarks(newestRecord, oldestInWindow))
@@ -143,10 +161,12 @@ public sealed class DcCollector : IDcCollector
             return;
         }
 
-        var xpath = string.Create(CultureInfo.InvariantCulture, $"*[System[({SecurityXPathIds}) and EventRecordID > {last}]]");
-        var newest = last;
-        using (var reader = new EventLogReader(new EventLogQuery(DcLogs.Security, PathType.LogName, xpath) { Session = session }))
+        // Each group returns its events oldest first, up to the limit. Merged and cut at the limit, the newest kept
+        // record is never past an event a group left unread, so the bookmark skips nothing.
+        var read = new List<(long RecordId, string Xml)>();
+        foreach (var xpath in SecurityXPaths(string.Create(CultureInfo.InvariantCulture, $"EventRecordID > {last}")))
         {
+            using var reader = new EventLogReader(new EventLogQuery(DcLogs.Security, PathType.LogName, xpath) { Session = session });
             for (var i = 0; i < request.MaxSecurityEvents; i++)
             {
                 using var record = reader.ReadEvent();
@@ -155,11 +175,20 @@ public sealed class DcCollector : IDcCollector
                     break;
                 }
 
-                newest = Math.Max(newest, record.RecordId ?? newest);
-                if (DcEventParser.Parse(record.ToXml()) is { } parsed)
+                if (record.RecordId is { } id)
                 {
-                    data.SecurityEvents.Add(parsed);
+                    read.Add((id, record.ToXml()));
                 }
+            }
+        }
+
+        var newest = last;
+        foreach (var (recordId, xml) in read.OrderBy(r => r.RecordId).Take(request.MaxSecurityEvents))
+        {
+            newest = recordId;
+            if (DcEventParser.Parse(xml) is { } parsed)
+            {
+                data.SecurityEvents.Add(parsed);
             }
         }
 
@@ -197,8 +226,8 @@ public sealed class DcCollector : IDcCollector
     }
 
     /// <summary>XPath for the catalogued Security events written within the last <paramref name="hours"/> hours (oldest first).</summary>
-    internal static string BackfillXPath(int hours) =>
-        string.Create(CultureInfo.InvariantCulture, $"*[System[({SecurityXPathIds}) and TimeCreated[timediff(@SystemTime) <= {(long)hours * 3_600_000}]]]");
+    internal static IReadOnlyList<string> BackfillXPaths(int hours) =>
+        SecurityXPaths(string.Create(CultureInfo.InvariantCulture, $"TimeCreated[timediff(@SystemTime) <= {(long)hours * 3_600_000}]"));
 
     /// <summary>
     /// Bookmarks written on the first Security-log contact. Without history in the window the read starts after
