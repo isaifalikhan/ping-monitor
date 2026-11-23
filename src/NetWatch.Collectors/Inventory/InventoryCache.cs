@@ -39,7 +39,8 @@ public sealed record DeviceSnapshot(
     string? TlsThumbprint = null,
     string? BmcAddress = null,
     int? BmcCredentialId = null,
-    string? BmcTlsThumbprint = null)
+    string? BmcTlsThumbprint = null,
+    string? Hostname = null)
 {
     public const string SimulatedTag = "simulated";
 
@@ -236,7 +237,8 @@ public sealed class InventoryCache : BackgroundService, IDeviceContextProvider, 
                 d.TlsThumbprint,
                 d.BmcAddress,
                 d.Credentials.FirstOrDefault(c => c.Purpose == CredentialPurpose.Bmc)?.CredentialProfileId,
-                d.BmcTlsThumbprint);
+                d.BmcTlsThumbprint,
+                string.IsNullOrWhiteSpace(d.Hostname) ? null : d.Hostname.Trim());
         }
 
         _devices = result.ToFrozenDictionary();

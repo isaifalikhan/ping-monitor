@@ -107,8 +107,10 @@ public sealed class DcResultProcessor
 
         var readSecurity = dc.ReadSecurityLog && !dc.UsesForwarding(device.Name, device.IpAddress) && now >= rt.NextSecurityReadUtc;
         rt.SecurityRequested = readSecurity;
+        // Prefer the host name: by IP address Windows cannot use Kerberos and falls back to NTLM, which many
+        // domains refuse for remote event log reads ("access denied" although the account is in Event Log Readers).
         return new DcPollRequest(
-            device.IpAddress,
+            device.Hostname ?? device.IpAddress,
             credential,
             new Dictionary<string, long>(rt.Bookmarks, StringComparer.OrdinalIgnoreCase),
             readSecurity,
