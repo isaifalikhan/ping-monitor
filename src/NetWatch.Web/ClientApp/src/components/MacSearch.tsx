@@ -5,7 +5,7 @@ import { Link } from 'react-router-dom';
 import { api, qs } from '../api/client';
 import type { MacLocation } from '../api/types';
 import { fmtAgo } from '../util/format';
-import { MacTypeBadge } from '../pages/devices/MacTablePanel';
+import { MacDeviceName, MacTypeBadge } from '../pages/devices/MacTablePanel';
 import { ErrorBox } from './Modal';
 
 /** "Where is this device plugged in?" — search the learned MAC tables of all switches by MAC or IP address. */
@@ -51,6 +51,7 @@ export function MacSearch() {
                   <th>MAC address</th>
                   <th>Type</th>
                   <th>IP address</th>
+                  <th>Device name</th>
                   <th>Switch</th>
                   <th>Port</th>
                   <th>VLAN</th>
@@ -66,6 +67,9 @@ export function MacSearch() {
                       <MacTypeBadge entry={r} />
                     </td>
                     <td className="mono">{r.ip ?? '—'}</td>
+                    <td>
+                      <MacDeviceName entry={r} />
+                    </td>
                     <td>
                       <Link to={`/devices/${r.deviceId}?tab=macs`}>{r.deviceName}</Link>
                     </td>

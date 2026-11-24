@@ -68,7 +68,8 @@ public sealed class ServerResultProcessor
 
     public async Task<ServerPollRequest?> PrepareAsync(DeviceSnapshot device, CancellationToken ct)
     {
-        if (device.ManagementCredentialId is not { } credentialId)
+        // On switches and routers the SSH credential is for their CLI (static MAC changes), not for Linux statistics.
+        if (device.ManagementCredentialId is not { } credentialId || device.Type is DeviceType.Switch or DeviceType.Router)
         {
             return null;
         }

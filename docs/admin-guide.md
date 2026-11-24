@@ -82,6 +82,37 @@ device page:
   alerts.
 - Untick **Monitored** for ports you don't need graphs for; this saves disk space.
 
+**MAC addresses per port** (switches and routed switches, read every 15 minutes over SNMP): device tab *MAC addresses*,
+or click a port on the *Switches* page / a row on the *Interfaces* tab for that port's details. Each MAC shows
+Static/Dynamic, VLAN, IP (from the ARP tables of monitored routers/L3 switches) and **device name**: the HIT SIEM
+device with that IP, else the name the device announces over LLDP (phones, access points), else its DNS name
+(reverse lookup on the network's own DNS, e.g. the domain controller; names are kept 6 hours).
+
+**Adding and removing static MACs (admins, TP-Link and Juniper):** HIT SIEM logs in to the switch over SSH and types
+the same commands an engineer would in PuTTY, then saves the configuration:
+
+| Switch | Add | Remove | Saved with |
+|---|---|---|---|
+| TP-Link (JetStream / Omada) | `mac address-table static <mac> vid <vlan> interface gigabitEthernet 1/0/5` | `no mac address-table static <mac> vid <vlan>` | `copy running-config startup-config` |
+| Juniper ELS (EX2300/3400/4300, QFX) | `set vlans <name> switch-options interface ge-0/0/5.0 static-mac <mac>` | `delete …` (same line) | `commit and-quit` (in `configure private`) |
+
+Setup, once per switch:
+1. Enable SSH on the switch. TP-Link: `ip ssh server` (or Omada Controller → switch → *Config → Services → SSH*).
+   Juniper: `set system services ssh` and `commit`.
+2. *Settings → Credentials → Add*, kind **SSH**: a switch user with admin/config rights (the PuTTY login). On TP-Link,
+   if `enable` asks for a password, it must be the same as this user's password.
+3. *Edit device* → **SSH credential (CLI)**: choose that credential.
+4. Open a port → *MAC addresses on this port* → **+ Add static MAC** (MAC and VLAN), or **Remove** on a static row.
+   A confirmation is shown, then the switch's answer; if the switch refuses, what it printed is shown.
+
+Every attempt (who, switch, port, VLAN, MAC, OK/FAILED and the reason) is written to the audit log. The switch's SSH host
+key is remembered on first contact; a changed key is refused until it is cleared on the device page. On switches
+and routers the SSH credential is used only for this, never for server statistics.
+
+> **Switches adopted by an Omada Controller** take their configuration from the controller. A static MAC set on the
+> switch itself may be overwritten the next time the controller provisions it; for those switches set it in the
+> controller, or check after a re-provision that the entry is still there (it shows as *Static* in HIT SIEM).
+
 **Maintenance mode** (one device, or several from the device list): no new alerts are raised for the devices
 until the end time you choose. Polling and graphs continue, and existing alerts still resolve normally.
 

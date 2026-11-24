@@ -45,6 +45,8 @@ public static class DeviceEndpoints
         admin.MapPut("/devices/{id:int}", UpdateAsync);
         admin.MapDelete("/devices/{id:int}", DeleteAsync);
         admin.MapPost("/devices/maintenance", MaintenanceAsync);
+        admin.MapPost("/devices/{id:int}/static-macs", AddStaticMacAsync);
+        admin.MapPost("/devices/{id:int}/static-macs/remove", RemoveStaticMacAsync);
         admin.MapPut("/interfaces/{id:int}", UpdateInterfaceAsync);
         admin.MapPost("/interfaces/bulk", BulkUpdateInterfacesAsync);
         admin.MapPost("/devices/import", ImportAsync).DisableAntiforgery();
@@ -195,19 +197,28 @@ public static class DeviceEndpoints
             .Select(s => new SensorDto(s.Id, s.Kind, s.Name, s.LastValue, s.Unit, s.LastState, s.LastSeenUtc)).ToListAsync(ct));
 
     /// <summary>Learned MAC addresses of a switch, per port, with the IP from the ARP tables when known.</summary>
-    private static IResult MacTable(int id, MacTableStore store)
+    private static async Task<IResult> MacTable(int id, MacTableStore store, NetWatchDbContext db, InventoryCache inventory, HostNameCache names, CancellationToken ct)
     {
+        var vendor = await db.Devices.AsNoTracking().Where(d => d.Id == id).Select(d => d.Vendor).FirstOrDefaultAsync(ct);
+        var editable = Collectors.Switches.SwitchConfigService.KindOf(vendor) is not null;
         if (store.Get(id) is not { } table)
         {
-            return Results.Ok(new MacTableDto(null, MacTableStore.RefreshInterval.TotalMinutes, []));
+            return Results.Ok(new MacTableDto(null, MacTableStore.RefreshInterval.TotalMinutes, [], editable));
         }
 
+        var namer = await MacNamer.CreateAsync(db, inventory, names, [id], ct);
         return Results.Ok(new MacTableDto(table.ReadUtc, MacTableStore.RefreshInterval.TotalMinutes,
-            table.Entries.Select(e => new MacEntryDto(e.Mac, e.Vlan, store.IpOf(e.Mac), e.InterfaceId, e.Port, table.MacsPerPort.GetValueOrDefault(e.IfIndex), e.Static)).ToList()));
+            table.Entries.Select(e =>
+            {
+                var ip = store.IpOf(e.Mac);
+                var macs = table.MacsPerPort.GetValueOrDefault(e.IfIndex);
+                var (name, source, nameDeviceId) = namer.NameOf(id, e.InterfaceId, e.Mac, ip, macs);
+                return new MacEntryDto(e.Mac, e.Vlan, ip, e.InterfaceId, e.Port, macs, e.Static, name, source, nameDeviceId);
+            }).ToList(), editable));
     }
 
     /// <summary>Where is a MAC (any notation or its last hex digits) or an IPv4 address connected?</summary>
-    private static IResult MacSearch(string? q, MacTableStore store)
+    private static async Task<IResult> MacSearch(string? q, MacTableStore store, NetWatchDbContext db, InventoryCache inventory, HostNameCache names, CancellationToken ct)
     {
         var query = q?.Trim() ?? string.Empty;
         if (query.Length is < 4 or > 64)
@@ -215,8 +226,34 @@ public static class DeviceEndpoints
             return HttpExtensions.Error("Enter at least 4 characters of a MAC address, or an IP address.");
         }
 
-        return Results.Ok(store.Search(query).Select(r => new MacLocationDto(r.DeviceId, r.DeviceName, r.Port, r.InterfaceId, r.Mac, r.Vlan, r.Ip, r.MacsOnPort,
-            r.MacsOnPort <= MacTableStore.EdgePortMaxMacs, r.ReadUtc, r.Static)));
+        var hits = store.Search(query);
+        var namer = await MacNamer.CreateAsync(db, inventory, names, hits.Select(h => h.DeviceId).Distinct().ToList(), ct);
+        return Results.Ok(hits.Select(r =>
+        {
+            var (name, source, nameDeviceId) = namer.NameOf(r.DeviceId, r.InterfaceId, r.Mac, r.Ip, r.MacsOnPort);
+            return new MacLocationDto(r.DeviceId, r.DeviceName, r.Port, r.InterfaceId, r.Mac, r.Vlan, r.Ip, r.MacsOnPort,
+                r.MacsOnPort <= MacTableStore.EdgePortMaxMacs, r.ReadUtc, r.Static, name, source, nameDeviceId);
+        }));
+    }
+
+    private static Task<IResult> AddStaticMacAsync(int id, StaticMacInput input, HttpContext http, Collectors.Switches.SwitchConfigService switches, AuditWriter audit, NetWatchDbContext db, CancellationToken ct) =>
+        ChangeStaticMacAsync(id, input, add: true, http, switches, audit, db, ct);
+
+    private static Task<IResult> RemoveStaticMacAsync(int id, StaticMacInput input, HttpContext http, Collectors.Switches.SwitchConfigService switches, AuditWriter audit, NetWatchDbContext db, CancellationToken ct) =>
+        ChangeStaticMacAsync(id, input, add: false, http, switches, audit, db, ct);
+
+    /// <summary>
+    /// Adds or removes a static MAC on a switch port over SSH and saves the switch configuration. Every attempt, also a
+    /// failed one, is written to the audit log. The answer carries what the switch printed so the admin can see why.
+    /// </summary>
+    private static async Task<IResult> ChangeStaticMacAsync(int id, StaticMacInput input, bool add, HttpContext http, Collectors.Switches.SwitchConfigService switches,
+                                                            AuditWriter audit, NetWatchDbContext db, CancellationToken ct)
+    {
+        var outcome = await switches.ChangeAsync(new Collectors.Switches.StaticMacRequest(id, input.InterfaceId, input.Mac ?? string.Empty, input.Vlan, add), ct);
+        var port = await db.Interfaces.AsNoTracking().Where(i => i.Id == input.InterfaceId).Select(i => i.Name).FirstOrDefaultAsync(ct);
+        await audit.WriteAsync(http.Actor(), add ? "StaticMacAdded" : "StaticMacRemoved", "Device", id.ToString(System.Globalization.CultureInfo.InvariantCulture),
+            $"{(outcome.Ok ? "OK" : "FAILED")}: port {port ?? input.InterfaceId.ToString(System.Globalization.CultureInfo.InvariantCulture)}, VLAN {input.Vlan}, MAC {input.Mac} — {outcome.Message}");
+        return Results.Ok(new StaticMacResultDto(outcome.Ok, outcome.Message, outcome.Command, outcome.Transcript));
     }
 
     private static async Task<IResult> EventsAsync(int id, EventsDbContext events, int? limit, CancellationToken ct)
@@ -606,8 +643,71 @@ public static class DeviceEndpoints
         Results.File(System.Text.Encoding.UTF8.GetBytes(DeviceCsvParser.Template), "text/csv", "netwatch-devices-template.csv");
 }
 
-public sealed record MacEntryDto(string Mac, int? Vlan, string? Ip, int? InterfaceId, string Port, int MacsOnPort, bool Static);
+/// <param name="Name">Name of the connected device: HIT SIEM device with that IP, else its LLDP name, else its DNS name.</param>
+/// <param name="NameSource">"device", "lldp" or "dns".</param>
+/// <param name="NameDeviceId">The monitored HIT SIEM device, when the name came from the inventory.</param>
+public sealed record MacEntryDto(string Mac, int? Vlan, string? Ip, int? InterfaceId, string Port, int MacsOnPort, bool Static, string? Name = null, string? NameSource = null, int? NameDeviceId = null);
 
-public sealed record MacTableDto(DateTime? ReadUtc, double RefreshMinutes, IReadOnlyList<MacEntryDto> Entries);
+/// <param name="CanEdit">The switch's vendor supports adding/removing static MACs from HIT SIEM (TP-Link, Juniper).</param>
+public sealed record MacTableDto(DateTime? ReadUtc, double RefreshMinutes, IReadOnlyList<MacEntryDto> Entries, bool CanEdit = false);
 
-public sealed record MacLocationDto(int DeviceId, string DeviceName, string Port, int? InterfaceId, string Mac, int? Vlan, string? Ip, int MacsOnPort, bool EdgePort, DateTime ReadUtc, bool Static);
+public sealed record MacLocationDto(int DeviceId, string DeviceName, string Port, int? InterfaceId, string Mac, int? Vlan, string? Ip, int MacsOnPort, bool EdgePort, DateTime ReadUtc, bool Static,
+                                    string? Name = null, string? NameSource = null, int? NameDeviceId = null);
+
+public sealed record StaticMacInput(int InterfaceId, string? Mac, int Vlan);
+
+public sealed record StaticMacResultDto(bool Ok, string Message, string? Command, string? Transcript);
+
+/// <summary>
+/// Names the device behind a MAC: the monitored HIT SIEM device with that IP; else the LLDP neighbour on the port whose
+/// chassis ID is that MAC (or the only neighbour on a single-MAC port, e.g. an IP phone or access point); else the DNS name.
+/// </summary>
+public sealed class MacNamer
+{
+    private readonly InventoryCache _inventory;
+    private readonly HostNameCache _names;
+    private readonly Dictionary<(int DeviceId, int InterfaceId), List<(string? Name, string ChassisHex)>> _lldp;
+
+    private MacNamer(InventoryCache inventory, HostNameCache names, Dictionary<(int, int), List<(string?, string)>> lldp)
+    {
+        _inventory = inventory;
+        _names = names;
+        _lldp = lldp;
+    }
+
+    public static async Task<MacNamer> CreateAsync(NetWatchDbContext db, InventoryCache inventory, HostNameCache names, IReadOnlyList<int> deviceIds, CancellationToken ct)
+    {
+        var rows = await db.NeighborLinks.AsNoTracking()
+            .Where(l => deviceIds.Contains(l.DeviceId) && l.LocalInterfaceId != null)
+            .Select(l => new { l.DeviceId, l.LocalInterfaceId, l.RemoteName, l.RemoteChassisId })
+            .ToListAsync(ct);
+        var lldp = rows.GroupBy(r => (r.DeviceId, r.LocalInterfaceId!.Value))
+            .ToDictionary(g => g.Key, g => g.Select(r => (r.RemoteName, MacTableStore.NormalizeHex(r.RemoteChassisId ?? string.Empty))).ToList());
+        return new MacNamer(inventory, names, lldp);
+    }
+
+    public (string? Name, string? Source, int? DeviceId) NameOf(int switchId, int? interfaceId, string mac, string? ip, int macsOnPort)
+    {
+        if (ip is not null && IPAddress.TryParse(ip, out var address) && _inventory.FindByIp(address) is { } known)
+        {
+            return (known.Name, "device", known.Id);
+        }
+
+        if (interfaceId is { } ifId && _lldp.TryGetValue((switchId, ifId), out var neighbours))
+        {
+            var hex = MacTableStore.NormalizeHex(mac);
+            var byChassis = neighbours.FirstOrDefault(n => n.ChassisHex == hex && !string.IsNullOrWhiteSpace(n.Name));
+            if (byChassis.Name is not null)
+            {
+                return (byChassis.Name, "lldp", null);
+            }
+
+            if (macsOnPort == 1 && neighbours.Count == 1 && !string.IsNullOrWhiteSpace(neighbours[0].Name))
+            {
+                return (neighbours[0].Name, "lldp", null);
+            }
+        }
+
+        return _names.NameOf(ip) is { } dns ? (dns, "dns", null) : (null, null, null);
+    }
+}

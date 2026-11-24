@@ -47,6 +47,10 @@ public static class CollectorsServiceCollectionExtensions
         services.AddHostedService(sp => sp.GetRequiredService<DomainControllers.ForwardedEventsReader>());
 
         services.AddSingleton<MacTableStore>();
+        services.AddSingleton<HostNameCache>();
+        services.AddHostedService(sp => sp.GetRequiredService<HostNameCache>());
+        services.AddSingleton<Switches.SimulatedSwitchConfig>();
+        services.AddSingleton<Switches.SwitchConfigService>();
         services.AddSingleton<PollResultProcessor>();
         services.AddSingleton<Snmp.SnmpHealthProfileStore>();
         services.AddSingleton<Hardware.IHardwareCollector, Hardware.HardwareCollector>();

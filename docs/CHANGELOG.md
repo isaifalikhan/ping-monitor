@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- **Static MACs from HIT SIEM:** admins add or remove a static MAC address on a switch port (TP-Link and Juniper)
+  from the port details; HIT SIEM runs the CLI commands over SSH, saves the configuration and writes every attempt to
+  the audit log. Device form: *SSH credential (CLI)* for switches and routers.
+- **Device name per MAC:** the MAC tables, port details and MAC search show the connected device's name (HIT SIEM
+  device with that IP, LLDP name, or DNS name) next to its IP. Port details show the *Connected device*.
+- Switches and routers with an SSH credential are no longer polled as Linux servers.
+
 - **DC Security log backfill:** on the first remote read of a DC, the last 24 h still in its Security log are read
   as well (*Settings → General → Domain controllers*, 0–720 h, 0 = only new events). Backfilled events are stored
   and searchable but raise no alerts.

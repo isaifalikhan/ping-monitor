@@ -1,14 +1,20 @@
-import type { NetInterface } from '../../api/types';
+import { useQuery } from '@tanstack/react-query';
+import { api } from '../../api/client';
+import type { MacTable, NetInterface } from '../../api/types';
 import { UtilBar } from '../../components/Badges';
 import { fmtAgo, fmtBps, fmtDateTime, fmtSpeed, ifStatusText } from '../../util/format';
 import { duplexText } from '../SwitchesPage';
-import { MacTablePanel } from './MacTablePanel';
+import { MacDeviceName, MacTablePanel } from './MacTablePanel';
 
 /** Details of one switch port: state, speed, duplex, traffic, errors, flaps, and the MAC addresses on it. */
 export function PortDetail({ deviceId, iface, onClose }: { deviceId: number; iface: NetInterface; onClose: () => void }) {
   const up = iface.operStatus === 1;
   const adminDown = iface.adminStatus !== 1;
   const util = up ? Math.max(iface.inUtilPct ?? 0, iface.outUtilPct ?? 0) : null;
+  const macs = useQuery({ queryKey: ['device', deviceId, 'mac-table'], queryFn: () => api.get<MacTable>(`/api/devices/${deviceId}/mac-table`), refetchInterval: 60_000 });
+  const onPort = (macs.data?.entries ?? []).filter((e) => e.interfaceId === iface.id);
+  // The connected device: the first MAC on the port with a name or IP (edge ports have one or two).
+  const connected = onPort.length > 0 && onPort.length <= 4 ? onPort.filter((e) => e.name || e.ip) : [];
   const slow = up && iface.expectedSpeedBps != null && iface.speedBps < iface.expectedSpeedBps;
 
   const facts: [string, React.ReactNode][] = [
@@ -20,6 +26,22 @@ export function PortDetail({ deviceId, iface, onClose }: { deviceId: number; ifa
     ['Errors', iface.errorsPs != null ? `${iface.errorsPs.toFixed(2)} /s` : '—'],
     ['Up/down changes (24 h)', <span style={(iface.flapCount24h ?? 0) >= 4 ? { color: 'var(--warn)' } : undefined}>{iface.flapCount24h ?? 0}</span>],
     ['Last change', iface.lastChangeUtc ? `${fmtDateTime(iface.lastChangeUtc)} PKT (${fmtAgo(iface.lastChangeUtc)})` : '—'],
+    [
+      'Connected device',
+      connected.length === 0 ? (
+        onPort.length > 4 ? <span className="faint">uplink/trunk ({onPort.length} MACs)</span> : '—'
+      ) : (
+        <span>
+          {connected.map((e, i) => (
+            <span key={e.mac}>
+              {i > 0 && ', '}
+              {e.name && <MacDeviceName entry={e} />}
+              {e.ip && <span className="mono muted">{e.name ? ` (${e.ip})` : e.ip}</span>}
+            </span>
+          ))}
+        </span>
+      ),
+    ],
     ['Port MAC', iface.mac ? <span className="mono">{iface.mac}</span> : '—'],
     ['Important port', iface.isImportant ? '★ yes — raises port-down alerts' : 'no'],
   ];
@@ -52,7 +74,7 @@ export function PortDetail({ deviceId, iface, onClose }: { deviceId: number; ifa
           </div>
         </div>
       </div>
-      <MacTablePanel deviceId={deviceId} interfaceId={iface.id} />
+      <MacTablePanel deviceId={deviceId} interfaceId={iface.id} portName={iface.name} />
     </div>
   );
 }

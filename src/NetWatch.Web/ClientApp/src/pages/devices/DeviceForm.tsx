@@ -75,6 +75,8 @@ export function DeviceForm({ device, onClose, onSaved }: { device?: DeviceDetail
   const redfishCreds = (creds.data ?? []).filter((c) => c.kind === 'Redfish');
   const vmwareType = form.type === 'VCenter' || form.type === 'Hypervisor';
   const serverType = ['Server', 'VM', 'DomainController', 'Hypervisor'].includes(form.type);
+  const switchType = form.type === 'Switch' || form.type === 'Router';
+  const sshCreds = (creds.data ?? []).filter((c) => c.kind === 'Ssh');
 
   return (
     <Modal
@@ -185,7 +187,21 @@ export function DeviceForm({ device, onClose, onSaved }: { device?: DeviceDetail
             </label>
           </>
         )}
-        {(serverType || form.managementCredentialId) && (
+        {switchType && (
+          <label className="field">
+            <span>SSH credential (CLI)</span>
+            <select value={form.managementCredentialId ?? ''} onChange={(e) => set('managementCredentialId', e.target.value ? Number(e.target.value) : null)}>
+              <option value="">— none —</option>
+              {sshCreds.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name} (SSH)
+                </option>
+              ))}
+            </select>
+            <span className="hint">Switch admin user for adding/removing static MAC addresses on ports (TP-Link, Juniper). Same login as in PuTTY.</span>
+          </label>
+        )}
+        {!switchType && (serverType || form.managementCredentialId) && (
           <label className="field">
             <span>Windows / SSH credential</span>
             <select value={form.managementCredentialId ?? ''} onChange={(e) => set('managementCredentialId', e.target.value ? Number(e.target.value) : null)}>

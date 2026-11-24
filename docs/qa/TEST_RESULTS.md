@@ -82,6 +82,8 @@ stay as recorded below; the case totals are unchanged (97 PASS / 1 FAIL / 12 NOT
 | SW-31 | PASS | same test: v2c linkDown/linkUp (ifIndex 17 in summary), v1 coldStart/authenticationFailure; counters on status page; 0 parse errors |
 | SW-40 | PASS (API) / **NOT RUN** (browser) | 30-day interface series < 2 s (DSH-02); UI component tests (vitest); browser check see UI-01 |
 | SW-41 | PASS | `Wp5SwitchTests` LLDP/CDP parsers, de-duplication, suggestions |
+| SW-50 | PASS (sim) / PENDING PILOT | Static MAC add/remove over SSH. `QaSwitchCliTests` (34): TP-Link and Junos command dialogs against a simulated CLI (enable password never logged, refusals, missing entries, unknown VLAN, no commit on error), port-name mapping, MAC validation, admin-only routes (`QaPermissionMatrixTests`), switch with SSH credential not polled as Linux. API run on the simulator 2026-11-24: add → Static on the port, remove, repeated remove refused by the switch, multicast refused, 4 audit rows. Real SSH to a TP-Link/Juniper switch not run here |
+| SW-51 | PASS (unit) / PENDING PILOT | Device name per MAC: HIT SIEM device by IP, LLDP chassis, DNS (`QaSwitchCliTests.Device_name_*`, `Device_names_come_from_dns_*`); real DNS/PTR records not run here |
 
 ## 2.5 Servers
 

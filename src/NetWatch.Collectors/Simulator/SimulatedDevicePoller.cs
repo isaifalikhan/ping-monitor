@@ -21,11 +21,13 @@ public sealed class SimulatedDevicePoller : IDevicePoller
     private readonly SimulatedVcenter _vcenter = new();
     private readonly ConcurrentDictionary<int, SimulatedDomainController> _dcs = new();
     private readonly Inventory.InventoryCache? _inventory;
+    private readonly Switches.SimulatedSwitchConfig? _switchConfig;
 
-    public SimulatedDevicePoller(TimeProvider time, Inventory.InventoryCache? inventory = null)
+    public SimulatedDevicePoller(TimeProvider time, Inventory.InventoryCache? inventory = null, Switches.SimulatedSwitchConfig? switchConfig = null)
     {
         _time = time;
         _inventory = inventory;
+        _switchConfig = switchConfig;
     }
 
     /// <summary>Fault probabilities per poll. Exposed for tests; defaults give a few incidents per hour across ~180 devices.</summary>
@@ -487,7 +489,7 @@ public sealed class SimulatedDevicePoller : IDevicePoller
     /// Learned MACs: one PC on each connected access port (a phone in VLAN 20 on every third), the MACs of the
     /// switches below on uplinks; ARP gives every PC an address 10.&lt;switch&gt;.&lt;VLAN&gt;.&lt;port&gt;.
     /// </summary>
-    private static Snmp.MacTableReading SimulateMacTable(int deviceId, SimDevice d)
+    private Snmp.MacTableReading SimulateMacTable(int deviceId, SimDevice d)
     {
         var entries = new List<Snmp.MacEntryReading>();
         var arp = new List<Snmp.ArpReading>();
@@ -521,6 +523,17 @@ public sealed class SimulatedDevicePoller : IDevicePoller
                 var phone = Mac(0x20, ifIndex);
                 entries.Add(new Snmp.MacEntryReading(ifIndex, phone, 20));
                 arp.Add(new Snmp.ArpReading($"10.{deviceId % 250}.20.{ifIndex % 250}", phone, 100020));
+            }
+        }
+
+        // Static MACs added or removed through HIT SIEM on this simulated switch.
+        if (_switchConfig is not null)
+        {
+            entries.RemoveAll(e => _switchConfig.IsRemoved(deviceId, e.Mac, e.Vlan) && e.Static);
+            foreach (var ((mac, vlan), ifIndex) in _switchConfig.Added(deviceId))
+            {
+                entries.RemoveAll(e => e.Mac == mac && (e.Vlan ?? 1) == vlan);
+                entries.Add(new Snmp.MacEntryReading(ifIndex, mac, vlan, Static: true));
             }
         }
 

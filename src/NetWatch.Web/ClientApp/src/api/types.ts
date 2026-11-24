@@ -1085,12 +1085,25 @@ export interface MacEntry {
   macsOnPort: number;
   /** Configured on the switch (static address / MAC binding) rather than learned. */
   static: boolean;
+  /** Name of the connected device: HIT SIEM device with that IP, else LLDP name, else DNS name. */
+  name: string | null;
+  nameSource: 'device' | 'lldp' | 'dns' | null;
+  nameDeviceId: number | null;
 }
 
 export interface MacTable {
   readUtc: string | null;
   refreshMinutes: number;
   entries: MacEntry[];
+  /** Static MACs can be added/removed from HIT SIEM (TP-Link, Juniper). */
+  canEdit: boolean;
+}
+
+export interface StaticMacResult {
+  ok: boolean;
+  message: string;
+  command: string | null;
+  transcript: string | null;
 }
 
 export interface MacLocation {
@@ -1105,4 +1118,7 @@ export interface MacLocation {
   edgePort: boolean;
   readUtc: string;
   static: boolean;
+  name: string | null;
+  nameSource: 'device' | 'lldp' | 'dns' | null;
+  nameDeviceId: number | null;
 }
