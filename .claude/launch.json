@@ -61,6 +61,34 @@
       },
       "url": "https://localhost:8451",
       "port": 8451
+    },
+    {
+      "name": "netwatch-static-mac-check",
+      "runtimeExecutable": "dotnet",
+      "runtimeArgs": [
+        "src/NetWatch.Service/bin/Debug/net10.0-windows/NetWatch.Service.dll",
+        "--console",
+        "--simulate",
+        "--data-dir",
+        "C:/Users/LENOVO/AppData/Local/Temp/claude/2ea6de0d045f9ad3/4b69fa12-7b79-4d13-9aed-49d281c5aded/scratchpad/staticmac-data",
+        "--Https:Port=8452"
+      ],
+      "url": "https://localhost:8452",
+      "port": 8452
+    },
+    {
+      "name": "netwatch-endpoints-check",
+      "runtimeExecutable": "dotnet",
+      "runtimeArgs": [
+        "src/NetWatch.Service/bin/Debug/net10.0-windows/NetWatch.Service.dll",
+        "--console",
+        "--simulate",
+        "--data-dir",
+        "C:/Users/LENOVO/AppData/Local/Temp/claude/2ea6de0d045f9ad3/4b69fa12-7b79-4d13-9aed-49d281c5aded/scratchpad/endpoints-data",
+        "--Https:Port=8453"
+      ],
+      "url": "https://localhost:8453",
+      "port": 8453
     }
   ]
 }
