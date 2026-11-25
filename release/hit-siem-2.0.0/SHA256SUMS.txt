@@ -1,1 +1,1 @@
-ac9b31d4b7a9019fd564501ccdddf85ebfe5d24932f866e50bdc1c8a73ddc278 *HIT-SIEM-Setup-2.0.0.exe
+bfaf5be7055586247cb0a11cec45e177fdbfc653763819bc57dc1bd729753eb1 *HIT-SIEM-Setup-2.0.0.exe
