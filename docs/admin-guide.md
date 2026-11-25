@@ -308,6 +308,80 @@ Built-in DC rules:
 Count rules can be grouped by any event field (*Count separately per* in the rule editor) and event rules can
 require field values (*Field values*, e.g. `failed=true`, `offHours=true`, `privileged=true`).
 
+## 4d. Endpoints (agentless, GPO)
+
+HIT SIEM inventories Windows workstations and servers without installing an agent. A Group Policy creates a
+scheduled task that runs `HitSiemInventory.ps1` from NETLOGON as SYSTEM every 30 minutes. The script reads the
+machine with local WMI/CIM and the registry and posts the result to `https://<hit-siem>/api/endpoints/report`
+(gzip, the HIT SIEM certificate thumbprint pinned). No inbound port is opened on the machines and no password is
+stored in HIT SIEM. Windows Event Forwarding adds live events from the same machines.
+
+**What is collected**: hardware (model, serial, BIOS, CPU, memory, Secure Boot, TPM), OS and build, disks with
+BitLocker state, network adapters, processes (user, path, command line, memory, CPU time, company), services,
+installed software (machine and per-user), installed updates, missing security/critical updates (the machine's
+own last Windows Update / WSUS scan, read offline), pending reboot, Windows Firewall profiles, antivirus
+(Security Center and Microsoft Defender: real-time protection, signature age, tamper protection), logged-on users,
+local administrators, local accounts, listening ports and established connections per process, USB devices
+(connected now, and every USB storage device in the machine's history), startup programs and shares.
+
+**Set up** (*Endpoints → Deployment*, Admin):
+
+1. Enter the address the machines use to reach HIT SIEM (DNS name, not localhost) and download the kit. It holds
+   the script, `hitsiem-endpoint.json` (address, certificate thumbprint, enrollment key), the WEF subscription and
+   a README with every GPO click.
+2. Copy the script and `hitsiem-endpoint.json` to `\\<domain>\NETLOGON\HitSiem\`.
+3. GPO → Computer Configuration → Preferences → Control Panel Settings → Scheduled Tasks → *Scheduled Task (At
+   least Windows 7)*: run as `NT AUTHORITY\System`, highest privileges, daily trigger repeating every 30 minutes
+   plus *At startup*, action `powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -WindowStyle Hidden
+   -File "\\<domain>\NETLOGON\HitSiem\HitSiemInventory.ps1"`.
+4. Optional, for live events: on the HIT SIEM server `winrm quickconfig -q`, `wecutil qc /q`,
+   `wecutil cs HitSiem-Endpoints-Subscription.xml`; in the GPO the Event Forwarding subscription manager
+   `Server=http://<hit-siem>:5985/wsman/SubscriptionManager/WEC,Refresh=60`, NETWORK SERVICE in *Event Log
+   Readers*, the audit policies (process creation with command line, PNP activity, user and group management,
+   security system extension, logon failures). The README lists them.
+
+**Enrollment**: a machine's first report carries the enrollment key; HIT SIEM answers with a token for that
+machine, which the script keeps in `HKLM\SOFTWARE\HIT SIEM\Endpoint` (readable by SYSTEM and Administrators only)
+and sends from then on. The key alone cannot take over an enrolled machine. *Change key* stops new enrollments
+with the old key; enrolled machines keep working. *Reset enrollment* (machine page) is for a reinstalled machine.
+A second machine with the name of a machine that reported in the last 24 hours is refused (409).
+
+**Devices**: a machine is linked to the inventory device with the same name or host name, or to a non-workstation
+device with the same IP (servers with fixed addresses). Otherwise a device of type *Workstation* (or *Server* for
+server editions) is created with the tag `endpoint`. Workstations are not pinged or polled; they are *Up* while
+they report and *Unknown* once silent longer than *Not reporting after* (48 h). A workstation's IP follows DHCP;
+when another workstation still has the address, that one shows *—* (a placeholder in 0.0.0.0/8) until it reports.
+
+**Pages**: *Endpoints → Computers* (problems, firewall, antivirus, updates, reboot, fullest disk), *Software*
+(which machines have a program, which versions), *Processes* (where is a process running, by name, path or
+command line), *Changes* (software installed/removed, local admin added, USB storage, new service, startup
+program, listening port, firewall turned off, updates), and a page per machine with all collected data and its
+forwarded events.
+
+| Built-in rule | Source | Severity |
+|---|---|---|
+| Endpoint stopped reporting | no inventory for 48 h | Warning |
+| Endpoint firewall off | a firewall profile off | Major |
+| Endpoint antivirus not protecting | no antivirus enabled, Defender real-time off, signatures > 7 days | Major |
+| Endpoint security updates missing | missing security/critical updates for 7 days | Warning |
+| Endpoint not patched for 45 days | newest installed update older than 45 days | Warning |
+| New software installed / New local administrator / USB storage connected | inventory change | Warning / Major / Warning |
+| Local administrator added (event) / USB storage connected (event) | WEF 4732 to Administrators / 6416 USB storage | Major / Warning |
+| Malware detected | WEF Defender 1116 / 1117 | Critical |
+| Suspicious command line | WEF 4688: encoded PowerShell, credential dumping, shadow copy deletion, log clearing, LOLBin downloads | Major |
+| New service installed on endpoint | WEF 7045 / 4697 | Warning |
+| Endpoint event log cleared | WEF 1102 / 104 | Critical |
+| Defender protection turned off | WEF 5001 / 5010 / 5012 | Major |
+| Repeated failed logons on an endpoint | 10 × 4625 in 5 min | Warning |
+
+Disk space rules also apply to workstations. Process starts (4688) are about 1,000–3,000 events per PC per day;
+turn off *Store every process start* to keep only the suspicious ones (the alert still works).
+
+**Check one machine**: `powershell -ExecutionPolicy Bypass -File \\<domain>\NETLOGON\HitSiem\HitSiemInventory.ps1
+-NoDelay` as administrator (prints *Machine enrolled, inventory received*); `-DryRun -OutFile C:\Temp\inv.json`
+shows what is collected without sending. The last result is in `HKLM\SOFTWARE\HIT SIEM\Endpoint` → `LastResult`.
+AppLocker / WDAC in enforced mode must allow the script (it uses Add-Type for the certificate check).
+
 ## 4a. Syslog and SNMP traps
 
 Point devices at the NetWatch server: syslog to UDP or TCP 514, SNMP traps/informs to UDP 162. Messages are matched

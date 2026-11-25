@@ -1,7 +1,7 @@
 // Types mirroring the server DTOs (NetWatch.Web.Api.Dtos).
 
-export type DeviceType = 'Switch' | 'Router' | 'Firewall' | 'Server' | 'VM' | 'DomainController' | 'Hypervisor' | 'VCenter' | 'Other';
-export const DEVICE_TYPES: DeviceType[] = ['Switch', 'Router', 'Firewall', 'Server', 'VM', 'DomainController', 'Hypervisor', 'VCenter', 'Other'];
+export type DeviceType = 'Switch' | 'Router' | 'Firewall' | 'Server' | 'VM' | 'DomainController' | 'Hypervisor' | 'VCenter' | 'Other' | 'Workstation';
+export const DEVICE_TYPES: DeviceType[] = ['Switch', 'Router', 'Firewall', 'Server', 'VM', 'DomainController', 'Hypervisor', 'VCenter', 'Other', 'Workstation'];
 export type DeviceStatus = 'Unknown' | 'Up' | 'Warning' | 'Down' | 'Maintenance';
 export type OsKind = 'Unknown' | 'Windows' | 'Linux' | 'NetworkOs' | 'Esxi';
 export const OS_KINDS: OsKind[] = ['Unknown', 'Windows', 'Linux', 'NetworkOs', 'Esxi'];
@@ -1121,4 +1121,144 @@ export interface MacLocation {
   name: string | null;
   nameSource: 'device' | 'lldp' | 'dns' | null;
   nameDeviceId: number | null;
+}
+
+// ---------------------------------------------------------------- endpoint inventory (GPO script)
+
+export interface EndpointListItem {
+  id: number;
+  deviceId: number | null;
+  name: string;
+  domain: string | null;
+  ip: string | null;
+  os: string | null;
+  osBuild: string | null;
+  model: string | null;
+  serial: string | null;
+  user: string | null;
+  firstSeenUtc: string;
+  lastSeenUtc: string;
+  stale: boolean;
+  firewallOff: string | null;
+  avProblem: string | null;
+  missingUpdates: number | null;
+  lastPatchUtc: string | null;
+  pendingReboot: boolean | null;
+  worstDiskPct: number | null;
+  processCount: number;
+  softwareCount: number;
+  errors: string | null;
+  scriptVersion: string | null;
+  worstAlert: Severity | null;
+  enrolled: boolean;
+}
+
+export interface EpSystem {
+  computerName?: string | null;
+  domain?: string | null;
+  fqdn?: string | null;
+  partOfDomain?: boolean | null;
+  manufacturer?: string | null;
+  model?: string | null;
+  serialNumber?: string | null;
+  biosVersion?: string | null;
+  osName?: string | null;
+  osVersion?: string | null;
+  osBuild?: string | null;
+  osDisplayVersion?: string | null;
+  osArchitecture?: string | null;
+  productType?: number | null;
+  installDateUtc?: string | null;
+  lastBootUtc?: string | null;
+  cpuName?: string | null;
+  cpuCores?: number | null;
+  cpuLogical?: number | null;
+  cpuLoadPct?: number | null;
+  memoryTotalBytes?: number | null;
+  memoryFreeBytes?: number | null;
+  timeZone?: string | null;
+  secureBoot?: boolean | null;
+  tpmPresent?: boolean | null;
+  consoleUser?: string | null;
+}
+
+export interface EpProcess { pid: number; parentPid?: number | null; name?: string | null; path?: string | null; commandLine?: string | null; user?: string | null; startUtc?: string | null; cpuSec?: number | null; memoryBytes?: number | null; company?: string | null }
+export interface EpService { name?: string | null; displayName?: string | null; state?: string | null; startMode?: string | null; account?: string | null; path?: string | null; pid?: number | null }
+export interface EpSoftware { name?: string | null; version?: string | null; publisher?: string | null; installDate?: string | null; scope?: string | null; arch?: string | null }
+export interface EpHotfix { id?: string | null; description?: string | null; installedUtc?: string | null }
+export interface EpMissingUpdate { title?: string | null; kb?: string | null; severity?: string | null; category?: string | null }
+export interface EpPatches { pendingReboot?: boolean | null; missingSecurity?: number | null; missingCritical?: number | null; missingOther?: number | null; missing: EpMissingUpdate[]; lastSearchUtc?: string | null; lastInstallUtc?: string | null; wsusServer?: string | null; error?: string | null }
+export interface EpFirewallProfile { name?: string | null; enabled?: boolean | null; defaultInbound?: string | null; defaultOutbound?: string | null }
+export interface EpDefender { serviceEnabled?: boolean | null; realTimeProtection?: boolean | null; signatureUtc?: string | null; signatureAgeDays?: number | null; signatureVersion?: string | null; engineVersion?: string | null; tamperProtected?: boolean | null; lastQuickScanUtc?: string | null; lastFullScanUtc?: string | null }
+export interface EpAntivirus { products: { name?: string | null; enabled?: boolean | null; upToDate?: boolean | null }[]; defender?: EpDefender | null }
+export interface EpPort { protocol?: string | null; address?: string | null; port: number; pid?: number | null; process?: string | null }
+export interface EpConnection { local?: string | null; localPort: number; remote?: string | null; remotePort: number; state?: string | null; pid?: number | null; process?: string | null }
+export interface EpUsb { name?: string | null; deviceId?: string | null; class?: string | null; storage: boolean; present: boolean; serial?: string | null }
+
+export interface EndpointReport {
+  scriptVersion?: string | null;
+  collectedUtc?: string | null;
+  durationSec?: number | null;
+  system: EpSystem;
+  adapters: { description?: string | null; mac?: string | null; ips: string[]; gateways: string[]; dns: string[]; dhcp?: boolean | null }[];
+  disks: { drive?: string | null; label?: string | null; fileSystem?: string | null; sizeBytes?: number | null; freeBytes?: number | null; bitLocker?: string | null }[];
+  processes: EpProcess[];
+  services: EpService[];
+  software: EpSoftware[];
+  hotfixes: EpHotfix[];
+  patches?: EpPatches | null;
+  firewall: EpFirewallProfile[];
+  antivirus?: EpAntivirus | null;
+  sessions: { user?: string | null; session?: string | null; state?: string | null; logonUtc?: string | null }[];
+  localAdmins: { name?: string | null; type?: string | null; source?: string | null }[];
+  localUsers: { name?: string | null; enabled?: boolean | null; passwordRequired?: boolean | null }[];
+  listening: EpPort[];
+  connections: EpConnection[];
+  usb: EpUsb[];
+  startup: { name?: string | null; command?: string | null; location?: string | null; user?: string | null }[];
+  shares: { name?: string | null; path?: string | null; description?: string | null }[];
+  errors: Record<string, string>;
+}
+
+export interface EndpointDetail {
+  endpoint: EndpointListItem;
+  device: { id: number; name: string; ipAddress: string; type: DeviceType } | null;
+  report: EndpointReport | null;
+}
+
+export interface EndpointChange { id: number; endpointId: number; timestampUtc: string; kind: string; item: string; detail: string | null }
+export interface SoftwareSummaryRow { name: string; publisher: string | null; machines: number; versions: string[] }
+export interface SoftwareMachineRow { id: number; name: string; ip: string | null; user: string | null; os: string | null; version: string; lastSeenUtc: string; stale: boolean }
+export interface ProcessHit { endpointId: number; machine: string; name: string; path: string | null; user: string | null; pid: number; commandLine: string | null; lastSeenUtc: string }
+export interface EndpointEventRow { id: number; timestampUtc: string; logName: string; provider: string | null; eventId: number; level: number; message: string }
+
+export interface EndpointSettings {
+  enabled: boolean;
+  intervalMin: number;
+  staleHours: number;
+  collectCommandLines: boolean;
+  collectConnections: boolean;
+  autoCreateDevices: boolean;
+  readForwardedEvents: boolean;
+  storeProcessStarts: boolean;
+  maxForwardedPerCycle: number;
+  changeRetentionDays: number;
+  avSignatureMaxAgeDays: number;
+}
+
+export interface EndpointDeployment {
+  settings: EndpointSettings;
+  enrollmentKey: string;
+  certificateThumbprint: string | null;
+  certificateSubject: string | null;
+  machines: number;
+  reporting: number;
+  stale: number;
+  reportsAccepted: number;
+  reportsRefused: number;
+  lastReportUtc: string | null;
+  forwardedLastReadUtc: string | null;
+  forwardedError: string | null;
+  forwardedEndpointEvents: number;
+  scriptSha256: string;
 }

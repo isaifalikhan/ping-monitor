@@ -344,6 +344,58 @@ public sealed class HardwareSettings
     }
 }
 
+/// <summary>
+/// Endpoint inventory pushed by the GPO scheduled-task script (HitSiemInventory.ps1) and endpoint events
+/// forwarded with Windows Event Forwarding. Stored under key "endpoints". The enrollment key itself is kept
+/// DPAPI-protected in endpoints.db, never in settings.
+/// </summary>
+public sealed class EndpointSettings
+{
+    public const string Key = "endpoints";
+
+    /// <summary>Accept inventory reports from the endpoint script.</summary>
+    public bool Enabled { get; set; } = true;
+
+    /// <summary>How often the scheduled task runs on each machine (written into the deployment kit and returned to the script).</summary>
+    public int IntervalMin { get; set; } = 30;
+
+    /// <summary>"Endpoint stopped reporting" after this many hours without a report (laptops that are off count too).</summary>
+    public int StaleHours { get; set; } = 48;
+
+    /// <summary>Collect process command lines (they can contain passwords typed on a command line).</summary>
+    public bool CollectCommandLines { get; set; } = true;
+
+    /// <summary>Collect established TCP connections (listening ports are always collected).</summary>
+    public bool CollectConnections { get; set; } = true;
+
+    /// <summary>Create a Workstation device for a reporting machine that is not in the inventory yet.</summary>
+    public bool AutoCreateDevices { get; set; } = true;
+
+    /// <summary>Read workstation / member-server events from this server's ForwardedEvents log (WEF).</summary>
+    public bool ReadForwardedEvents { get; set; } = true;
+
+    /// <summary>Store every process start (4688). Many events: about 1,000–3,000 per PC per day.</summary>
+    public bool StoreProcessStarts { get; set; } = true;
+
+    /// <summary>Maximum forwarded endpoint events read per 30-second cycle.</summary>
+    public int MaxForwardedPerCycle { get; set; } = 5000;
+
+    /// <summary>Days of inventory changes (software installed, admin added, USB ...) kept.</summary>
+    public int ChangeRetentionDays { get; set; } = 180;
+
+    /// <summary>Antivirus signatures older than this count as "not protecting".</summary>
+    public int AvSignatureMaxAgeDays { get; set; } = 7;
+
+    public void Normalise()
+    {
+        AvSignatureMaxAgeDays = Math.Clamp(AvSignatureMaxAgeDays, 1, 365);
+        IntervalMin = Math.Clamp(IntervalMin, 5, 1440);
+        StaleHours = Math.Clamp(StaleHours, 1, 24 * 30);
+        MaxForwardedPerCycle = Math.Clamp(MaxForwardedPerCycle, 100, 50000);
+        ChangeRetentionDays = Math.Clamp(ChangeRetentionDays, 7, 3650);
+    }
+}
+
 /// <summary>VMware (vCenter / ESXi) monitoring. Stored under key "vmware".</summary>
 public sealed class VmwareSettings
 {

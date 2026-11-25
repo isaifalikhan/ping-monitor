@@ -11,7 +11,10 @@ public enum DeviceType
     DomainController,
     Hypervisor,
     VCenter,
-    Other
+    Other,
+
+    /// <summary>Desktop or laptop known from the GPO endpoint inventory script; not pinged or polled.</summary>
+    Workstation
 }
 
 /// <summary>Availability status computed by the collector.</summary>

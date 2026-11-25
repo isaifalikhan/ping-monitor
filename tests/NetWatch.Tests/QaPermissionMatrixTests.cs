@@ -24,7 +24,9 @@ namespace NetWatch.Tests;
 [Collection(nameof(StartupTests))]
 public sealed class QaPermissionMatrixTests : IAsyncLifetime
 {
-    private static readonly HashSet<string> Anonymous = ["POST /api/auth/login", "POST /api/auth/logout", "GET /api/auth/options", "POST /api/auth/kiosk"];
+    private static readonly HashSet<string> Anonymous = ["POST /api/auth/login", "POST /api/auth/logout", "GET /api/auth/options", "POST /api/auth/kiosk",
+        // Endpoint inventory from the GPO script: authenticated by the enrollment key or the machine token, not a session.
+        "POST /api/endpoints/report"];
 
     /// <summary>A Viewer's own password and saved searches; report generation/preview/export are reads sent as POST/GET.</summary>
     private static readonly HashSet<string> ViewerAllowedWrites =

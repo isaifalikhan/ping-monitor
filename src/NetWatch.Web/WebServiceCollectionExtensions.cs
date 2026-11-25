@@ -51,6 +51,10 @@ public static class WebServiceCollectionExtensions
             o.AddPolicy(RateLimits.Login, http => RateLimitPartition.GetFixedWindowLimiter(
                 http.Connection.RemoteIpAddress?.ToString() ?? "unknown",
                 _ => new FixedWindowRateLimiterOptions { PermitLimit = 10, Window = TimeSpan.FromMinutes(1), QueueLimit = 0 }));
+            // Endpoint inventory reports: each machine reports every 30 min; a few retries per minute per address.
+            o.AddPolicy(Api.EndpointEndpoints.ReportRateLimit, http => RateLimitPartition.GetFixedWindowLimiter(
+                http.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+                _ => new FixedWindowRateLimiterOptions { PermitLimit = 6, Window = TimeSpan.FromMinutes(1), QueueLimit = 0 }));
             o.AddPolicy(RateLimits.Heavy, http => RateLimitPartition.GetFixedWindowLimiter(
                 http.User.Identity?.Name ?? http.Connection.RemoteIpAddress?.ToString() ?? "unknown",
                 _ => new FixedWindowRateLimiterOptions { PermitLimit = 10, Window = TimeSpan.FromMinutes(1), QueueLimit = 0 }));
@@ -87,6 +91,7 @@ public static class WebServiceCollectionExtensions
         app.MapMaintenanceEndpoints();
         app.MapVmwareEndpoints();
         app.MapDcEndpoints();
+        app.MapEndpointEndpoints();
         Topology.TopologyEndpoints.MapTopologyEndpoints(app);
         Diagnostics.DiagnosticsEndpoints.MapDiagnosticsEndpoints(app);
         app.MapBackupEndpoints();

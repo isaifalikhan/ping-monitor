@@ -5,6 +5,7 @@ using Microsoft.Extensions.Logging;
 using NetWatch.Collectors.Inventory;
 using NetWatch.Collectors.Polling;
 using NetWatch.Collectors.Processing;
+using NetWatch.Core;
 using NetWatch.Data.Config;
 
 namespace NetWatch.Collectors.Scheduling;
@@ -83,7 +84,9 @@ public sealed class PollScheduler : BackgroundService
         foreach (var device in _inventory.All)
         {
             known.Add(device.Id);
-            if (!device.IsEnabled)
+
+            // Workstations report through the endpoint inventory script; they are not pinged (laptops are often off).
+            if (!device.IsEnabled || device.Type == DeviceType.Workstation)
             {
                 continue;
             }

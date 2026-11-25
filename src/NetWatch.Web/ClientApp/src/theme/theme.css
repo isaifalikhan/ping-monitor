@@ -625,9 +625,26 @@ button.danger:hover:not(:disabled) {
   background: var(--crit-bg);
 }
 
-button.ghost {
+button.ghost,
+a.btn.ghost {
   background: transparent;
   border-color: transparent;
+}
+
+/* Download links that look like the primary button. */
+a.btn.primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-contrast);
+  text-decoration: none;
+}
+
+/* Inline text button ("Show", "Set up …"). */
+button.link {
+  background: transparent;
+  border-color: transparent;
+  padding: 0 4px;
+  color: var(--accent);
 }
 
 button.icon {

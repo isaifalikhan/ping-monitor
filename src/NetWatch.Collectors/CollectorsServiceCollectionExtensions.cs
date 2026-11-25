@@ -72,9 +72,16 @@ public static class CollectorsServiceCollectionExtensions
         services.AddHostedService<SyslogReceiver>();
         services.AddHostedService<TrapReceiver>();
 
+        // Endpoint inventory (GPO scheduled-task script) and endpoint events (WEF, read by ForwardedEventsReader).
+        services.AddSingleton<Endpoints.EndpointStore>();
+        services.AddSingleton<Endpoints.EndpointIngestService>();
+        services.AddSingleton<Endpoints.EndpointMonitor>();
+        services.AddHostedService(sp => sp.GetRequiredService<Endpoints.EndpointMonitor>());
+
         if (simulate)
         {
             services.AddHostedService<SimulatedEventGenerator>();
+            services.AddHostedService<SimulatedEndpoints>();
         }
 
         return services;

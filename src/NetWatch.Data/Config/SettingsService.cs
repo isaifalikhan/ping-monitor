@@ -44,6 +44,8 @@ public sealed class SettingsService
 
     public BackupSettings Backup => Get<BackupSettings>(BackupSettings.Key, s => s.Normalise());
 
+    public EndpointSettings Endpoints => Get<EndpointSettings>(EndpointSettings.Key, s => s.Normalise());
+
     public SelfMonitorSettings SelfMonitor => Get<SelfMonitorSettings>(SelfMonitorSettings.Key, s => s.Normalise());
 
     public T Get<T>(string key, Action<T>? normalise = null)

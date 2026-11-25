@@ -1,0 +1,514 @@
+using System.Collections.Concurrent;
+using System.IO.Compression;
+using System.Xml.Linq;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging.Abstractions;
+using NetWatch.Collectors;
+using NetWatch.Collectors.Endpoints;
+using NetWatch.Collectors.Inventory;
+using NetWatch.Collectors.Simulator;
+using NetWatch.Core;
+using NetWatch.Core.Alerts;
+using NetWatch.Core.Configuration;
+using NetWatch.Core.Entities;
+using NetWatch.Core.Monitoring;
+using NetWatch.Data;
+using NetWatch.Data.Config;
+using NetWatch.Data.Events;
+using NetWatch.Web.Api;
+
+namespace NetWatch.Tests;
+
+/// <summary>
+/// Agentless endpoint inventory: the GPO scheduled-task script's report (enrollment, tokens, device linking, change
+/// detection, alert signals), the endpoint events forwarded with WEF, and the deployment kit. The script itself and
+/// real GPO / WEF delivery are covered on a real machine (PENDING PILOT for the domain rollout).
+/// </summary>
+public sealed class EndpointInventoryTests : IAsyncLifetime
+{
+    private readonly string _root = Path.Combine(Path.GetTempPath(), "netwatch-endpoints-" + Guid.NewGuid().ToString("N"));
+    private readonly Clock _clock = new(new DateTime(2026, 11, 25, 8, 0, 0, DateTimeKind.Utc));
+    private readonly RecordingSink _signals = new();
+    private ServiceProvider _sp = null!;
+
+    public async Task InitializeAsync()
+    {
+        var services = new ServiceCollection();
+        services.AddLogging();
+        services.AddNetWatchData(new NetWatchPaths(_root));
+        services.AddNetWatchCollectors();
+        services.AddSingleton<TimeProvider>(_clock); // after AddNetWatchData, which registers TimeProvider.System
+        services.AddSingleton<IAlertSignalSink>(_signals);
+        _sp = services.BuildServiceProvider();
+        await _sp.InitialiseDatabasesAsync(NullLogger.Instance);
+        await Inventory.ReloadAsync(CancellationToken.None);
+    }
+
+    public async Task DisposeAsync()
+    {
+        await _sp.DisposeAsync();
+        Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
+        try
+        {
+            Directory.Delete(_root, recursive: true);
+        }
+        catch (IOException)
+        {
+        }
+    }
+
+    private EndpointIngestService Ingest => _sp.GetRequiredService<EndpointIngestService>();
+
+    private EndpointStore Store => _sp.GetRequiredService<EndpointStore>();
+
+    private InventoryCache Inventory => _sp.GetRequiredService<InventoryCache>();
+
+    private static EndpointReport Report(int i = 1, int round = 0) => SimulatedEndpoints.Build(i, round, new Random(1));
+
+    private Task<IngestResult> Send(EndpointReport report, string machine = "test-machine-0001", string? token = null, string? key = null, string ip = "10.9.0.11") =>
+        Ingest.IngestAsync(new IngestRequest(machine, token, key ?? (token is null ? Store.EnrollmentKey() : null), ip, report), CancellationToken.None);
+
+    // ---------------------------------------------------------------- enrollment and tokens
+
+    [Fact]
+    public async Task Enrollment_needs_the_key_then_only_the_machine_token_works()
+    {
+        var wrongKey = await Send(Report(), key: "not-the-key");
+        Assert.Equal(IngestStatus.Unauthorized, wrongKey.Status);
+        Assert.Null(Store.FindByMachine("test-machine-0001"));
+
+        var enrolled = await Send(Report());
+        Assert.Equal(IngestStatus.Ok, enrolled.Status);
+        Assert.False(string.IsNullOrEmpty(enrolled.NewToken));
+
+        _clock.Advance(TimeSpan.FromMinutes(30));
+        Assert.Equal(IngestStatus.Unauthorized, (await Send(Report(), token: "forged-token")).Status);
+
+        // With the key but without the token, an enrolled machine ID cannot be taken over.
+        Assert.Equal(IngestStatus.Unauthorized, (await Send(Report())).Status);
+
+        var next = await Send(Report(), token: enrolled.NewToken);
+        Assert.Equal(IngestStatus.Ok, next.Status);
+        Assert.Null(next.NewToken);
+
+        // Reports faster than once a minute are refused.
+        Assert.Equal(IngestStatus.TooSoon, (await Send(Report(), token: enrolled.NewToken)).Status);
+
+        // The token is stored only as a hash.
+        Assert.NotEqual(enrolled.NewToken, Store.FindByMachine("test-machine-0001")!.TokenHash);
+    }
+
+    [Fact]
+    public async Task Rotated_key_keeps_enrolled_machines_working_and_reset_requires_the_new_key()
+    {
+        var enrolled = await Send(Report());
+        var oldKey = Store.EnrollmentKey();
+        var newKey = Store.RotateEnrollmentKey();
+        Assert.NotEqual(oldKey, newKey);
+
+        _clock.Advance(TimeSpan.FromMinutes(30));
+        Assert.Equal(IngestStatus.Ok, (await Send(Report(), token: enrolled.NewToken)).Status);
+
+        await Store.ResetTokenAsync(Store.FindByMachine("test-machine-0001")!.Id);
+        _clock.Advance(TimeSpan.FromMinutes(30));
+        Assert.Equal(IngestStatus.Unauthorized, (await Send(Report(), key: oldKey)).Status);
+        var again = await Send(Report(), key: newKey);
+        Assert.Equal(IngestStatus.Ok, again.Status);
+        Assert.NotNull(again.NewToken);
+    }
+
+    [Fact]
+    public async Task A_second_machine_with_an_active_name_is_refused_but_a_silent_one_is_replaced()
+    {
+        Assert.Equal(IngestStatus.Ok, (await Send(Report(), machine: "machine-aaaa-0001")).Status);
+        _clock.Advance(TimeSpan.FromHours(2));
+        var clash = await Send(Report(), machine: "machine-bbbb-0002");
+        Assert.Equal(IngestStatus.Conflict, clash.Status);
+
+        _clock.Advance(TimeSpan.FromHours(30));
+        Assert.Equal(IngestStatus.Ok, (await Send(Report(), machine: "machine-bbbb-0002")).Status);
+        Assert.Null(Store.FindByMachine("machine-aaaa-0001"));
+    }
+
+    [Theory]
+    [InlineData("short", "PC01")]
+    [InlineData("bad machine id!", "PC01")]
+    [InlineData("good-machine-0001", "bad name")]
+    [InlineData("good-machine-0001", "")]
+    public async Task Invalid_identities_are_refused(string machine, string name)
+    {
+        var r = Report();
+        r.System.ComputerName = name;
+        Assert.Equal(IngestStatus.Invalid, (await Send(r, machine: machine)).Status);
+    }
+
+    [Fact]
+    public async Task Turned_off_inventory_refuses_reports()
+    {
+        var settings = _sp.GetRequiredService<SettingsService>();
+        await settings.SaveAsync(EndpointSettings.Key, new EndpointSettings { Enabled = false }, null, CancellationToken.None);
+        Assert.Equal(IngestStatus.Disabled, (await Send(Report())).Status);
+    }
+
+    // ---------------------------------------------------------------- devices
+
+    [Fact]
+    public async Task Unknown_workstation_becomes_a_Workstation_device_that_is_not_polled()
+    {
+        var result = await Send(Report(3));
+        var device = Inventory.GetSnapshot(result.DeviceId!.Value)!;
+        Assert.Equal(DeviceType.Workstation, device.Type);
+        Assert.Equal("SIM-PC-003", device.Name);
+        Assert.Equal("10.250.60.13", device.IpAddress);
+        Assert.Contains(EndpointIngestService.EndpointTag, device.Tags);
+
+        using var scope = _sp.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<NetWatchDbContext>();
+        var row = await db.Devices.SingleAsync(d => d.Id == device.Id);
+        Assert.Equal(DeviceStatus.Up, row.Status);
+        Assert.Equal(OsKind.Windows, row.Os);
+        Assert.Equal("SIM0003X", row.SerialNumber);
+    }
+
+    [Fact]
+    public async Task Existing_server_is_matched_by_name_or_fixed_ip_and_never_renumbered()
+    {
+        using (var scope = _sp.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<NetWatchDbContext>();
+            db.Devices.Add(new Device { Name = "File server", IpAddress = "10.250.60.28", Type = DeviceType.Server, CreatedUtc = DateTime.UtcNow, UpdatedUtc = DateTime.UtcNow });
+            db.Devices.Add(new Device { Name = "sim-pc-004.corp.sim", IpAddress = "10.1.1.4", Type = DeviceType.Other, CreatedUtc = DateTime.UtcNow, UpdatedUtc = DateTime.UtcNow });
+            await db.SaveChangesAsync();
+        }
+
+        await Inventory.ReloadAsync(CancellationToken.None);
+        var server = await Send(Report(18), machine: "server-018-0000", ip: "10.250.60.28");
+        Assert.Equal("File server", Inventory.GetSnapshot(server.DeviceId!.Value)!.Name);
+
+        var byName = await Send(Report(4), machine: "pc-0004-0000", ip: "10.250.60.14");
+        var snap = Inventory.GetSnapshot(byName.DeviceId!.Value)!;
+        Assert.Equal("sim-pc-004.corp.sim", snap.Name);
+        Assert.Equal("10.1.1.4", snap.IpAddress);
+    }
+
+    [Fact]
+    public async Task Dhcp_address_moving_to_another_workstation_moves_the_old_holder_to_a_placeholder()
+    {
+        var a = Report(1);
+        a.Adapters[0].Ips = ["10.9.9.9"];
+        var first = await Send(a, machine: "machine-one-0001", ip: "10.9.9.9");
+
+        var b = Report(2);
+        b.Adapters[0].Ips = ["10.9.9.9"];
+        var second = await Send(b, machine: "machine-two-0002", ip: "10.9.9.9");
+
+        await Inventory.ReloadAsync(CancellationToken.None);
+        Assert.Equal("10.9.9.9", Inventory.GetSnapshot(second.DeviceId!.Value)!.IpAddress);
+        Assert.StartsWith("0.", Inventory.GetSnapshot(first.DeviceId!.Value)!.IpAddress, StringComparison.Ordinal);
+    }
+
+    // ---------------------------------------------------------------- changes and signals
+
+    [Fact]
+    public async Task Changes_between_two_inventories_are_stored_and_raise_signals()
+    {
+        var first = await Send(Report(7, 0), machine: "machine-007-0000");
+        Assert.Single(Store.Changes(first.EndpointId, DateTime.MinValue, null, 100), c => c.Kind == ChangeKinds.Enrolled);
+        Assert.DoesNotContain(_signals.All.OfType<EventSignal>(), s => s.EventKey == EventKeys.EndpointChange);
+
+        var next = Report(7, 2); // round 2: AnyDesk installed and running
+        next.LocalAdmins.Add(new EpAccount { Name = "CORP\\intruder", Type = "User", Source = "Domain" });
+        next.Usb.Add(new EpUsb { Name = "Kingston DataTraveler", DeviceId = "USBSTOR\\DISK&VEN_KINGSTON\\123", Storage = true, Present = false });
+        next.Firewall.Single(f => f.Name == "Public").Enabled = false;
+        next.Listening.Add(new EpPort { Protocol = "TCP", Address = "0.0.0.0", Port = 5900, Process = "vnc.exe" });
+        next.Listening.Add(new EpPort { Protocol = "UDP", Address = "0.0.0.0", Port = 61000, Process = "chrome.exe" });
+        _clock.Advance(TimeSpan.FromMinutes(30));
+        var result = await Send(next, machine: "machine-007-0000", token: first.NewToken);
+        Assert.Equal(IngestStatus.Ok, result.Status);
+
+        var kinds = Store.Changes(first.EndpointId, DateTime.MinValue, null, 100).Select(c => (c.Kind, c.Item)).ToList();
+        Assert.Contains((ChangeKinds.SoftwareInstalled, "AnyDesk"), kinds);
+        Assert.Contains((ChangeKinds.LocalAdminAdded, "CORP\\intruder"), kinds);
+        Assert.Contains((ChangeKinds.UsbStorage, "Kingston DataTraveler"), kinds);
+        Assert.Contains((ChangeKinds.FirewallDisabled, "Public profile"), kinds);
+        Assert.Contains((ChangeKinds.PortOpened, "TCP 5900"), kinds);
+        Assert.DoesNotContain(kinds, k => k.Item == "UDP 61000");
+
+        var events = _signals.All.OfType<EventSignal>().Where(s => s.EventKey == EventKeys.EndpointChange).ToList();
+        Assert.Contains(events, e => e.Fields!["change"] == ChangeKinds.LocalAdminAdded && e.Severity == Severity.Major);
+        Assert.Contains(events, e => e.Fields!["change"] == ChangeKinds.SoftwareInstalled && e.Message.Contains("AnyDesk", StringComparison.Ordinal));
+        Assert.Contains(_signals.All.OfType<StateSignal>(), s => s.StateKey == StateKeys.EndpointFirewallOff && s.Instance == "Public" && s.IsProblem);
+
+        // The software and process tables answer fleet-wide searches.
+        Assert.Contains(Store.SoftwareSummary("anydesk", 10), s => s.Name == "AnyDesk" && s.Machines == 1);
+        Assert.Contains(Store.SearchProcesses("anydesk", 10), p => p.Name == "anydesk.exe");
+    }
+
+    [Fact]
+    public async Task A_section_that_failed_on_the_machine_is_not_reported_as_everything_removed()
+    {
+        var first = await Send(Report(2), machine: "machine-002-0000");
+        var broken = Report(2);
+        broken.Software.Clear();
+        broken.Errors["software"] = "Access denied";
+        _clock.Advance(TimeSpan.FromMinutes(30));
+        await Send(broken, machine: "machine-002-0000", token: first.NewToken);
+        Assert.DoesNotContain(Store.Changes(first.EndpointId, DateTime.MinValue, null, 100), c => c.Kind == ChangeKinds.SoftwareRemoved);
+        Assert.Contains("software: Access denied", Store.Get(first.EndpointId!.Value)!.Errors, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Antivirus_patch_and_disk_signals_are_published()
+    {
+        var result = await Send(Report(13), machine: "machine-013-0000"); // Defender disabled in the simulator
+        var id = result.DeviceId!.Value;
+        Assert.Contains(_signals.All.OfType<StateSignal>(), s => s.DeviceId == id && s.StateKey == StateKeys.EndpointAntivirus && s.IsProblem);
+        Assert.Contains(_signals.All.OfType<MetricSignal>(), s => s.DeviceId == id && s.MetricKey == MetricKeys.EndpointPatchAgeDays);
+        Assert.Contains(_signals.All.OfType<MetricSignal>(), s => s.DeviceId == id && s.MetricKey == MetricKeys.DiskUsed && s.Instance == "C:");
+        Assert.Contains(_signals.All.OfType<StateSignal>(), s => s.DeviceId == id && s.StateKey == StateKeys.EndpointStale && !s.IsProblem);
+    }
+
+    [Fact]
+    public async Task Silent_machine_raises_stale_and_its_workstation_turns_unknown()
+    {
+        var result = await Send(Report(9), machine: "machine-009-0000");
+        _clock.Advance(TimeSpan.FromHours(49));
+        var monitor = _sp.GetRequiredService<EndpointMonitor>();
+        Assert.Equal(1, await monitor.CheckAsync(_clock.GetUtcNow().UtcDateTime, CancellationToken.None));
+        Assert.Contains(_signals.All.OfType<StateSignal>(), s => s.DeviceId == result.DeviceId && s.StateKey == StateKeys.EndpointStale && s.IsProblem);
+        using var scope = _sp.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<NetWatchDbContext>();
+        Assert.Equal(DeviceStatus.Unknown, (await db.Devices.SingleAsync(d => d.Id == result.DeviceId)).Status);
+    }
+
+    [Fact]
+    public void Antivirus_rules()
+    {
+        EndpointReport With(EpAntivirus av) => new() { Antivirus = av };
+        var freshDefender = new EpDefender { ServiceEnabled = true, RealTimeProtection = true, SignatureAgeDays = 1 };
+        Assert.Null(EndpointDiff.AvProblem(With(new EpAntivirus { Products = [new EpAvProduct { Name = "Windows Defender", Enabled = true }], Defender = freshDefender }), 7));
+        Assert.NotNull(EndpointDiff.AvProblem(With(new EpAntivirus { Products = [new EpAvProduct { Name = "Windows Defender", Enabled = false }] }), 7));
+
+        // A third-party product protecting: Defender being passive is normal.
+        Assert.Null(EndpointDiff.AvProblem(With(new EpAntivirus
+        {
+            Products = [new EpAvProduct { Name = "Windows Defender", Enabled = false }, new EpAvProduct { Name = "ESET Endpoint Security", Enabled = true, UpToDate = true }],
+            Defender = new EpDefender { RealTimeProtection = false },
+        }), 7));
+
+        // Servers have no Security Center: Defender itself decides.
+        Assert.Contains("real-time", EndpointDiff.AvProblem(With(new EpAntivirus { Defender = new EpDefender { ServiceEnabled = true, RealTimeProtection = false } }), 7)!, StringComparison.Ordinal);
+        Assert.Contains("9 days", EndpointDiff.AvProblem(With(new EpAntivirus { Defender = new EpDefender { ServiceEnabled = true, RealTimeProtection = true, SignatureAgeDays = 9 } }), 7)!, StringComparison.Ordinal);
+        Assert.Null(EndpointDiff.AvProblem(With(new EpAntivirus { Defender = new EpDefender { ServiceEnabled = true, RealTimeProtection = true, SignatureAgeDays = 9 } }), 10));
+        Assert.Null(EndpointDiff.AvProblem(new EndpointReport(), 7));
+    }
+
+    [Fact]
+    public void Primary_ip_prefers_the_source_address_when_it_is_the_machines_own()
+    {
+        var r = new EndpointReport
+        {
+            Adapters =
+            [
+                new EpAdapter { Ips = ["169.254.1.1", "fe80::1"] },
+                new EpAdapter { Ips = ["192.168.56.1"] },
+                new EpAdapter { Ips = ["10.1.2.3"], Gateways = ["10.1.2.1"] },
+            ],
+        };
+        Assert.Equal("192.168.56.1", EndpointDiff.PrimaryIp(r, "192.168.56.1"));
+        Assert.Equal("10.1.2.3", EndpointDiff.PrimaryIp(r, "172.20.0.5")); // behind NAT / proxy
+        Assert.Equal("10.1.2.3", EndpointDiff.PrimaryIp(r, "127.0.0.1"));
+        Assert.Equal("172.20.0.5", EndpointDiff.PrimaryIp(new EndpointReport(), "172.20.0.5"));
+    }
+
+    [Fact]
+    public void Oversized_reports_are_capped()
+    {
+        var r = new EndpointReport { Processes = Enumerable.Range(0, 5000).Select(i => new EpProcess { Pid = i, Name = "x", CommandLine = new string('a', 10000) }).ToList() };
+        EndpointDiff.Sanitize(r);
+        Assert.Equal(3000, r.Processes.Count);
+        Assert.Equal(2048, r.Processes[0].CommandLine!.Length);
+    }
+
+    // ---------------------------------------------------------------- forwarded endpoint events (WEF)
+
+    private static string EventXml(string channel, int id, string data, long record = 100, string computer = "SIM-PC-003.corp.sim", string provider = "Microsoft-Windows-Security-Auditing") => $"""
+        <Event xmlns="http://schemas.microsoft.com/win/2004/08/events/event">
+          <System><Provider Name="{provider}"/><EventID>{id}</EventID><Level>0</Level>
+            <TimeCreated SystemTime="2026-11-25T08:00:00.000Z"/><EventRecordID>{record}</EventRecordID>
+            <Channel>{channel}</Channel><Computer>{computer}</Computer></System>
+          <EventData>{data}</EventData>
+        </Event>
+        """;
+
+    [Fact]
+    public void Process_start_with_an_attack_command_line_is_suspicious()
+    {
+        var e = EndpointEventCatalog.Parse(EventXml("Security", 4688,
+            "<Data Name='SubjectUserName'>user003</Data><Data Name='SubjectDomainName'>CORP</Data><Data Name='NewProcessName'>C:\\Windows\\System32\\vssadmin.exe</Data><Data Name='CommandLine'>vssadmin.exe delete shadows /all /quiet</Data><Data Name='ParentProcessName'>C:\\Windows\\System32\\cmd.exe</Data>".Replace('\'', '"')))!;
+        var info = EndpointEventCatalog.Describe(e);
+        Assert.Equal("true", info.Fields["suspicious"]);
+        Assert.Equal("vssadmin.exe", info.Fields["process"]);
+        Assert.Equal("CORP\\user003", info.Fields["user"]);
+        Assert.Equal(Severity.Major, info.Severity);
+
+        var normal = EndpointEventCatalog.Describe(EndpointEventCatalog.Parse(EventXml("Security", 4688,
+            "<Data Name=\"NewProcessName\">C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe</Data><Data Name=\"CommandLine\">chrome.exe --type=renderer</Data>"))!);
+        Assert.Equal("false", normal.Fields["suspicious"]);
+
+        Assert.Matches(EndpointEventCatalog.SuspiciousCommand(), "powershell.exe -nop -w hidden -enc SQBFAFgAIAAoAE4AZQB3AC0ATwBiAGoAZQBjAHQA");
+        Assert.Matches(EndpointEventCatalog.SuspiciousCommand(), "rundll32.exe C:\\windows\\System32\\comsvcs.dll, MiniDump 624 C:\\temp\\lsass.dmp full");
+        Assert.DoesNotMatch(EndpointEventCatalog.SuspiciousCommand(), "powershell.exe -ExecutionPolicy Bypass -File \\\\corp\\NETLOGON\\HitSiem\\HitSiemInventory.ps1");
+    }
+
+    [Fact]
+    public void Local_admin_usb_malware_and_unknown_events()
+    {
+        var admin = EndpointEventCatalog.Describe(EndpointEventCatalog.Parse(EventXml("Security", 4732,
+            "<Data Name=\"MemberSid\">S-1-5-21-1-2-3-1105</Data><Data Name=\"TargetUserName\">Administratoren</Data><Data Name=\"TargetSid\">S-1-5-32-544</Data><Data Name=\"SubjectUserName\">helpdesk</Data><Data Name=\"SubjectDomainName\">CORP</Data>"))!);
+        Assert.Equal("true", admin.Fields["privileged"]); // by SID, so a German "Administratoren" group counts too
+        Assert.Equal(Severity.Major, admin.Severity);
+
+        var usb = EndpointEventCatalog.Describe(EndpointEventCatalog.Parse(EventXml("Security", 6416,
+            "<Data Name=\"DeviceId\">USBSTOR\\DISK&amp;VEN_SANDISK\\4C53</Data><Data Name=\"DeviceDescription\">SanDisk Cruzer</Data><Data Name=\"ClassName\">DiskDrive</Data>"))!);
+        Assert.Equal("true", usb.Fields["usbStorage"]);
+
+        var malware = EndpointEventCatalog.Describe(EndpointEventCatalog.Parse(EventXml(EndpointEventCatalog.Defender, 1116,
+            "<Data Name=\"Threat Name\">Trojan:Win32/Wacatac</Data><Data Name=\"Path\">file:_C:\\Users\\u\\Downloads\\x.exe</Data><Data Name=\"Detection User\">CORP\\u</Data>",
+            provider: "Microsoft-Windows-Windows Defender"))!);
+        Assert.Equal(Severity.Critical, malware.Severity);
+        Assert.Equal("Trojan:Win32/Wacatac", malware.Fields["threat"]);
+
+        var msi = EndpointEventCatalog.Describe(EndpointEventCatalog.Parse(EventXml("Application", 11707, "<Data>Product: AnyDesk -- Installation completed successfully.</Data>", provider: "MsiInstaller"))!);
+        Assert.Equal("AnyDesk", msi.Fields["product"]);
+
+        Assert.Null(EndpointEventCatalog.Parse(EventXml("Security", 4624, "<Data Name=\"TargetUserName\">x</Data>")));
+        Assert.Null(EndpointEventCatalog.Parse("<not xml"));
+        Assert.Equal("Firewall", EndpointEventCatalog.ShortLog(EndpointEventCatalog.Firewall));
+    }
+
+    [Fact]
+    public async Task Forwarded_events_are_stored_once_and_signalled()
+    {
+        var device = Inventory.GetSnapshot((await Send(Report(3))).DeviceId!.Value)!;
+        var readings = new[]
+        {
+            EndpointEventCatalog.Parse(EventXml("Security", 4688, "<Data Name=\"NewProcessName\">C:\\x\\mimikatz.exe</Data><Data Name=\"CommandLine\">mimikatz.exe sekurlsa::logonpasswords</Data>", 501))!,
+            EndpointEventCatalog.Parse(EventXml("Security", 4688, "<Data Name=\"NewProcessName\">C:\\Windows\\notepad.exe</Data>", 502))!,
+            EndpointEventCatalog.Parse(EventXml("System", 7045, "<Data Name=\"ServiceName\">PSEXESVC</Data><Data Name=\"ImagePath\">%SystemRoot%\\PSEXESVC.exe</Data>", 77, provider: "Service Control Manager"))!,
+        };
+        using var scope = _sp.CreateScope();
+        var events = scope.ServiceProvider.GetRequiredService<EventsDbContext>();
+
+        // Process starts not stored: only the suspicious one is kept, all are signalled.
+        Assert.Equal(2, await EndpointEventCatalog.IngestAsync(device, readings, storeProcessStarts: false, events, _signals, CancellationToken.None));
+        Assert.Equal(0, await EndpointEventCatalog.IngestAsync(device, readings, storeProcessStarts: false, events, _signals, CancellationToken.None));
+        var stored = await events.WindowsEvents.Where(w => w.DeviceId == device.Id).ToListAsync();
+        Assert.Equal(2, stored.Count);
+        Assert.Contains(stored, w => w.LogName == "Security" && w.EventId == 4688 && w.Message.Contains("mimikatz", StringComparison.Ordinal));
+        Assert.Contains(stored, w => w.LogName == "System" && w.EventId == 7045);
+        Assert.Contains(_signals.All.OfType<EventSignal>(), s => s.EventKey == EventKeys.EndpointEvent && s.Fields!["suspicious"] == "true");
+    }
+
+    // ---------------------------------------------------------------- default rules, kit, script
+
+    [Fact]
+    public void Default_rules_cover_the_endpoint_signals()
+    {
+        var rules = NetWatch.Alerts.DefaultRules.Create(DateTime.UtcNow);
+        foreach (var key in new[] { StateKeys.EndpointStale, StateKeys.EndpointFirewallOff, StateKeys.EndpointAntivirus, MetricKeys.EndpointMissingUpdates, MetricKeys.EndpointPatchAgeDays })
+        {
+            Assert.Contains(rules, r => r.Key == key);
+        }
+
+        var change = rules.Where(r => r.Key == EventKeys.EndpointChange).Select(r => EventFilter.Parse(r.FilterJson).FieldEquals["change"]).ToList();
+        Assert.Contains(ChangeKinds.SoftwareInstalled, change);
+        Assert.Contains(ChangeKinds.LocalAdminAdded, change);
+        Assert.Contains(ChangeKinds.UsbStorage, change);
+
+        // Every event ID an endpoint rule filters on is in the WEF subscription.
+        var forwarded = EndpointEventCatalog.Events.Values.SelectMany(v => v).ToHashSet();
+        foreach (var rule in rules.Where(r => r.Key == EventKeys.EndpointEvent))
+        {
+            Assert.All(EventFilter.Parse(rule.FilterJson).EventIds, id => Assert.Contains(id, forwarded));
+        }
+    }
+
+    [Fact]
+    public void Deployment_kit_contains_script_config_subscription_and_instructions()
+    {
+        var zip = EndpointKit.Build("https://hitsiem.corp.local:8443", "the-key", "ABCDEF", new EndpointSettings { IntervalMin = 20, CollectCommandLines = false });
+        using var archive = new ZipArchive(new MemoryStream(zip));
+        Assert.Equal(["HitSiem-Endpoints-Query.xml", "HitSiem-Endpoints-Subscription.xml", "HitSiemInventory.ps1", "README.txt", "hitsiem-endpoint.json"],
+            archive.Entries.Select(e => e.FullName).Order(StringComparer.Ordinal).ToArray());
+
+        string Read(string name)
+        {
+            using var r = new StreamReader(archive.GetEntry(name)!.Open());
+            return r.ReadToEnd();
+        }
+
+        var config = System.Text.Json.JsonDocument.Parse(Read("hitsiem-endpoint.json")).RootElement;
+        Assert.Equal("https://hitsiem.corp.local:8443", config.GetProperty("server").GetString());
+        Assert.Equal("the-key", config.GetProperty("enrollmentKey").GetString());
+        Assert.Equal("ABCDEF", config.GetProperty("thumbprint").GetString());
+        Assert.False(config.GetProperty("collectCommandLines").GetBoolean());
+
+        var readme = Read("README.txt");
+        Assert.DoesNotContain("{SERVER}", readme, StringComparison.Ordinal);
+        Assert.Contains("Server=http://hitsiem.corp.local:5985/wsman/SubscriptionManager/WEC", readme, StringComparison.Ordinal);
+        Assert.Contains("every 20 minutes", readme, StringComparison.Ordinal);
+
+        var subscription = XDocument.Parse(Read("HitSiem-Endpoints-Subscription.xml"));
+        XNamespace ns = "http://schemas.microsoft.com/2006/03/windows/events/subscription";
+        Assert.Equal("SourceInitiated", subscription.Root!.Element(ns + "SubscriptionType")!.Value);
+        var query = XDocument.Parse(subscription.Root.Element(ns + "Query")!.Value);
+        Assert.Equal(EndpointEventCatalog.Events.Count, query.Descendants("Select").Count());
+        Assert.Contains(query.Descendants("Select"), s => s.Attribute("Path")!.Value == "Security" && s.Value.Contains("EventID=4688", StringComparison.Ordinal));
+
+        Assert.Contains("HIT SIEM endpoint inventory", Read("HitSiemInventory.ps1"), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Script_parses_in_Windows_PowerShell_5_1_and_has_no_internet_endpoints()
+    {
+        var path = Path.Combine(_root, "HitSiemInventory.ps1");
+        Directory.CreateDirectory(_root);
+        File.WriteAllBytes(path, EndpointKit.Script());
+        var psi = new System.Diagnostics.ProcessStartInfo("powershell.exe",
+            $"-NoProfile -NonInteractive -Command \"$e=$null; [void][System.Management.Automation.Language.Parser]::ParseFile('{path}', [ref]$null, [ref]$e); if ($e.Count) {{ $e | ForEach-Object {{ $_.ToString() }}; exit 1 }}; exit 0\"")
+        {
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            UseShellExecute = false,
+        };
+        using var p = System.Diagnostics.Process.Start(psi)!;
+        var output = p.StandardOutput.ReadToEnd() + p.StandardError.ReadToEnd();
+        p.WaitForExit(60000);
+        Assert.True(p.ExitCode == 0, output);
+
+        var text = System.Text.Encoding.UTF8.GetString(EndpointKit.Script());
+        Assert.DoesNotMatch(@"https?://(?!localhost)[a-z0-9.-]+\.(com|net|org|io)", text);
+        Assert.DoesNotContain("Invoke-WebRequest", text, StringComparison.Ordinal);
+        Assert.Contains("$searcher.Online = $false", text, StringComparison.Ordinal);
+    }
+
+    private sealed class Clock(DateTime start) : TimeProvider
+    {
+        private long _ticks = start.Ticks;
+
+        public override DateTimeOffset GetUtcNow() => new(Interlocked.Read(ref _ticks), TimeSpan.Zero);
+
+        public void Advance(TimeSpan by) => Interlocked.Add(ref _ticks, by.Ticks);
+    }
+
+    private sealed class RecordingSink : IAlertSignalSink
+    {
+        private readonly ConcurrentQueue<AlertSignal> _signals = new();
+
+        public IReadOnlyList<AlertSignal> All => _signals.ToArray();
+
+        public void Publish(AlertSignal signal) => _signals.Enqueue(signal);
+    }
+}

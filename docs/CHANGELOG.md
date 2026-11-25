@@ -8,6 +8,13 @@
 - **Device name per MAC:** the MAC tables, port details and MAC search show the connected device's name (HIT SIEM
   device with that IP, LLDP name, or DNS name) next to its IP. Port details show the *Connected device*.
 - Switches and routers with an SSH credential are no longer polled as Linux servers.
+- **Endpoints (agentless, GPO):** a GPO scheduled task runs `HitSiemInventory.ps1` from NETLOGON as SYSTEM and
+  sends each Windows machine's inventory over HTTPS: hardware, OS, processes, services, software, updates and
+  missing patches, firewall and antivirus state, users and local administrators, ports and connections, USB
+  devices, startup programs, shares. Per-machine enrollment tokens, change history, fleet-wide software and process
+  search, new device type *Workstation* (not pinged), 15 built-in rules. Windows Event Forwarding adds live endpoint
+  events (process starts with suspicious command lines, local admin added, USB storage, malware, new services, log
+  cleared). Deployment kit with GPO instructions under *Endpoints → Deployment*.
 
 - **DC Security log backfill:** on the first remote read of a DC, the last 24 h still in its Security log are read
   as well (*Settings → General → Domain controllers*, 0–720 h, 0 = only new events). Backfilled events are stored

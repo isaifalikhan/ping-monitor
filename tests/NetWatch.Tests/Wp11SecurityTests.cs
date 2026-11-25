@@ -19,7 +19,9 @@ namespace NetWatch.Tests;
 /// </summary>
 public sealed class Wp11SecurityTests : IDisposable
 {
-    private static readonly HashSet<string> Anonymous = ["POST /api/auth/login", "POST /api/auth/logout", "GET /api/auth/options", "POST /api/auth/kiosk"];
+    private static readonly HashSet<string> Anonymous = ["POST /api/auth/login", "POST /api/auth/logout", "GET /api/auth/options", "POST /api/auth/kiosk",
+        // Endpoint inventory from the GPO script: authenticated by the enrollment key or the machine token, not a session.
+        "POST /api/endpoints/report"];
 
     /// <summary>Changes a Viewer may make: their own password and their own saved searches.</summary>
     private static readonly HashSet<string> ViewerWrites = ["POST /api/auth/change-password", "POST /api/saved-searches/", "DELETE /api/saved-searches/{id:int}"];

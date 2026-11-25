@@ -23,6 +23,8 @@
   <!-- The built UI (npm run build â†’ ClientApp/dist) is embedded into the assembly, so the service exe is self-contained. -->
   <ItemGroup>
     <EmbeddedResource Include="ClientApp\dist\**\*" />
+    <!-- Endpoint deployment kit (GPO script, instructions), served by /api/endpoints/kit. -->
+    <EmbeddedResource Include="EndpointKit\*" LogicalName="EndpointKit.%(Filename)%(Extension)" />
     <None Remove="ClientApp\**" />
     <Content Remove="ClientApp\**" />
     <Compile Remove="ClientApp\**" />

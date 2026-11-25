@@ -27,16 +27,18 @@ public sealed class ForwardedEventsReader : BackgroundService
     private readonly InventoryCache _inventory;
     private readonly DcResultProcessor _processor;
     private readonly IServiceScopeFactory _scopeFactory;
+    private readonly NetWatch.Core.Alerts.IAlertSignalSink _alerts;
     private readonly ILogger<ForwardedEventsReader> _logger;
     private EventBookmark? _bookmark;
     private DateTime _since = DateTime.UtcNow - StartupLookback;
 
-    public ForwardedEventsReader(SettingsService settings, InventoryCache inventory, DcResultProcessor processor, IServiceScopeFactory scopeFactory, ILogger<ForwardedEventsReader> logger)
+    public ForwardedEventsReader(SettingsService settings, InventoryCache inventory, DcResultProcessor processor, IServiceScopeFactory scopeFactory, NetWatch.Core.Alerts.IAlertSignalSink alerts, ILogger<ForwardedEventsReader> logger)
     {
         _settings = settings;
         _inventory = inventory;
         _processor = processor;
         _scopeFactory = scopeFactory;
+        _alerts = alerts;
         _logger = logger;
     }
 
@@ -50,7 +52,7 @@ public sealed class ForwardedEventsReader : BackgroundService
         using var timer = new PeriodicTimer(Interval);
         do
         {
-            if (!_settings.Dc.AnyForwarding)
+            if (!_settings.Dc.AnyForwarding && !_settings.Endpoints.ReadForwardedEvents)
             {
                 LastError = null;
                 continue;
@@ -79,8 +81,11 @@ public sealed class ForwardedEventsReader : BackgroundService
     private async Task ReadAsync(CancellationToken ct)
     {
         var dcSettings = _settings.Dc;
-        var max = dcSettings.MaxSecurityEventsPerPoll;
+        var endpointSettings = _settings.Endpoints;
+        var readEndpoints = endpointSettings.ReadForwardedEvents;
+        var max = readEndpoints ? Math.Max(dcSettings.MaxSecurityEventsPerPoll, endpointSettings.MaxForwardedPerCycle) : dcSettings.MaxSecurityEventsPerPoll;
         var batch = new Dictionary<int, List<DcSecurityReading>>();
+        var endpointBatch = new Dictionary<int, List<Endpoints.EndpointEventReading>>();
         EventBookmark? newest = _bookmark;
 
         await Task.Run(() =>
@@ -100,30 +105,44 @@ public sealed class ForwardedEventsReader : BackgroundService
                 }
 
                 newest = record.Bookmark;
-                if (record.LogName is not { } log || !log.Equals(DcLogs.Security, StringComparison.OrdinalIgnoreCase) ||
-                    DcEventParser.Parse(record.ToXml()) is not { } parsed)
+                if (record.LogName is not { } log)
                 {
                     continue;
                 }
 
-                // Only DCs set to WEF; the others are read remotely (and the unique index would drop duplicates anyway).
-                if (FindDc(parsed.Computer) is not { } device || !dcSettings.UsesForwarding(device.Name, device.IpAddress))
+                var source = FindDevice(record.MachineName);
+                if (source is { Type: DeviceType.DomainController })
                 {
-                    continue;
-                }
+                    // Only DCs set to WEF; the others are read remotely (and the unique index would drop duplicates anyway).
+                    if (!log.Equals(DcLogs.Security, StringComparison.OrdinalIgnoreCase) || !dcSettings.UsesForwarding(source.Name, source.IpAddress) ||
+                        DcEventParser.Parse(record.ToXml()) is not { } parsed)
+                    {
+                        continue;
+                    }
 
-                if (!batch.TryGetValue(device.Id, out var list))
+                    if (!batch.TryGetValue(source.Id, out var list))
+                    {
+                        batch[source.Id] = list = new List<DcSecurityReading>();
+                    }
+
+                    list.Add(parsed);
+                }
+                else if (readEndpoints && source is not null && Endpoints.EndpointEventCatalog.Wants(log, record.Id) &&
+                         Endpoints.EndpointEventCatalog.Parse(record.ToXml()) is { } endpointEvent)
                 {
-                    batch[device.Id] = list = new List<DcSecurityReading>();
-                }
+                    if (!endpointBatch.TryGetValue(source.Id, out var list))
+                    {
+                        endpointBatch[source.Id] = list = new List<Endpoints.EndpointEventReading>();
+                    }
 
-                list.Add(parsed);
+                    list.Add(endpointEvent);
+                }
             }
         }, ct);
 
         _bookmark = newest;
         LastReadUtc = DateTime.UtcNow;
-        if (batch.Count == 0)
+        if (batch.Count == 0 && endpointBatch.Count == 0)
         {
             return;
         }
@@ -137,17 +156,29 @@ public sealed class ForwardedEventsReader : BackgroundService
                 EventsRead += await _processor.IngestSecurityAsync(device, readings, events, ct);
             }
         }
+
+        foreach (var (deviceId, readings) in endpointBatch)
+        {
+            if (_inventory.GetSnapshot(deviceId) is { } device)
+            {
+                var stored = await Endpoints.EndpointEventCatalog.IngestAsync(device, readings, endpointSettings.StoreProcessStarts, events, _alerts, ct);
+                EventsRead += stored;
+                EndpointEventsRead += stored;
+            }
+        }
     }
 
-    /// <summary>Matches the event's computer name (FQDN or short name) to a monitored domain controller.</summary>
-    private DeviceSnapshot? FindDc(string? computer)
+    /// <summary>Endpoint (workstation / member server) events stored since start.</summary>
+    public long EndpointEventsRead { get; private set; }
+
+    /// <summary>Matches the event's computer name (FQDN or short name) to an inventory device.</summary>
+    private DeviceSnapshot? FindDevice(string? computer)
     {
-        if (computer is null)
+        if (string.IsNullOrWhiteSpace(computer))
         {
             return null;
         }
 
-        var match = _inventory.FindByAddressOrName(null, computer) ?? _inventory.FindByAddressOrName(null, computer.Split('.')[0]);
-        return match is { Type: DeviceType.DomainController } ? match : null;
+        return _inventory.FindByAddressOrName(null, computer) ?? _inventory.FindByAddressOrName(null, computer.Split('.')[0]);
     }
 }

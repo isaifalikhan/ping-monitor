@@ -56,6 +56,12 @@ public static class MetricKeys
     /// <summary>Domain controller clock difference to the PDC emulator, in seconds (absolute).</summary>
     public const string DcTimeSkew = "dc.time.skew.sec";
 
+    /// <summary>Endpoint: security or critical updates offered by Windows Update / WSUS and not installed.</summary>
+    public const string EndpointMissingUpdates = "endpoint.updates.missing";
+
+    /// <summary>Endpoint: days since the newest installed update (hotfix).</summary>
+    public const string EndpointPatchAgeDays = "endpoint.patch.age.days";
+
     public static readonly IReadOnlyDictionary<string, string> DisplayNames = new Dictionary<string, string>
     {
         [PingRtt] = "Ping latency (ms)",
@@ -83,6 +89,8 @@ public static class MetricKeys
         [GpuPower] = "GPU power draw (W)",
         [ServerPower] = "Server power consumption (W)",
         [DcTimeSkew] = "DC clock difference to PDC (s)",
+        [EndpointMissingUpdates] = "Endpoint missing security updates",
+        [EndpointPatchAgeDays] = "Endpoint days since last update",
     };
 }
 
@@ -114,6 +122,9 @@ public static class StateKeys
     public const string GpuProblem = "gpu.problem";
     public const string HardwareComponent = "hw.component";
     public const string HardwareUnreachable = "hw.unreachable";
+    public const string EndpointStale = "endpoint.stale";
+    public const string EndpointFirewallOff = "endpoint.firewall";
+    public const string EndpointAntivirus = "endpoint.antivirus";
 
     public static readonly IReadOnlyDictionary<string, string> DisplayNames = new Dictionary<string, string>
     {
@@ -142,6 +153,9 @@ public static class StateKeys
         [GpuProblem] = "GPU missing or driver error",
         [HardwareComponent] = "Server hardware component not OK (iLO / iDRAC)",
         [HardwareUnreachable] = "Management controller (iLO / iDRAC) not reachable",
+        [EndpointStale] = "Endpoint inventory not received",
+        [EndpointFirewallOff] = "Endpoint Windows Firewall profile off",
+        [EndpointAntivirus] = "Endpoint antivirus not protecting",
     };
 }
 
@@ -155,6 +169,12 @@ public static class EventKeys
     public const string VmwareEvent = "vmware.event";
     public const string DcSecurity = "dc.security";
 
+    /// <summary>A change found by comparing two endpoint inventories (field "change": softwareInstalled, localAdminAdded, usbStorage ...).</summary>
+    public const string EndpointChange = "endpoint.change";
+
+    /// <summary>A Windows event forwarded (WEF) from a workstation or member server.</summary>
+    public const string EndpointEvent = "endpoint.event";
+
     public static readonly IReadOnlyDictionary<string, string> DisplayNames = new Dictionary<string, string>
     {
         [DeviceReboot] = "Device rebooted",
@@ -163,6 +183,8 @@ public static class EventKeys
         [WindowsEvent] = "Windows event log entry",
         [VmwareEvent] = "vCenter event",
         [DcSecurity] = "DC security event (Security log)",
+        [EndpointChange] = "Endpoint inventory change",
+        [EndpointEvent] = "Endpoint event (Windows Event Forwarding)",
     };
 }
 

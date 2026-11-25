@@ -151,6 +151,8 @@ export function typeLabel(type: string): string {
       return 'vCenter';
     case 'NetworkOs':
       return 'Network OS';
+    case 'Workstation':
+      return 'Workstation';
     case 'Esxi':
       return 'ESXi';
     default:

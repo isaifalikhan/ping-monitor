@@ -12,6 +12,8 @@ import { OverviewPage } from './pages/OverviewPage';
 import { ServersPage } from './pages/ServersPage';
 import { VmwarePage } from './pages/VmwarePage';
 import { DomainControllersPage } from './pages/DomainControllersPage';
+import { EndpointDetailPage } from './pages/endpoints/EndpointDetailPage';
+import { EndpointsPage } from './pages/endpoints/EndpointsPage';
 import { NocPage } from './pages/NocPage';
 import { ReportsPage } from './pages/ReportsPage';
 import { TopologyPage } from './pages/TopologyPage';
@@ -52,6 +54,8 @@ function MainLayout({ canAdmin }: { canAdmin: boolean }) {
           <Route path="/servers" element={<ServersPage />} />
           <Route path="/vmware" element={<VmwarePage />} />
           <Route path="/dc" element={<DomainControllersPage />} />
+          <Route path="/endpoints" element={<EndpointsPage />} />
+          <Route path="/endpoints/:id" element={<EndpointDetailPage />} />
           <Route path="/events" element={<EventsPage />} />
           <Route path="/alerts" element={<AlertsPage />} />
           <Route path="/account" element={<AccountPage />} />
