@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 2.0.2 (2026-11-26)
 
 - **Static MACs from HIT SIEM:** admins add or remove a static MAC address on a switch port (TP-Link and Juniper)
   from the port details; HIT SIEM runs the CLI commands over SSH, saves the configuration and writes every attempt to
