@@ -23,13 +23,18 @@ export const CHANGE_LABELS: Record<string, string> = {
   firewallEnabled: 'Firewall turned on',
   updateInstalled: 'Update installed',
   osUpdated: 'OS build changed',
+  fileCreated: 'File created',
+  executableAdded: 'Program/script file added',
+  fileModified: 'File modified',
+  fileDeleted: 'File deleted',
+  hostsModified: 'Hosts file changed',
 };
 
 /** Changes shown in red/amber in the change lists. */
-export const RISKY_CHANGES = new Set(['localAdminAdded', 'usbStorage', 'firewallDisabled', 'localUserCreated', 'serviceInstalled', 'startupAdded', 'softwareInstalled']);
+export const RISKY_CHANGES = new Set(['localAdminAdded', 'usbStorage', 'firewallDisabled', 'localUserCreated', 'serviceInstalled', 'startupAdded', 'softwareInstalled', 'executableAdded', 'hostsModified']);
 
 export function ChangeBadge({ kind }: { kind: string }) {
-  const cls = kind === 'localAdminAdded' || kind === 'firewallDisabled' ? 's-down' : RISKY_CHANGES.has(kind) ? 's-warning' : 's-unknown';
+  const cls = kind === 'localAdminAdded' || kind === 'firewallDisabled' || kind === 'hostsModified' ? 's-down' : RISKY_CHANGES.has(kind) ? 's-warning' : 's-unknown';
   return <span className={`badge ${cls}`}>{CHANGE_LABELS[kind] ?? kind}</span>;
 }
 

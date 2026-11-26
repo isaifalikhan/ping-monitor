@@ -160,13 +160,22 @@ public sealed partial class EndpointIngestService
             changes.Insert(0, (ChangeKinds.Enrolled, name, Join(report.System.OsName, report.System.OsBuild)));
         }
 
+        // Files: compared with the stored list; the first list from a machine is the baseline (no changes).
+        FileDelta? fileDelta = null;
+        if (report.FilesCollected)
+        {
+            var (delta, fileChanges) = EndpointDiff.Files(_store.FileState(row.Id), report.Files, baseline: row.FileCount is null);
+            fileDelta = delta;
+            changes.AddRange(fileChanges);
+        }
+
         var summary = new EndpointSummary(
             name, domain, Cut(report.System.Fqdn, 255), ip, Cut(report.ScriptVersion, 32), Cut(report.System.OsName, 200), Cut(report.System.OsBuild, 64),
             Cut(Join(report.System.Manufacturer, report.System.Model), 200), Cut(report.System.SerialNumber, 100), Cut(EndpointDiff.User(report), 200),
             EndpointDiff.FirewallOff(report), EndpointDiff.AvProblem(report, settings.AvSignatureMaxAgeDays), EndpointDiff.MissingUpdates(report),
             EndpointDiff.LastPatch(report), report.Patches?.PendingReboot, EndpointDiff.WorstDiskPct(report),
             report.Errors.Count == 0 ? null : Cut(string.Join("; ", report.Errors.Select(kv => $"{kv.Key}: {kv.Value}")), 2000));
-        await _store.SaveReportAsync(row.Id, device?.Id, report, summary, changes, now);
+        await _store.SaveReportAsync(row.Id, device?.Id, report, summary, changes, now, fileDelta);
 
         if (device is not null)
         {
@@ -227,7 +236,7 @@ public sealed partial class EndpointIngestService
             }
 
             _alerts.Publish(new EventSignal(device.Id, EventKeys.EndpointChange, EndpointDiff.Message(name, kind, item, detail), now,
-                kind is ChangeKinds.LocalAdminAdded or ChangeKinds.FirewallDisabled ? Severity.Major : Severity.Warning, "Endpoint inventory", null, null, fields));
+                kind is ChangeKinds.LocalAdminAdded or ChangeKinds.FirewallDisabled or ChangeKinds.HostsModified ? Severity.Major : Severity.Warning, "Endpoint inventory", null, null, fields));
         }
     }
 

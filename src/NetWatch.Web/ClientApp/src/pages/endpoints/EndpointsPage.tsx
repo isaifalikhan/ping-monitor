@@ -3,15 +3,15 @@ import { Download, KeyRound } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { api, qs } from '../../api/client';
-import type { EndpointChange, EndpointDeployment, EndpointListItem, EndpointSettings, ProcessHit, SoftwareMachineRow, SoftwareSummaryRow } from '../../api/types';
+import type { EndpointChange, EndpointDeployment, EndpointListItem, EndpointSettings, FileHit, ProcessHit, SoftwareMachineRow, SoftwareSummaryRow } from '../../api/types';
 import { useAuth } from '../../auth/AuthContext';
 import { SeverityBadge, UtilBar } from '../../components/Badges';
 import { DataTable, type Column } from '../../components/DataTable';
 import { Confirm, ErrorBox, Modal } from '../../components/Modal';
-import { fmtAgo, fmtDateTime } from '../../util/format';
+import { fmtAgo, fmtBytes, fmtDateTime } from '../../util/format';
 import { CHANGE_LABELS, ChangeBadge, daysSince, ipText, problems, shortOs } from './common';
 
-type Tab = 'computers' | 'software' | 'processes' | 'changes' | 'deployment';
+type Tab = 'computers' | 'software' | 'processes' | 'files' | 'changes' | 'deployment';
 
 /** Endpoint inventory pushed by the GPO scheduled-task script: computers, software, processes, changes, deployment. */
 export function EndpointsPage() {
@@ -28,6 +28,7 @@ export function EndpointsPage() {
     ['computers', `Computers (${all.length})`],
     ['software', 'Software'],
     ['processes', 'Processes'],
+    ['files', 'Files'],
     ['changes', 'Changes'],
     ...(can('Admin') ? ([['deployment', 'Deployment']] as [Tab, string][]) : []),
   ];
@@ -54,6 +55,7 @@ export function EndpointsPage() {
       {tab === 'computers' && <ComputersTab rows={all} loading={list.isLoading} onDeploy={can('Admin') ? () => setTab('deployment') : undefined} />}
       {tab === 'software' && <SoftwareTab />}
       {tab === 'processes' && <ProcessesTab />}
+      {tab === 'files' && <FilesTab />}
       {tab === 'changes' && <ChangesTab machines={all} />}
       {tab === 'deployment' && can('Admin') && <DeploymentTab />}
     </>
@@ -276,6 +278,62 @@ function ProcessesTab() {
   );
 }
 
+function FilesTab() {
+  const navigate = useNavigate();
+  const [term, setTerm] = useState('');
+  const [ext, setExt] = useState('');
+  const [sha, setSha] = useState('');
+  const [minMb, setMinMb] = useState('');
+  const [folder, setFolder] = useState('');
+  const [query, setQuery] = useState<Record<string, string>>({});
+  useEffect(() => {
+    const t = setTimeout(() => setQuery({ q: term.trim(), ext: ext.trim(), sha256: sha.trim(), minMb: minMb.trim(), folder }), 400);
+    return () => clearTimeout(t);
+  }, [term, ext, sha, minMb, folder]);
+  const active = !!(query.q || query.ext || query.sha256 || query.minMb);
+  const q = useQuery({ queryKey: ['endpoint-files', query], queryFn: () => api.get<FileHit[]>('/api/endpoints/files' + qs(query)), enabled: active });
+  const columns: Column<FileHit>[] = [
+    { key: 'machine', header: 'Computer', render: (h) => <strong>{h.machine}</strong>, sort: (h) => h.machine },
+    { key: 'name', header: 'File', render: (h) => <span className="mono" title={h.file.path}>{h.file.name}</span>, sort: (h) => h.file.name },
+    { key: 'where', header: 'Where', render: (h) => <span className="muted">{h.file.user} / {h.file.folder}</span>, sort: (h) => `${h.file.user}/${h.file.folder}` },
+    { key: 'size', header: 'Size', render: (h) => fmtBytes(h.file.size), sort: (h) => h.file.size, className: 'num', width: 100 },
+    { key: 'mod', header: 'Modified', render: (h) => (h.file.modifiedUtc ? fmtDateTime(h.file.modifiedUtc) : '—'), sort: (h) => h.file.modifiedUtc ?? '', width: 170 },
+    { key: 'sha', header: 'SHA-256', render: (h) => <span className="mono muted" title={h.file.sha256 ?? 'not hashed'}>{h.file.sha256 ? h.file.sha256.slice(0, 16) + '…' : '—'}</span> },
+    { key: 'path', header: 'Path', render: (h) => <span className="mono muted" title={h.file.path}>{h.file.path}</span> },
+  ];
+  return (
+    <>
+      <div className="toolbar" style={{ marginBottom: 12, flexWrap: 'wrap' }}>
+        <input type="search" placeholder="Name or path contains…" value={term} onChange={(e) => setTerm(e.target.value)} style={{ minWidth: 260 }} />
+        <input placeholder="Extension (exe, pst, iso…)" value={ext} onChange={(e) => setExt(e.target.value)} style={{ width: 170 }} />
+        <input placeholder="Min. size (MB)" value={minMb} onChange={(e) => setMinMb(e.target.value.replace(/[^0-9.]/g, ''))} style={{ width: 120 }} />
+        <input placeholder="SHA-256 (exact)" value={sha} onChange={(e) => setSha(e.target.value)} style={{ width: 260 }} className="mono" />
+        <select value={folder} onChange={(e) => setFolder(e.target.value)}>
+          <option value="">All folders</option>
+          {['Desktop', 'Downloads', 'Documents', 'Startup', 'System'].map((f) => (
+            <option key={f} value={f}>
+              {f}
+            </option>
+          ))}
+        </select>
+        <span className="muted">{q.data ? `${q.data.length} files${q.data.length >= 2000 ? ' (first 2,000, largest first)' : ''}` : ''}</span>
+      </div>
+      <ErrorBox error={q.error} />
+      <div className="card">
+        <DataTable
+          rows={q.data ?? []}
+          columns={columns}
+          rowKey={(h) => `${h.file.endpointId}|${h.file.path}`}
+          onRowClick={(h) => navigate(`/endpoints/${h.file.endpointId}?tab=files`)}
+          initialSort={{ key: 'size', desc: true }}
+          maxHeight="calc(100vh - 290px)"
+          empty={!active ? "Search the files in every user's Desktop, Downloads and Documents: by name, extension, size or SHA-256 (e.g. find a malware hash on all PCs)." : q.isLoading ? 'Searching…' : 'No file matches.'}
+        />
+      </div>
+    </>
+  );
+}
+
 export function ChangeTable({ rows, machines, loading, maxHeight }: { rows: EndpointChange[]; machines?: Map<number, string>; loading: boolean; maxHeight?: string }) {
   const navigate = useNavigate();
   const columns: Column<EndpointChange>[] = [
@@ -304,7 +362,7 @@ function ChangesTab({ machines }: { machines: EndpointListItem[] }) {
   const [hideUpdates, setHideUpdates] = useState(true);
   const q = useQuery({ queryKey: ['endpoint-changes', days, kind], queryFn: () => api.get<EndpointChange[]>('/api/endpoints/changes' + qs({ days, kind })), refetchInterval: 60000 });
   const names = useMemo(() => new Map(machines.map((m) => [m.id, m.name])), [machines]);
-  const rows = (q.data ?? []).filter((c) => !hideUpdates || kind || !['updateInstalled', 'softwareUpdated', 'enrolled', 'portClosed'].includes(c.kind));
+  const rows = (q.data ?? []).filter((c) => !hideUpdates || kind || !['updateInstalled', 'softwareUpdated', 'enrolled', 'portClosed', 'fileCreated', 'fileModified', 'fileDeleted'].includes(c.kind));
   return (
     <>
       <div className="toolbar" style={{ marginBottom: 12 }}>
@@ -325,7 +383,7 @@ function ChangesTab({ machines }: { machines: EndpointListItem[] }) {
         </select>
         {!kind && (
           <label className="check">
-            <input type="checkbox" checked={hideUpdates} onChange={(e) => setHideUpdates(e.target.checked)} /> Hide routine changes (updates, version upgrades)
+            <input type="checkbox" checked={hideUpdates} onChange={(e) => setHideUpdates(e.target.checked)} /> Hide routine changes (updates, version upgrades, ordinary file changes)
           </label>
         )}
         <span className="muted">{rows.length} changes</span>
@@ -491,10 +549,10 @@ function DeploymentTab() {
                 <input type="checkbox" checked={form.autoCreateDevices} onChange={(e) => set('autoCreateDevices', e.target.checked)} /> Create a Workstation device for unknown machines
               </label>
               <label className="check">
-                <input type="checkbox" checked={form.collectCommandLines} onChange={(e) => set('collectCommandLines', e.target.checked)} /> Collect process command lines (written into the kit)
+                <input type="checkbox" checked={form.collectCommandLines} onChange={(e) => set('collectCommandLines', e.target.checked)} /> Collect process command lines
               </label>
               <label className="check">
-                <input type="checkbox" checked={form.collectConnections} onChange={(e) => set('collectConnections', e.target.checked)} /> Collect established network connections (written into the kit)
+                <input type="checkbox" checked={form.collectConnections} onChange={(e) => set('collectConnections', e.target.checked)} /> Collect established network connections
               </label>
               <label className="check">
                 <input type="checkbox" checked={form.readForwardedEvents} onChange={(e) => set('readForwardedEvents', e.target.checked)} /> Read forwarded endpoint events (WEF)
@@ -502,6 +560,11 @@ function DeploymentTab() {
               <label className="check">
                 <input type="checkbox" checked={form.storeProcessStarts} onChange={(e) => set('storeProcessStarts', e.target.checked)} /> Store every process start (4688; off = only suspicious ones)
               </label>
+              <label className="check">
+                <input type="checkbox" checked={form.collectFiles} onChange={(e) => set('collectFiles', e.target.checked)} /> List files in users' Desktop, Downloads and Documents (names, sizes, dates, SHA-256; no contents)
+              </label>
+              <NumberField label="Files per machine (max.)" hint="the list stops there" min={1000} max={200000} value={form.maxFilesPerMachine} onChange={(v) => set('maxFilesPerMachine', v)} />
+              <NumberField label="Hash files up to (MB)" hint="0 = no hashes" min={0} max={4096} value={form.hashMaxMb} onChange={(v) => set('hashMaxMb', v)} />
               <NumberField label="Run every (minutes)" hint="written into README; set the same in the GPO trigger" min={5} max={1440} value={form.intervalMin} onChange={(v) => set('intervalMin', v)} />
               <NumberField label="Not reporting after (hours)" min={1} max={720} value={form.staleHours} onChange={(v) => set('staleHours', v)} />
               <NumberField label="Antivirus signatures too old after (days)" min={1} max={365} value={form.avSignatureMaxAgeDays} onChange={(v) => set('avSignatureMaxAgeDays', v)} />

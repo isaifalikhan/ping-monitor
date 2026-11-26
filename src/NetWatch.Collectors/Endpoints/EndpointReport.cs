@@ -29,6 +29,18 @@ public sealed class EndpointReport
     public List<EpStartup> Startup { get; set; } = new();
     public List<EpShare> Shares { get; set; } = new();
 
+    /// <summary>True when the file list below is complete enough to compare (collection on and no "files" error).</summary>
+    public bool FilesCollected { get; set; }
+
+    /// <summary>The machine had more files than the configured maximum; the list stops there.</summary>
+    public bool FilesTruncated { get; set; }
+
+    /// <summary>
+    /// Files in every user's Desktop, Downloads and Documents, the Startup folders and the hosts file. Stored in
+    /// the files table of endpoints.db, not in the compressed report.
+    /// </summary>
+    public List<EpFile> Files { get; set; } = new();
+
     /// <summary>Section name → error text for the parts that could not be read on the machine.</summary>
     public Dictionary<string, string> Errors { get; set; } = new(StringComparer.OrdinalIgnoreCase);
 }
@@ -257,6 +269,23 @@ public sealed class EpStartup
     public string? Command { get; set; }
     public string? Location { get; set; }
     public string? User { get; set; }
+}
+
+public sealed class EpFile
+{
+    public string? Path { get; set; }
+
+    /// <summary>Profile folder name ("jdoe"), "Public", "All users" or "System".</summary>
+    public string? User { get; set; }
+
+    /// <summary>Desktop, Downloads, Documents, Startup or System.</summary>
+    public string? Folder { get; set; }
+    public long Size { get; set; }
+    public DateTime? ModifiedUtc { get; set; }
+    public DateTime? CreatedUtc { get; set; }
+
+    /// <summary>SHA-256 (upper-case hex); null for files over the size limit, locked files, or not hashed yet.</summary>
+    public string? Sha256 { get; set; }
 }
 
 public sealed class EpShare

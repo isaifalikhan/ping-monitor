@@ -1,5 +1,13 @@
 # Changelog
 
+## 2.0.3 (2026-11-26)
+
+- **Endpoint files:** the GPO script (1.1) lists every file in each user's Desktop, Downloads and Documents, the
+  Startup folders and the hosts file (path, size, dates, SHA-256; no contents). Change history (new, modified,
+  deleted), alerts for new program/script files and a changed hosts file, file search across all machines by name,
+  extension, size or hash. Endpoint settings now reach the machines with the answer to their next report.
+  Existing endpoints.db files are upgraded on start. Copy the new `HitSiemInventory.ps1` to NETLOGON.
+
 ## 2.0.2 (2026-11-26)
 
 - **Static MACs from HIT SIEM:** admins add or remove a static MAC address on a switch port (TP-Link and Juniper)

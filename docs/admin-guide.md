@@ -324,6 +324,16 @@ own last Windows Update / WSUS scan, read offline), pending reboot, Windows Fire
 local administrators, local accounts, listening ports and established connections per process, USB devices
 (connected now, and every USB storage device in the machine's history), startup programs and shares.
 
+**Files** (script 1.1, on by default): every file in each user's Desktop, Downloads and Documents (also when
+redirected to OneDrive), the Startup folders and the hosts file: path, user, size, dates and SHA-256. File contents
+never leave the PC. Files up to 100 MB are hashed; each file is hashed once and again only when its size or date
+changes (cache in `%ProgramData%\HIT SIEM\Endpoint\filehash.json`, SYSTEM and Administrators only), at most 2 GB of
+new hashing per run. At most 20,000 files per machine. The first list from a machine is the baseline; afterwards
+new, changed and deleted files are recorded under *Changes*, and two rules alert: *Program or script file in
+user folders* (new .exe, .msi, .ps1, .bat, .js, .iso …) and *Hosts file changed*. Search across all machines under
+*Endpoints → Files* (name, extension, minimum size, exact SHA-256 — e.g. where a malware hash is). The settings
+(*Endpoints → Deployment*) reach the machines with the next answer to their report, without a new kit.
+
 **Set up** (*Endpoints → Deployment*, Admin):
 
 1. Enter the address the machines use to reach HIT SIEM (DNS name, not localhost) and download the kit. It holds

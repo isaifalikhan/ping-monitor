@@ -1,9 +1,9 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ArrowLeft, RotateCcw, Trash2 } from 'lucide-react';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
-import { api } from '../../api/client';
-import type { EndpointChange, EndpointDetail, EndpointEventRow, EndpointReport, EpConnection, EpHotfix, EpPort, EpProcess, EpService, EpSoftware, EpUsb } from '../../api/types';
+import { api, qs } from '../../api/client';
+import type { EndpointChange, EndpointDetail, EndpointEventRow, EndpointFile, EndpointReport, EpConnection, EpHotfix, EpPort, EpProcess, EpService, EpSoftware, EpUsb } from '../../api/types';
 import { useAuth } from '../../auth/AuthContext';
 import { SeverityBadge, UtilBar } from '../../components/Badges';
 import { DataTable, type Column } from '../../components/DataTable';
@@ -12,7 +12,7 @@ import { fmtAgo, fmtBytes, fmtDateTime, fmtDuration, toMs } from '../../util/for
 import { daysSince, ipText, problems, shortOs, YesNo } from './common';
 import { ChangeTable } from './EndpointsPage';
 
-type Tab = 'overview' | 'processes' | 'services' | 'software' | 'updates' | 'network' | 'users' | 'usb' | 'startup' | 'changes' | 'events';
+type Tab = 'overview' | 'processes' | 'services' | 'software' | 'updates' | 'network' | 'users' | 'usb' | 'startup' | 'files' | 'changes' | 'events';
 const TABS: [Tab, string][] = [
   ['overview', 'Overview'],
   ['processes', 'Processes'],
@@ -23,6 +23,7 @@ const TABS: [Tab, string][] = [
   ['users', 'Users & admins'],
   ['usb', 'USB'],
   ['startup', 'Startup & shares'],
+  ['files', 'Files'],
   ['changes', 'Changes'],
   ['events', 'Events'],
 ];
@@ -118,7 +119,7 @@ export function EndpointDetailPage() {
         ))}
       </div>
 
-      {!r && tab !== 'changes' && tab !== 'events' ? (
+      {!r && tab !== 'changes' && tab !== 'events' && tab !== 'files' ? (
         <div className="empty">No inventory stored yet.</div>
       ) : (
         <>
@@ -131,6 +132,7 @@ export function EndpointDetailPage() {
           {tab === 'users' && r && <Users r={r} />}
           {tab === 'usb' && r && <Usb rows={r.usb} />}
           {tab === 'startup' && r && <Startup r={r} />}
+          {tab === 'files' && <Files id={e.id} count={e.fileCount} truncated={!!r?.filesTruncated} />}
           {tab === 'changes' && <Changes id={e.id} />}
           {tab === 'events' && <Events id={e.id} hasDevice={!!device} />}
         </>
@@ -660,6 +662,62 @@ function SimpleTable({ title, head, rows }: { title: string; head: string[]; row
         </table>
       </div>
     </div>
+  );
+}
+
+const EXECUTABLE = new Set(['exe', 'msi', 'msix', 'appx', 'bat', 'cmd', 'ps1', 'psm1', 'vbs', 'vbe', 'js', 'jse', 'wsf', 'wsh', 'hta', 'scr', 'com', 'pif', 'dll', 'cpl', 'jar', 'iso', 'img', 'vhd', 'vhdx', 'reg']);
+
+function Files({ id, count, truncated }: { id: number; count: number | null; truncated: boolean }) {
+  const [term, setTerm] = useState('');
+  const [query, setQuery] = useState('');
+  const [folder, setFolder] = useState('');
+  const [onlyPrograms, setOnlyPrograms] = useState(false);
+  useEffect(() => {
+    const t = setTimeout(() => setQuery(term.trim()), 300);
+    return () => clearTimeout(t);
+  }, [term]);
+  const q = useQuery({ queryKey: ['endpoint-files-one', id, query, folder], queryFn: () => api.get<EndpointFile[]>(`/api/endpoints/${id}/files` + qs({ q: query, folder })) });
+  const rows = (q.data ?? []).filter((f) => !onlyPrograms || EXECUTABLE.has(f.ext));
+  const columns: Column<EndpointFile>[] = [
+    { key: 'name', header: 'File', render: (f) => <span className="mono" style={{ color: EXECUTABLE.has(f.ext) ? 'var(--warn)' : undefined }} title={f.path}>{f.name}</span>, sort: (f) => f.name },
+    { key: 'where', header: 'Where', render: (f) => <span className="muted">{f.user} / {f.folder}</span>, sort: (f) => `${f.user}/${f.folder}` },
+    { key: 'size', header: 'Size', render: (f) => fmtBytes(f.size), sort: (f) => f.size, className: 'num', width: 100 },
+    { key: 'mod', header: 'Modified', render: (f) => (f.modifiedUtc ? fmtDateTime(f.modifiedUtc) : '—'), sort: (f) => f.modifiedUtc ?? '', width: 170 },
+    { key: 'created', header: 'Created', render: (f) => (f.createdUtc ? fmtDateTime(f.createdUtc) : '—'), sort: (f) => f.createdUtc ?? '', width: 170 },
+    { key: 'sha', header: 'SHA-256', render: (f) => <span className="mono muted" title={f.sha256 ?? 'not hashed (too large, locked, or not hashed yet)'}>{f.sha256 ? f.sha256.slice(0, 16) + '…' : '—'}</span> },
+    { key: 'path', header: 'Path', render: (f) => <span className="mono muted" title={f.path}>{f.path}</span>, sort: (f) => f.path },
+  ];
+  if (count == null) {
+    return <div className="empty">No file list received from this machine yet (it needs script version 1.1 or later; see Endpoints → Deployment).</div>;
+  }
+  return (
+    <>
+      <div className="toolbar" style={{ marginBottom: 12 }}>
+        <input type="search" placeholder="Filter by name or path…" value={term} onChange={(e) => setTerm(e.target.value)} style={{ minWidth: 300 }} />
+        <select value={folder} onChange={(e) => setFolder(e.target.value)}>
+          <option value="">All folders</option>
+          {['Desktop', 'Downloads', 'Documents', 'Startup', 'System'].map((f) => (
+            <option key={f} value={f}>
+              {f}
+            </option>
+          ))}
+        </select>
+        <label className="check">
+          <input type="checkbox" checked={onlyPrograms} onChange={(e) => setOnlyPrograms(e.target.checked)} /> Programs and scripts only
+        </label>
+        <span className="muted">
+          {rows.length} shown · {count} files on this machine{truncated ? ' (list cut at the maximum)' : ''}
+          {(q.data?.length ?? 0) >= 5000 ? ' · first 5,000, filter to narrow' : ''}
+        </span>
+      </div>
+      <p className="muted" style={{ marginTop: 0 }}>
+        Every user's Desktop, Downloads and Documents (also in OneDrive), the Startup folders and the hosts file, as of the last inventory. Names, sizes, dates and hashes only: file contents stay on the PC.
+      </p>
+      <ErrorBox error={q.error} />
+      <div className="card">
+        <DataTable rows={rows} columns={columns} rowKey={(f) => f.path} initialSort={{ key: 'mod', desc: true }} maxHeight="calc(100vh - 470px)" empty={q.isLoading ? 'Loading…' : 'No files.'} />
+      </div>
+    </>
   );
 }
 

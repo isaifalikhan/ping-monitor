@@ -256,6 +256,33 @@ public sealed class SimulatedEndpoints : BackgroundService
         }
 
         r.Startup.Add(new EpStartup { Name = "SecurityHealth", Command = "%windir%\\system32\\SecurityHealthSystray.exe", Location = "HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Run", User = "Public" });
+        r.FilesCollected = true;
+        if (!server)
+        {
+            var user = string.Create(CultureInfo.InvariantCulture, $"user{i:000}");
+            var home = $"C:\\Users\\{user}";
+            void File(string folder, string name, long size, string hash) => r.Files.Add(new EpFile
+            {
+                Path = $"{home}\\{folder}\\{name}", User = user, Folder = folder, Size = size,
+                ModifiedUtc = now.Date.AddDays(-(i % 9) - 1), CreatedUtc = now.Date.AddDays(-40), Sha256 = hash,
+            });
+            File("Documents", "Budget 2026.xlsx", 48_213 + i, new string('A', 63) + (i % 10).ToString(CultureInfo.InvariantCulture));
+            File("Documents", "Meeting notes.docx", 21_004, new string('B', 64));
+            File("Desktop", "VPN guide.pdf", 1_204_331, new string('C', 64));
+            File("Downloads", "7z2408-x64.exe", 1_620_532, "E8B0A9D9F4C3B2A1908172635445362718293A4B5C6D7E8F9012345678ABCDEF");
+            if (i == 7 && round % 4 >= 2)
+            {
+                File("Downloads", "AnyDesk.exe", 5_342_120, "4D3C2B1A0F9E8D7C6B5A49382716F5E4D3C2B1A0F9E8D7C6B5A4938271605F4E");
+            }
+
+            if (i == 9 && round % 4 >= 1)
+            {
+                File("Desktop", "invoice_8841.pdf.js", 18_442, "9F8E7D6C5B4A3928170605F4E3D2C1B0A9F8E7D6C5B4A3928170605F4E3D2C1B");
+            }
+        }
+
+        r.Files.Add(new EpFile { Path = "C:\\Windows\\System32\\drivers\\etc\\hosts", User = "System", Folder = "System", Size = i == 4 && round % 5 >= 3 ? 912 : 824, ModifiedUtc = now.Date.AddDays(i == 4 && round % 5 >= 3 ? 0 : -300), Sha256 = (i == 4 && round % 5 >= 3 ? "1" : "2") + new string('0', 63) });
+
         r.Shares.Add(new EpShare { Name = "ADMIN$", Path = "C:\\Windows", Description = "Remote Admin" });
         r.Shares.Add(new EpShare { Name = "C$", Path = "C:\\", Description = "Default share" });
         return r;

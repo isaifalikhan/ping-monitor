@@ -48,6 +48,9 @@ public static class EndpointEndpoints
             Results.Ok(store.SoftwareSummary(q, 2000).Select(s => new { name = s.Name, publisher = s.Publisher, machines = s.Machines, versions = s.Versions.Split(',', StringSplitOptions.RemoveEmptyEntries).Distinct().Order().ToList() })));
         read.MapGet("/software/machines", SoftwareMachines);
         read.MapGet("/processes", SearchProcesses);
+        read.MapGet("/files", SearchFiles);
+        read.MapGet("/{id:int}/files", (int id, string? q, string? folder, EndpointStore store) =>
+            store.Get(id) is null ? Results.NotFound() : Results.Ok(store.Files(id, q, folder, 5000).Select(FileDto.From)));
         read.MapGet("/changes", (int? days, string? kind, EndpointStore store) =>
             Results.Ok(store.Changes(null, DateTime.UtcNow.AddDays(-Math.Clamp(days ?? 7, 1, 3650)), string.IsNullOrWhiteSpace(kind) ? null : kind, 3000).Select(ChangeDto.From)));
 
@@ -61,7 +64,41 @@ public static class EndpointEndpoints
 
     // ------------------------------------------------------------------ report (anonymous, machine-authenticated)
 
-    private static async Task<IResult> ReportAsync(HttpContext http, EndpointIngestService ingest, CancellationToken ct)
+    public sealed record FileDto(int EndpointId, string Path, string Name, string Ext, string? User, string? Folder, long Size, DateTime? ModifiedUtc, DateTime? CreatedUtc, string? Sha256)
+    {
+        public static FileDto From(EndpointFileRow f) =>
+            new(f.EndpointId, f.Path, System.IO.Path.GetFileName(f.Path.Replace('/', '\\').Split('\\')[^1]), EndpointStore.Extension(f.Path), f.User, f.Folder, f.Size, f.ModifiedUtc, f.CreatedUtc, f.Sha256);
+    }
+
+    private static IResult SearchFiles(string? q, string? ext, string? sha256, double? minMb, string? folder, EndpointStore store)
+    {
+        if (string.IsNullOrWhiteSpace(q) && string.IsNullOrWhiteSpace(ext) && string.IsNullOrWhiteSpace(sha256) && minMb is null)
+        {
+            return HttpExtensions.Error("Enter a name, an extension, a SHA-256 or a minimum size.");
+        }
+
+        if (!string.IsNullOrWhiteSpace(sha256) && !System.Text.RegularExpressions.Regex.IsMatch(sha256.Trim(), "^[0-9A-Fa-f]{64}$"))
+        {
+            return HttpExtensions.Error("A SHA-256 has 64 hexadecimal characters.");
+        }
+
+        var rows = store.All().ToDictionary(r => r.Id);
+        var minBytes = minMb is { } mb ? (long)(Math.Max(0, mb) * 1024 * 1024) : (long?)null;
+        return Results.Ok(store.SearchFiles(q, ext, sha256, minBytes, folder, 2000).Where(f => rows.ContainsKey(f.EndpointId))
+            .Select(f => new { file = FileDto.From(f), machine = rows[f.EndpointId].Name, lastSeenUtc = rows[f.EndpointId].LastSeenUtc }));
+    }
+
+    /// <summary>Endpoint settings the script applies from its next run on (so most changes need no new kit).</summary>
+    private static object ScriptSettings(EndpointSettings s) => new
+    {
+        collectCommandLines = s.CollectCommandLines,
+        collectConnections = s.CollectConnections,
+        collectFiles = s.CollectFiles,
+        maxFiles = s.MaxFilesPerMachine,
+        hashMaxMb = s.HashMaxMb,
+    };
+
+    private static async Task<IResult> ReportAsync(HttpContext http, EndpointIngestService ingest, SettingsService settings, CancellationToken ct)
     {
         var machine = Header(http, "X-HitSiem-Machine");
         var token = Header(http, "X-HitSiem-Token");
@@ -122,7 +159,7 @@ public static class EndpointEndpoints
             _ => StatusCodes.Status400BadRequest,
         };
         return status == StatusCodes.Status200OK
-            ? Results.Ok(new { message = result.Message, token = result.NewToken, endpointId = result.EndpointId, changes = result.Changes })
+            ? Results.Ok(new { message = result.Message, token = result.NewToken, endpointId = result.EndpointId, changes = result.Changes, settings = ScriptSettings(settings.Endpoints) })
             : HttpExtensions.Error(result.Message, status);
     }
 
@@ -134,13 +171,13 @@ public static class EndpointEndpoints
     public sealed record EndpointListItem(
         int Id, int? DeviceId, string Name, string? Domain, string? Ip, string? Os, string? OsBuild, string? Model, string? Serial, string? User,
         DateTime FirstSeenUtc, DateTime LastSeenUtc, bool Stale, string? FirewallOff, string? AvProblem, int? MissingUpdates, DateTime? LastPatchUtc,
-        bool? PendingReboot, double? WorstDiskPct, int ProcessCount, int SoftwareCount, string? Errors, string? ScriptVersion, Severity? WorstAlert, bool Enrolled);
+        bool? PendingReboot, double? WorstDiskPct, int ProcessCount, int SoftwareCount, string? Errors, string? ScriptVersion, Severity? WorstAlert, bool Enrolled, int? FileCount);
 
     private static EndpointListItem Item(EndpointRow r, DateTime now, int staleHours, IActiveAlertIndex alerts) => new(
         r.Id, r.DeviceId, r.Name, r.Domain, r.LastIp, r.Os, r.OsBuild, r.Model, r.Serial, r.User, r.FirstSeenUtc, r.LastSeenUtc,
         now - r.LastSeenUtc > TimeSpan.FromHours(staleHours), r.FirewallOff is { Length: > 0 } ? r.FirewallOff : null, r.AvProblem, r.MissingUpdates,
         r.LastPatchUtc, r.PendingReboot, r.WorstDiskPct, r.ProcessCount, r.SoftwareCount, r.Errors, r.ScriptVersion,
-        r.DeviceId is { } d ? alerts.GetWorstSeverity(d) : null, r.TokenHash is not null);
+        r.DeviceId is { } d ? alerts.GetWorstSeverity(d) : null, r.TokenHash is not null, r.FileCount);
 
     private static IResult List(EndpointStore store, SettingsService settings, IActiveAlertIndex alerts)
     {
@@ -322,6 +359,9 @@ public static class EndpointKit
                 enrollmentKey,
                 collectCommandLines = settings.CollectCommandLines,
                 collectConnections = settings.CollectConnections,
+                collectFiles = settings.CollectFiles,
+                maxFiles = settings.MaxFilesPerMachine,
+                hashMaxMb = settings.HashMaxMb,
             }, new JsonSerializerOptions { WriteIndented = true });
             Add(zip, "hitsiem-endpoint.json", config);
             Add(zip, "HitSiem-Endpoints-Subscription.xml", Encoding.UTF8.GetBytes(SubscriptionXml()));

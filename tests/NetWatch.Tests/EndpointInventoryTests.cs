@@ -331,6 +331,121 @@ public sealed class EndpointInventoryTests : IAsyncLifetime
         Assert.Equal(2048, r.Processes[0].CommandLine!.Length);
     }
 
+    // ---------------------------------------------------------------- files (Desktop, Downloads, Documents)
+
+    private static EpFile F(string path, long size = 100, string? sha = null, int dayOffset = 0, string folder = "Downloads") => new()
+    {
+        Path = path, User = "u1", Folder = folder, Size = size, ModifiedUtc = new DateTime(2026, 11, 1, 0, 0, 0, DateTimeKind.Utc).AddDays(dayOffset), Sha256 = sha,
+    };
+
+    private static EndpointFileRow Row(EpFile f) => new(1, f.Path!, f.User, f.Folder, f.Size, f.ModifiedUtc, f.CreatedUtc, f.Sha256);
+
+    [Fact]
+    public void File_diff_finds_new_programs_modified_deleted_and_hosts_changes()
+    {
+        var hostsOld = F(@"C:\Windows\System32\drivers\etc\hosts", 824, new string('1', 64), folder: "System");
+        var stored = new[] { F(@"C:\Users\u1\Documents\a.docx", 10), F(@"C:\Users\u1\Documents\old.txt", 5), F(@"C:\Users\u1\Desktop\big.iso", 9, sha: null), hostsOld }
+            .ToDictionary(f => f.Path!, Row, StringComparer.OrdinalIgnoreCase);
+        var current = new List<EpFile>
+        {
+            F(@"C:\Users\u1\Documents\a.docx", 99, dayOffset: 1),                      // modified
+            F(@"C:\Users\u1\Desktop\big.iso", 9, sha: new string('F', 64)),            // only got its hash: silent update
+            F(@"C:\Users\u1\Downloads\setup.EXE", 1000),                              // program
+            F(@"C:\Users\u1\Downloads\photo.jpg", 2000),                              // ordinary new file
+            F(@"C:\Windows\System32\drivers\etc\hosts", 900, new string('2', 64), dayOffset: 2, folder: "System"),
+        };
+
+        var (delta, changes) = EndpointDiff.Files(stored, current, baseline: false);
+        Assert.Contains((ChangeKinds.ExecutableAdded, @"C:\Users\u1\Downloads\setup.EXE"), changes.Select(c => (c.Kind, c.Item)));
+        Assert.Contains((ChangeKinds.FileCreated, @"C:\Users\u1\Downloads\photo.jpg"), changes.Select(c => (c.Kind, c.Item)));
+        Assert.Contains((ChangeKinds.FileModified, @"C:\Users\u1\Documents\a.docx"), changes.Select(c => (c.Kind, c.Item)));
+        Assert.Contains((ChangeKinds.FileDeleted, @"C:\Users\u1\Documents\old.txt"), changes.Select(c => (c.Kind, c.Item)));
+        Assert.Contains(changes, c => c.Kind == ChangeKinds.HostsModified);
+        Assert.DoesNotContain(changes, c => c.Item.EndsWith("big.iso", StringComparison.Ordinal));
+        Assert.Contains(delta.Upserts, f => f.Path!.EndsWith("big.iso", StringComparison.Ordinal));
+        Assert.Equal([@"C:\Users\u1\Documents\old.txt"], delta.Removed);
+        Assert.Equal(5, delta.Total);
+
+        // The first list from a machine is the baseline: rows are written, nothing is reported as new.
+        var (first, none) = EndpointDiff.Files(new Dictionary<string, EndpointFileRow>(), current, baseline: true);
+        Assert.Empty(none);
+        Assert.Equal(5, first.Upserts.Count);
+    }
+
+    [Fact]
+    public void File_changes_are_capped_with_a_summary_row()
+    {
+        var many = Enumerable.Range(0, 450).Select(i => F($@"C:\Users\u1\Documents\f{i}.txt")).ToList();
+        var (_, changes) = EndpointDiff.Files(new Dictionary<string, EndpointFileRow>(), many, baseline: false);
+        Assert.Equal(201, changes.Count);
+        Assert.Contains(changes, c => c.Item == "… and 250 more");
+    }
+
+    [Fact]
+    public async Task File_lists_are_stored_searched_and_compared_between_reports()
+    {
+        var first = Report(9, 0);
+        var enrolled = await Send(first, machine: "machine-009-0000");
+        var row = Store.FindByMachine("machine-009-0000")!;
+        Assert.Equal(first.Files.Count, row.FileCount);
+        Assert.DoesNotContain(Store.Changes(row.Id, DateTime.MinValue, null, 100), c => c.Kind is ChangeKinds.FileCreated or ChangeKinds.ExecutableAdded);
+
+        // The file list is kept in the files table, not in the compressed report.
+        Assert.Empty(Store.Report(row.Id)!.Files);
+        Assert.Contains(Store.Files(row.Id, "budget", null, 10), f => f.Path.EndsWith("Budget 2026.xlsx", StringComparison.Ordinal));
+
+        // Round 1: a ".pdf.js" lands on the Desktop (simulator machine 9).
+        _clock.Advance(TimeSpan.FromMinutes(30));
+        Assert.Equal(IngestStatus.Ok, (await Send(Report(9, 1), machine: "machine-009-0000", token: enrolled.NewToken)).Status);
+        Assert.Contains(Store.Changes(row.Id, DateTime.MinValue, ChangeKinds.ExecutableAdded, 10), c => c.Item.EndsWith("invoice_8841.pdf.js", StringComparison.Ordinal));
+        Assert.Contains(_signals.All.OfType<EventSignal>(), s => s.EventKey == EventKeys.EndpointChange && s.Fields!["change"] == ChangeKinds.ExecutableAdded);
+
+        // Fleet-wide search by extension and by hash.
+        Assert.Contains(Store.SearchFiles(null, ".JS", null, null, null, 10), f => f.Path.EndsWith(".pdf.js", StringComparison.Ordinal));
+        var hash = "9F8E7D6C5B4A3928170605F4E3D2C1B0A9F8E7D6C5B4A3928170605F4E3D2C1B";
+        Assert.Single(Store.SearchFiles(null, null, hash.ToLowerInvariant(), null, null, 10));
+        Assert.Contains(Store.SearchFiles(null, null, null, 1, "Desktop", 10), f => f.Size >= 1024 * 1024);
+
+        // A report from a machine whose file collection failed leaves the stored list alone.
+        var broken = Report(9, 1);
+        broken.FilesCollected = false;
+        broken.Files.Clear();
+        _clock.Advance(TimeSpan.FromMinutes(30));
+        await Send(broken, machine: "machine-009-0000", token: enrolled.NewToken);
+        Assert.DoesNotContain(Store.Changes(row.Id, DateTime.MinValue, ChangeKinds.FileDeleted, 10), _ => true);
+        Assert.NotEmpty(Store.Files(row.Id, null, null, 10));
+
+        // Removing the machine removes its files.
+        await Store.DeleteAsync(row.Id);
+        Assert.Empty(Store.Files(row.Id, null, null, 10));
+    }
+
+    [Fact]
+    public void Endpoints_db_from_2_0_2_gets_the_file_columns()
+    {
+        var path = Path.Combine(_root, "old-endpoints.db");
+        Directory.CreateDirectory(_root);
+        using (var c = new Microsoft.Data.Sqlite.SqliteConnection("Data Source=" + path + ";Pooling=False"))
+        {
+            c.Open();
+            using var cmd = c.CreateCommand();
+            cmd.CommandText = """
+                CREATE TABLE endpoints(id INTEGER PRIMARY KEY AUTOINCREMENT, machine_id TEXT NOT NULL UNIQUE COLLATE NOCASE, device_id INTEGER,
+                    name TEXT NOT NULL COLLATE NOCASE, domain TEXT COLLATE NOCASE, fqdn TEXT, token_hash TEXT, first_seen TEXT NOT NULL, last_seen TEXT NOT NULL,
+                    last_ip TEXT, script_version TEXT, os TEXT, os_build TEXT, model TEXT, serial TEXT, user_name TEXT, firewall_off TEXT, av_problem TEXT,
+                    missing_updates INTEGER, last_patch TEXT, pending_reboot INTEGER, worst_disk_pct REAL, process_count INTEGER NOT NULL DEFAULT 0,
+                    software_count INTEGER NOT NULL DEFAULT 0, errors TEXT, report BLOB);
+                INSERT INTO endpoints(machine_id, name, first_seen, last_seen) VALUES ('old-machine-0001', 'OLDPC', '2026-11-25T00:00:00.000Z', '2026-11-25T00:00:00.000Z');
+                """;
+            cmd.ExecuteNonQuery();
+        }
+
+        var store = new EndpointStore(path, _sp.GetRequiredService<NetWatch.Core.Abstractions.ISecretProtector>());
+        var row = store.FindByMachine("old-machine-0001")!;
+        Assert.Null(row.FileCount);
+        Assert.Empty(store.Files(row.Id, null, null, 10));
+    }
+
     // ---------------------------------------------------------------- forwarded endpoint events (WEF)
 
     private static string EventXml(string channel, int id, string data, long record = 100, string computer = "SIM-PC-003.corp.sim", string provider = "Microsoft-Windows-Security-Auditing") => $"""
@@ -454,6 +569,8 @@ public sealed class EndpointInventoryTests : IAsyncLifetime
         Assert.Equal("the-key", config.GetProperty("enrollmentKey").GetString());
         Assert.Equal("ABCDEF", config.GetProperty("thumbprint").GetString());
         Assert.False(config.GetProperty("collectCommandLines").GetBoolean());
+        Assert.True(config.GetProperty("collectFiles").GetBoolean());
+        Assert.Equal(20000, config.GetProperty("maxFiles").GetInt32());
 
         var readme = Read("README.txt");
         Assert.DoesNotContain("{SERVER}", readme, StringComparison.Ordinal);

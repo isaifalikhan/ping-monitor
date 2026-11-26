@@ -368,6 +368,15 @@ public sealed class EndpointSettings
     /// <summary>Collect established TCP connections (listening ports are always collected).</summary>
     public bool CollectConnections { get; set; } = true;
 
+    /// <summary>List the files in every user's Desktop, Downloads and Documents, the Startup folders and the hosts file.</summary>
+    public bool CollectFiles { get; set; } = true;
+
+    /// <summary>At most this many files per machine (the list is cut there and marked incomplete).</summary>
+    public int MaxFilesPerMachine { get; set; } = 20000;
+
+    /// <summary>Files up to this size get a SHA-256 hash (each file is hashed once, then again only when it changes).</summary>
+    public int HashMaxMb { get; set; } = 100;
+
     /// <summary>Create a Workstation device for a reporting machine that is not in the inventory yet.</summary>
     public bool AutoCreateDevices { get; set; } = true;
 
@@ -389,6 +398,8 @@ public sealed class EndpointSettings
     public void Normalise()
     {
         AvSignatureMaxAgeDays = Math.Clamp(AvSignatureMaxAgeDays, 1, 365);
+        MaxFilesPerMachine = Math.Clamp(MaxFilesPerMachine, 1000, 200_000);
+        HashMaxMb = Math.Clamp(HashMaxMb, 0, 4096);
         IntervalMin = Math.Clamp(IntervalMin, 5, 1440);
         StaleHours = Math.Clamp(StaleHours, 1, 24 * 30);
         MaxForwardedPerCycle = Math.Clamp(MaxForwardedPerCycle, 100, 50000);

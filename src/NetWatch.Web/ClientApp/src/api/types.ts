@@ -1151,6 +1151,7 @@ export interface EndpointListItem {
   scriptVersion: string | null;
   worstAlert: Severity | null;
   enrolled: boolean;
+  fileCount: number | null;
 }
 
 export interface EpSystem {
@@ -1217,6 +1218,8 @@ export interface EndpointReport {
   usb: EpUsb[];
   startup: { name?: string | null; command?: string | null; location?: string | null; user?: string | null }[];
   shares: { name?: string | null; path?: string | null; description?: string | null }[];
+  filesCollected?: boolean;
+  filesTruncated?: boolean;
   errors: Record<string, string>;
 }
 
@@ -1244,6 +1247,9 @@ export interface EndpointSettings {
   maxForwardedPerCycle: number;
   changeRetentionDays: number;
   avSignatureMaxAgeDays: number;
+  collectFiles: boolean;
+  maxFilesPerMachine: number;
+  hashMaxMb: number;
 }
 
 export interface EndpointDeployment {
@@ -1262,3 +1268,6 @@ export interface EndpointDeployment {
   forwardedEndpointEvents: number;
   scriptSha256: string;
 }
+
+export interface EndpointFile { endpointId: number; path: string; name: string; ext: string; user: string | null; folder: string | null; size: number; modifiedUtc: string | null; createdUtc: string | null; sha256: string | null }
+export interface FileHit { file: EndpointFile; machine: string; lastSeenUtc: string }

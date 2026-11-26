@@ -11,6 +11,7 @@ public static partial class EndpointDiff
     {
         ChangeKinds.SoftwareInstalled, ChangeKinds.LocalAdminAdded, ChangeKinds.UsbStorage, ChangeKinds.ServiceInstalled,
         ChangeKinds.StartupAdded, ChangeKinds.FirewallDisabled, ChangeKinds.LocalUserCreated, ChangeKinds.PortOpened,
+        ChangeKinds.ExecutableAdded, ChangeKinds.HostsModified,
     };
 
     private const int MaxChanges = 500;
@@ -121,6 +122,17 @@ public static partial class EndpointDiff
         r.Adapters = Take(r.Adapters, 64);
         r.Disks = Take(r.Disks, 64);
         r.Firewall = Take(r.Firewall, 8);
+        if (r.Files.Count > 200_000)
+        {
+            r.Files = r.Files.Take(200_000).ToList();
+            r.FilesTruncated = true;
+        }
+
+        r.Files.RemoveAll(f => f.Path is null || f.Path.Length > 1024);
+        foreach (var f in r.Files.Where(f => f.Sha256 is { } h && (h.Length != 64 || !h.All(Uri.IsHexDigit))))
+        {
+            f.Sha256 = null;
+        }
         if (r.Patches is { } p)
         {
             p.Missing = Take(p.Missing, 500);
@@ -250,6 +262,100 @@ public static partial class EndpointDiff
         return changes.Count > MaxChanges ? changes.Take(MaxChanges).ToList() : changes;
     }
 
+    /// <summary>Extensions of files that run code (programs, scripts, installers, disk images used to deliver malware).</summary>
+    public static readonly IReadOnlySet<string> ExecutableExtensions = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+    {
+        "exe", "msi", "msix", "appx", "bat", "cmd", "ps1", "psm1", "vbs", "vbe", "js", "jse", "wsf", "wsh", "hta", "scr", "com", "pif",
+        "dll", "cpl", "jar", "iso", "img", "vhd", "vhdx", "reg",
+    };
+
+    private const int MaxFileChangesPerKind = 200;
+
+    /// <summary>
+    /// Compares a machine's new file list with the stored one. Returns the rows to write and the changes to record:
+    /// new files (executables separately), deleted and modified files (size or date changed, or a different hash);
+    /// a file that only got its hash now is updated silently. <paramref name="baseline"/> (first list from this
+    /// machine) records no changes. Each kind is capped, with one summary row for the rest.
+    /// </summary>
+    public static (FileDelta Delta, List<(string Kind, string Item, string? Detail)> Changes) Files(
+        IReadOnlyDictionary<string, EndpointFileRow> stored, IReadOnlyList<EpFile> current, bool baseline)
+    {
+        var upserts = new List<EpFile>();
+        var created = new List<EpFile>();
+        var executables = new List<EpFile>();
+        var modified = new List<(EpFile File, EndpointFileRow Old)>();
+        var hostsChanged = false;
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var f in current)
+        {
+            if (string.IsNullOrWhiteSpace(f.Path) || !seen.Add(f.Path))
+            {
+                continue;
+            }
+
+            if (!stored.TryGetValue(f.Path, out var old))
+            {
+                upserts.Add(f);
+                (ExecutableExtensions.Contains(EndpointStore.Extension(f.Path)) ? executables : created).Add(f);
+                continue;
+            }
+
+            var sameDate = old.ModifiedUtc is { } a && f.ModifiedUtc is { } b ? Math.Abs((a - b).TotalSeconds) < 2 : old.ModifiedUtc == f.ModifiedUtc;
+            var hashDiffers = old.Sha256 is not null && f.Sha256 is not null && !string.Equals(old.Sha256, f.Sha256, StringComparison.OrdinalIgnoreCase);
+            if (old.Size != f.Size || !sameDate || hashDiffers)
+            {
+                upserts.Add(f);
+                modified.Add((f, old));
+                hostsChanged |= f.Folder == "System" && f.Path.EndsWith(@"\etc\hosts", StringComparison.OrdinalIgnoreCase);
+            }
+            else if (old.Sha256 is null && f.Sha256 is not null)
+            {
+                upserts.Add(f);
+            }
+        }
+
+        var removed = stored.Keys.Where(p => !seen.Contains(p)).ToList();
+        var delta = new FileDelta(upserts, removed, seen.Count);
+        var changes = new List<(string, string, string?)>();
+        if (baseline)
+        {
+            return (delta, changes);
+        }
+
+        AddCapped(changes, ChangeKinds.ExecutableAdded, executables.Select(f => (f.Path!, FileDetail(f))));
+        AddCapped(changes, ChangeKinds.FileCreated, created.Select(f => (f.Path!, FileDetail(f))));
+        AddCapped(changes, ChangeKinds.FileModified, modified.Select(m => (m.File.Path!, $"{Size(m.Old.Size)} → {Size(m.File.Size)}" + (m.File.Sha256 is { } h ? $" · SHA-256 {h[..12]}…" : string.Empty))));
+        AddCapped(changes, ChangeKinds.FileDeleted, removed.Select(p => (p, FileDetail(stored[p]))));
+        if (hostsChanged)
+        {
+            changes.Add((ChangeKinds.HostsModified, current.First(f => f.Folder == "System" && f.Path!.EndsWith(@"\etc\hosts", StringComparison.OrdinalIgnoreCase)).Path!, "the hosts file redirects names before DNS"));
+        }
+
+        return (delta, changes);
+    }
+
+    private static void AddCapped(List<(string, string, string?)> changes, string kind, IEnumerable<(string Item, string Detail)> items)
+    {
+        var list = items.ToList();
+        changes.AddRange(list.Take(MaxFileChangesPerKind).Select(x => (kind, x.Item, (string?)x.Detail)));
+        if (list.Count > MaxFileChangesPerKind)
+        {
+            changes.Add((kind, $"… and {list.Count - MaxFileChangesPerKind} more", "not listed one by one"));
+        }
+    }
+
+    private static string FileDetail(EpFile f) => $"{Size(f.Size)} · {f.User} / {f.Folder}" + (f.Sha256 is { } h ? $" · SHA-256 {h}" : string.Empty);
+
+    private static string FileDetail(EndpointFileRow f) => $"{Size(f.Size)} · {f.User} / {f.Folder}";
+
+    private static string Size(long bytes) => bytes switch
+    {
+        >= 1L << 30 => string.Create(CultureInfo.InvariantCulture, $"{bytes / (double)(1L << 30):0.0} GB"),
+        >= 1L << 20 => string.Create(CultureInfo.InvariantCulture, $"{bytes / (double)(1L << 20):0.0} MB"),
+        >= 1L << 10 => string.Create(CultureInfo.InvariantCulture, $"{bytes / 1024.0:0} KB"),
+        _ => string.Create(CultureInfo.InvariantCulture, $"{bytes} B"),
+    };
+
     /// <summary>Alert message for an alertable change.</summary>
     public static string Message(string machine, string kind, string item, string? detail) => kind switch
     {
@@ -261,6 +367,8 @@ public static partial class EndpointDiff
         ChangeKinds.FirewallDisabled => $"Windows Firewall turned off on {machine}: {item}",
         ChangeKinds.LocalUserCreated => $"New local user account on {machine}: {item}",
         ChangeKinds.PortOpened => $"New listening port on {machine}: {item}{Suffix(detail)}",
+        ChangeKinds.ExecutableAdded => $"New program or script file on {machine}: {item}{Suffix(detail)}",
+        ChangeKinds.HostsModified => $"Hosts file changed on {machine}: {item}",
         _ => $"{kind} on {machine}: {item}{Suffix(detail)}",
     };
 
@@ -331,4 +439,9 @@ public static class ChangeKinds
     public const string FirewallEnabled = "firewallEnabled";
     public const string UpdateInstalled = "updateInstalled";
     public const string OsUpdated = "osUpdated";
+    public const string FileCreated = "fileCreated";
+    public const string ExecutableAdded = "executableAdded";
+    public const string FileModified = "fileModified";
+    public const string FileDeleted = "fileDeleted";
+    public const string HostsModified = "hostsModified";
 }

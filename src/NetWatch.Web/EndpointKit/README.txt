@@ -14,6 +14,14 @@ Files in this kit
   HitSiem-Endpoints-Query.xml          the same event query, for Event Viewer custom views
   README.txt                           this file
 
+The script also lists the files in every user's Desktop, Downloads and Documents, the Startup folders
+and the hosts file (names, sizes, dates, SHA-256 hashes; file contents never leave the PC). Hashes are
+cached in %ProgramData%\HIT SIEM\Endpoint (SYSTEM and Administrators only). Turn it off or change the
+limits under Endpoints -> Deployment; machines apply settings from their next report.
+
+Updating the script: copy the new HitSiemInventory.ps1 over the old one in NETLOGON. Enrolled machines
+keep their token; hitsiem-endpoint.json only needs replacing when the key or certificate changed.
+
 Keep hitsiem-endpoint.json like a password: with the enrollment key a machine can enroll. Enrolled
 machines get their own token and keep working after the key is changed (Endpoints -> Deployment ->
 Change enrollment key).

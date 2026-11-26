@@ -37,7 +37,14 @@ public sealed record EndpointRow(
     double? WorstDiskPct,
     int ProcessCount,
     int SoftwareCount,
-    string? Errors);
+    string? Errors,
+    int? FileCount = null);
+
+/// <summary>A file as stored for one machine.</summary>
+public sealed record EndpointFileRow(int EndpointId, string Path, string? User, string? Folder, long Size, DateTime? ModifiedUtc, DateTime? CreatedUtc, string? Sha256);
+
+/// <summary>What to change in a machine's file table (computed by <see cref="EndpointDiff.Files"/>).</summary>
+public sealed record FileDelta(IReadOnlyList<EpFile> Upserts, IReadOnlyList<string> Removed, int Total);
 
 /// <summary>A change found between two inventories of one machine.</summary>
 public sealed record EndpointChange(long Id, int EndpointId, DateTime TimestampUtc, string Kind, string Item, string? Detail);
@@ -131,7 +138,34 @@ public sealed class EndpointStore
                 kind TEXT NOT NULL, item TEXT NOT NULL, detail TEXT);
             CREATE INDEX IF NOT EXISTS ix_changes_ts ON changes(ts);
             CREATE INDEX IF NOT EXISTS ix_changes_endpoint ON changes(endpoint_id, ts);
+            CREATE TABLE IF NOT EXISTS files(
+                endpoint_id INTEGER NOT NULL, path TEXT NOT NULL COLLATE NOCASE, name TEXT NOT NULL COLLATE NOCASE,
+                ext TEXT COLLATE NOCASE, user_name TEXT, folder TEXT, size INTEGER NOT NULL, modified TEXT, created TEXT, sha256 TEXT,
+                PRIMARY KEY(endpoint_id, path));
+            CREATE INDEX IF NOT EXISTS ix_files_name ON files(name);
+            CREATE INDEX IF NOT EXISTS ix_files_ext ON files(ext);
+            CREATE INDEX IF NOT EXISTS ix_files_sha ON files(sha256);
             """);
+
+        // 2.0.2 → later: file list per machine. NULL = no file list received yet (the first one is the baseline).
+        if (!Columns(c, "endpoints").Contains("file_count"))
+        {
+            Exec(c, "ALTER TABLE endpoints ADD COLUMN file_count INTEGER");
+        }
+    }
+
+    private static HashSet<string> Columns(SqliteConnection c, string table)
+    {
+        using var cmd = c.CreateCommand();
+        cmd.CommandText = $"PRAGMA table_info({table})";
+        var set = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        using var r = cmd.ExecuteReader();
+        while (r.Read())
+        {
+            set.Add(r.GetString(1));
+        }
+
+        return set;
     }
 
     // ---------------------------------------------------------------- enrollment key and tokens
@@ -331,15 +365,91 @@ public sealed class EndpointStore
         }
     }
 
-    /// <summary>Stores a report: summary columns, the compressed document, software/process rows and the changes found.</summary>
-    public async Task SaveReportAsync(int id, int? deviceId, EndpointReport report, EndpointSummary s, IReadOnlyList<(string Kind, string Item, string? Detail)> changes, DateTime nowUtc)
+    /// <summary>The stored file list of a machine, by path (for comparing with a new list).</summary>
+    public Dictionary<string, EndpointFileRow> FileState(int endpointId)
     {
-        var blob = Encode(report);
+        using var c = Open();
+        var d = new Dictionary<string, EndpointFileRow>(StringComparer.OrdinalIgnoreCase);
+        foreach (var f in FileRows(c, "WHERE endpoint_id = $e", ("$e", endpointId)))
+        {
+            d[f.Path] = f;
+        }
+
+        return d;
+    }
+
+    /// <summary>Files of one machine, optionally filtered by text (path) and folder.</summary>
+    public List<EndpointFileRow> Files(int endpointId, string? term, string? folder, int limit)
+    {
+        using var c = Open();
+        return FileRows(c, "WHERE endpoint_id = $e AND ($t IS NULL OR path LIKE $t ESCAPE '\\') AND ($f IS NULL OR folder = $f) ORDER BY path LIMIT $l",
+            ("$e", endpointId), ("$t", Like(term)), ("$f", string.IsNullOrWhiteSpace(folder) ? null : folder), ("$l", limit));
+    }
+
+    /// <summary>Files across all machines by name/path text, extension, exact SHA-256 and minimum size.</summary>
+    public List<EndpointFileRow> SearchFiles(string? term, string? ext, string? sha256, long? minBytes, string? folder, int limit)
+    {
+        using var c = Open();
+        return FileRows(c, """
+            WHERE ($t IS NULL OR path LIKE $t ESCAPE '\') AND ($x IS NULL OR ext = $x) AND ($h IS NULL OR sha256 = $h)
+              AND ($m IS NULL OR size >= $m) AND ($f IS NULL OR folder = $f)
+            ORDER BY size DESC LIMIT $l
+            """,
+            ("$t", Like(term)), ("$x", string.IsNullOrWhiteSpace(ext) ? null : ext.Trim().TrimStart('.').ToLowerInvariant()),
+            ("$h", string.IsNullOrWhiteSpace(sha256) ? null : sha256.Trim().ToUpperInvariant()), ("$m", minBytes),
+            ("$f", string.IsNullOrWhiteSpace(folder) ? null : folder), ("$l", limit));
+    }
+
+    private static List<EndpointFileRow> FileRows(SqliteConnection c, string where, params (string, object?)[] args)
+    {
+        using var cmd = c.CreateCommand();
+        cmd.CommandText = "SELECT endpoint_id, path, user_name, folder, size, modified, created, sha256 FROM files " + where;
+        Add(cmd, args);
+        var list = new List<EndpointFileRow>();
+        using var r = cmd.ExecuteReader();
+        while (r.Read())
+        {
+            list.Add(new EndpointFileRow(r.GetInt32(0), r.GetString(1), Str(r, 2), Str(r, 3), r.GetInt64(4),
+                r.IsDBNull(5) ? null : ParseTs(r.GetString(5)), r.IsDBNull(6) ? null : ParseTs(r.GetString(6)), Str(r, 7)));
+        }
+
+        return list;
+    }
+
+    /// <summary>File extension as stored ("exe"; "" for none).</summary>
+    public static string Extension(string path)
+    {
+        var name = System.IO.Path.GetFileName(path.Replace('/', '\\').Split('\\')[^1]);
+        var dot = name.LastIndexOf('.');
+        return dot <= 0 || dot == name.Length - 1 || name.Length - dot > 12 ? string.Empty : name[(dot + 1)..].ToLowerInvariant();
+    }
+
+    /// <summary>Stores a report: summary columns, the compressed document, software/process rows, file changes and the changes found.</summary>
+    public async Task SaveReportAsync(int id, int? deviceId, EndpointReport report, EndpointSummary s, IReadOnlyList<(string Kind, string Item, string? Detail)> changes, DateTime nowUtc, FileDelta? files = null)
+    {
+        // The file list lives in the files table; the compressed report keeps everything else.
+        var fileList = report.Files;
+        report.Files = new List<EpFile>();
+        byte[] blob;
+        try
+        {
+            blob = Encode(report);
+        }
+        finally
+        {
+            report.Files = fileList;
+        }
+
         await _write.WaitAsync();
         try
         {
             using var c = Open();
             using var tx = c.BeginTransaction();
+            if (files is not null)
+            {
+                ApplyFiles(c, tx, id, files);
+            }
+
             using (var cmd = c.CreateCommand())
             {
                 cmd.Transaction = tx;
@@ -427,6 +537,52 @@ public sealed class EndpointStore
         }
     }
 
+    private static void ApplyFiles(SqliteConnection c, SqliteTransaction tx, int id, FileDelta files)
+    {
+        if (files.Removed.Count > 0)
+        {
+            using var del = c.CreateCommand();
+            del.Transaction = tx;
+            del.CommandText = "DELETE FROM files WHERE endpoint_id = $id AND path = $p";
+            del.Parameters.AddWithValue("$id", id);
+            var pp = Param(del, "$p");
+            foreach (var path in files.Removed)
+            {
+                pp.Value = path;
+                del.ExecuteNonQuery();
+            }
+        }
+
+        if (files.Upserts.Count > 0)
+        {
+            using var up = c.CreateCommand();
+            up.Transaction = tx;
+            up.CommandText = """
+                INSERT INTO files(endpoint_id, path, name, ext, user_name, folder, size, modified, created, sha256)
+                VALUES ($id, $p, $n, $x, $u, $f, $s, $m, $c, $h)
+                ON CONFLICT(endpoint_id, path) DO UPDATE SET name = excluded.name, ext = excluded.ext, user_name = excluded.user_name,
+                    folder = excluded.folder, size = excluded.size, modified = excluded.modified, created = excluded.created, sha256 = excluded.sha256
+                """;
+            up.Parameters.AddWithValue("$id", id);
+            var (pp, pn, px, pu, pf, ps, pm, pc, ph) = (Param(up, "$p"), Param(up, "$n"), Param(up, "$x"), Param(up, "$u"), Param(up, "$f"), Param(up, "$s"), Param(up, "$m"), Param(up, "$c"), Param(up, "$h"));
+            foreach (var f in files.Upserts)
+            {
+                pp.Value = f.Path!;
+                pn.Value = System.IO.Path.GetFileName(f.Path!.Replace('/', '\\').Split('\\')[^1]);
+                px.Value = Extension(f.Path);
+                pu.Value = (object?)f.User ?? DBNull.Value;
+                pf.Value = (object?)f.Folder ?? DBNull.Value;
+                ps.Value = f.Size;
+                pm.Value = f.ModifiedUtc is { } m ? Ts(m) : DBNull.Value;
+                pc.Value = f.CreatedUtc is { } cr ? Ts(cr) : DBNull.Value;
+                ph.Value = (object?)f.Sha256?.ToUpperInvariant() ?? DBNull.Value;
+                up.ExecuteNonQuery();
+            }
+        }
+
+        Exec(c, tx, "UPDATE endpoints SET file_count = $n WHERE id = $id", ("$id", id), ("$n", files.Total));
+    }
+
     /// <summary>Forgets the machine's token: its next report must carry the enrollment key again.</summary>
     public Task ResetTokenAsync(int id) => WriteAsync("UPDATE endpoints SET token_hash = NULL WHERE id = $id", ("$id", id));
 
@@ -437,7 +593,7 @@ public sealed class EndpointStore
         {
             using var c = Open();
             using var tx = c.BeginTransaction();
-            foreach (var table in new[] { "software", "processes", "changes" })
+            foreach (var table in new[] { "software", "processes", "changes", "files" })
             {
                 Exec(c, tx, $"DELETE FROM {table} WHERE endpoint_id = $id", ("$id", id));
             }
@@ -549,7 +705,7 @@ public sealed class EndpointStore
     private static List<EndpointRow> Rows(SqliteConnection c, string sql, params (string, object?)[] args)
     {
         using var cmd = c.CreateCommand();
-        cmd.CommandText = sql.Replace("SELECT *", "SELECT id, machine_id, device_id, name, domain, fqdn, token_hash, first_seen, last_seen, last_ip, script_version, os, os_build, model, serial, user_name, firewall_off, av_problem, missing_updates, last_patch, pending_reboot, worst_disk_pct, process_count, software_count, errors", StringComparison.Ordinal);
+        cmd.CommandText = sql.Replace("SELECT *", "SELECT id, machine_id, device_id, name, domain, fqdn, token_hash, first_seen, last_seen, last_ip, script_version, os, os_build, model, serial, user_name, firewall_off, av_problem, missing_updates, last_patch, pending_reboot, worst_disk_pct, process_count, software_count, errors, file_count", StringComparison.Ordinal);
         Add(cmd, args);
         var list = new List<EndpointRow>();
         using var r = cmd.ExecuteReader();
@@ -559,7 +715,7 @@ public sealed class EndpointStore
                 r.GetInt32(0), r.GetString(1), r.IsDBNull(2) ? null : r.GetInt32(2), r.GetString(3), Str(r, 4), Str(r, 5), Str(r, 6),
                 ParseTs(r.GetString(7)), ParseTs(r.GetString(8)), Str(r, 9), Str(r, 10), Str(r, 11), Str(r, 12), Str(r, 13), Str(r, 14),
                 Str(r, 15), Str(r, 16), Str(r, 17), r.IsDBNull(18) ? null : r.GetInt32(18), r.IsDBNull(19) ? null : ParseTs(r.GetString(19)),
-                r.IsDBNull(20) ? null : r.GetInt32(20) != 0, r.IsDBNull(21) ? null : r.GetDouble(21), r.GetInt32(22), r.GetInt32(23), Str(r, 24)));
+                r.IsDBNull(20) ? null : r.GetInt32(20) != 0, r.IsDBNull(21) ? null : r.GetDouble(21), r.GetInt32(22), r.GetInt32(23), Str(r, 24), r.IsDBNull(25) ? null : r.GetInt32(25)));
         }
 
         return list;

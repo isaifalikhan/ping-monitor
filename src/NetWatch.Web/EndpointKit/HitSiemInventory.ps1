@@ -28,6 +28,10 @@
 .PARAMETER StateKey
     Registry key for the machine ID and token. Default HKLM:\SOFTWARE\HIT SIEM\Endpoint; only for testing
     without administrator rights use a key under HKCU: (that test then enrolls as a separate machine).
+
+.PARAMETER CachePath
+    File with the SHA-256 hashes already computed (a file is hashed again only when its size or date changes).
+    Default %ProgramData%\HIT SIEM\Endpoint\filehash.json (SYSTEM and Administrators only).
 #>
 [CmdletBinding()]
 param(
@@ -35,20 +39,37 @@ param(
     [switch]$NoDelay,
     [string]$OutFile,
     [switch]$DryRun,
-    [string]$StateKey = 'HKLM:\SOFTWARE\HIT SIEM\Endpoint'
+    [string]$StateKey = 'HKLM:\SOFTWARE\HIT SIEM\Endpoint',
+    [string]$CachePath = (Join-Path $env:ProgramData 'HIT SIEM\Endpoint\filehash.json')
 )
 
 $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
-$ScriptVersion = '1.0.0'
+$ScriptVersion = '1.1.0'
 $started = Get-Date
 
 if (-not $ConfigPath) { $ConfigPath = Join-Path $PSScriptRoot 'hitsiem-endpoint.json' }
 $config = Get-Content -LiteralPath $ConfigPath -Raw -Encoding UTF8 | ConvertFrom-Json
 $collectCommandLines = $true
 $collectConnections = $true
+$collectFiles = $true
+$maxFiles = 20000
+$hashMaxMb = 100
 if ($null -ne $config.collectCommandLines) { $collectCommandLines = [bool]$config.collectCommandLines }
 if ($null -ne $config.collectConnections) { $collectConnections = [bool]$config.collectConnections }
+if ($null -ne $config.collectFiles) { $collectFiles = [bool]$config.collectFiles }
+if ($config.maxFiles) { $maxFiles = [int]$config.maxFiles }
+if ($null -ne $config.hashMaxMb) { $hashMaxMb = [int]$config.hashMaxMb }
+
+# Settings changed in HIT SIEM after the kit was made come back with each answer and win over the kit's file.
+try {
+    $saved = (Get-ItemProperty -Path $StateKey -Name Settings -ErrorAction Stop).Settings | ConvertFrom-Json
+    if ($null -ne $saved.collectCommandLines) { $collectCommandLines = [bool]$saved.collectCommandLines }
+    if ($null -ne $saved.collectConnections) { $collectConnections = [bool]$saved.collectConnections }
+    if ($null -ne $saved.collectFiles) { $collectFiles = [bool]$saved.collectFiles }
+    if ($saved.maxFiles) { $maxFiles = [int]$saved.maxFiles }
+    if ($null -ne $saved.hashMaxMb) { $hashMaxMb = [int]$saved.hashMaxMb }
+} catch { }
 
 $errors = [ordered]@{}
 
@@ -442,6 +463,118 @@ $shares = Section 'shares' {
     foreach ($s in @(Get-CimInstance Win32_Share)) { [ordered]@{ name = $s.Name; path = $s.Path; description = Str $s.Description 200 } }
 }
 
+$filesTruncated = $false
+$files = $null
+if ($collectFiles) {
+    $files = Section 'files' {
+        # Hash cache: path -> "size|lastWriteTicks|sha256". Kept outside the share, SYSTEM and Administrators only.
+        $cache = @{}
+        if (Test-Path -LiteralPath $CachePath) {
+            try {
+                $loaded = Get-Content -LiteralPath $CachePath -Raw -Encoding UTF8 | ConvertFrom-Json
+                foreach ($p in $loaded.PSObject.Properties) { $cache[$p.Name] = [string]$p.Value }
+            } catch { }
+        }
+
+        # Every user profile's Desktop, Downloads and Documents (also redirected to OneDrive), the Public ones,
+        # the Startup folders and the hosts file.
+        $roots = New-Object System.Collections.Generic.List[object]
+        foreach ($profile in @(Get-ChildItem -LiteralPath (Join-Path $env:SystemDrive 'Users') -Directory -Force -ErrorAction SilentlyContinue)) {
+            if ($profile.Name -in 'Default', 'Default User', 'All Users', 'defaultuser0' -or ($profile.Attributes -band [IO.FileAttributes]::ReparsePoint)) { continue }
+            $user = $profile.Name
+            foreach ($folder in 'Desktop', 'Downloads', 'Documents') {
+                $roots.Add(@{ Path = Join-Path $profile.FullName $folder; User = $user; Folder = $folder })
+                foreach ($od in @(Get-ChildItem -LiteralPath $profile.FullName -Directory -Filter 'OneDrive*' -ErrorAction SilentlyContinue)) {
+                    $roots.Add(@{ Path = Join-Path $od.FullName $folder; User = $user; Folder = $folder })
+                }
+            }
+            $roots.Add(@{ Path = Join-Path $profile.FullName 'AppData\Roaming\Microsoft\Windows\Start Menu\Programs\Startup'; User = $user; Folder = 'Startup' })
+        }
+        $roots.Add(@{ Path = Join-Path $env:ProgramData 'Microsoft\Windows\Start Menu\Programs\StartUp'; User = 'All users'; Folder = 'Startup' })
+
+        $list = New-Object System.Collections.Generic.List[object]
+        $newCache = @{}
+        $sha = [System.Security.Cryptography.SHA256]::Create()
+        $budget = @{ Left = [long]2GB }  # hash at most 2 GB per run; the rest next time
+        $hashMax = [long]$hashMaxMb * 1MB
+        $seenPaths = @{}
+
+        $addFile = {
+            param([IO.FileInfo]$f, [string]$user, [string]$folder)
+            if ($list.Count -ge $maxFiles) { $script:filesTruncated = $true; return }
+            if ($seenPaths.ContainsKey($f.FullName)) { return }
+            $seenPaths[$f.FullName] = $true
+            $size = [long]$f.Length
+            $ticks = $f.LastWriteTimeUtc.Ticks
+            $hash = $null
+            $key = $f.FullName
+            if ($cache.ContainsKey($key)) {
+                $c = $cache[$key].Split('|')
+                if ($c.Count -eq 3 -and $c[0] -eq [string]$size -and $c[1] -eq [string]$ticks) { $hash = $c[2] }
+            }
+            if (-not $hash -and $size -le $hashMax -and $budget.Left -ge $size) {
+                try {
+                    $stream = New-Object IO.FileStream($f.FullName, [IO.FileMode]::Open, [IO.FileAccess]::Read, ([IO.FileShare]::ReadWrite -bor [IO.FileShare]::Delete))
+                    try { $hash = [BitConverter]::ToString($sha.ComputeHash($stream)).Replace('-', '') } finally { $stream.Dispose() }
+                    $budget.Left -= $size
+                } catch { } # locked or no access: listed without hash
+            }
+            if ($hash) { $newCache[$key] = "$size|$ticks|$hash" }
+            $list.Add([ordered]@{
+                path        = $f.FullName
+                user        = $user
+                folder      = $folder
+                size        = $size
+                modifiedUtc = $f.LastWriteTimeUtc.ToString('yyyy-MM-ddTHH:mm:ssZ')
+                createdUtc  = $f.CreationTimeUtc.ToString('yyyy-MM-ddTHH:mm:ssZ')
+                sha256      = $hash
+            })
+        }
+
+        foreach ($root in $roots) {
+            if (-not (Test-Path -LiteralPath $root.Path -PathType Container)) { continue }
+            # Own walk: does not follow junctions (old "My Music" links) and survives folders without access.
+            $stack = New-Object System.Collections.Generic.Stack[object]
+            $stack.Push(@((New-Object IO.DirectoryInfo $root.Path), 0))
+            while ($stack.Count -gt 0 -and $list.Count -lt $maxFiles) {
+                $item = $stack.Pop()
+                $dir = $item[0]; $depth = $item[1]
+                try { $entries = $dir.GetFileSystemInfos() } catch { continue }
+                foreach ($e in $entries) {
+                    if ($e.Attributes -band [IO.FileAttributes]::ReparsePoint) { continue }
+                    if ($e -is [IO.DirectoryInfo]) { if ($depth -lt 15) { $stack.Push(@($e, ($depth + 1))) } }
+                    else { & $addFile $e $root.User $root.Folder }
+                }
+            }
+            if ($list.Count -ge $maxFiles) { $script:filesTruncated = $true; break }
+        }
+
+        $hosts = Join-Path $env:SystemRoot 'System32\drivers\etc\hosts'
+        if (Test-Path -LiteralPath $hosts) { & $addFile (Get-Item -LiteralPath $hosts -Force) 'System' 'System' }
+        $sha.Dispose()
+
+        if (-not $DryRun) {
+            try {
+                $dirPath = Split-Path -Parent $CachePath
+                if (-not (Test-Path -LiteralPath $dirPath)) {
+                    New-Item -ItemType Directory -Path $dirPath -Force | Out-Null
+                    if ($dirPath -like "$env:ProgramData*") {
+                        $acl = New-Object System.Security.AccessControl.DirectorySecurity
+                        $acl.SetAccessRuleProtection($true, $false)
+                        foreach ($sid in 'S-1-5-18', 'S-1-5-32-544') {
+                            $id = New-Object System.Security.Principal.SecurityIdentifier $sid
+                            $acl.AddAccessRule((New-Object System.Security.AccessControl.FileSystemAccessRule($id, 'FullControl', 'ContainerInherit,ObjectInherit', 'None', 'Allow')))
+                        }
+                        Set-Acl -LiteralPath $dirPath -AclObject $acl
+                    }
+                }
+                [IO.File]::WriteAllText($CachePath, (ConvertTo-Json -InputObject $newCache -Compress), (New-Object System.Text.UTF8Encoding $false))
+            } catch { $script:errors['fileCache'] = ($_.Exception.Message -replace '\s+', ' ').Trim() }
+        }
+        $list
+    }
+}
+
 $report = [ordered]@{
     schema        = 1
     scriptVersion = $ScriptVersion
@@ -465,6 +598,9 @@ $report = [ordered]@{
     usb           = Arr $usb
     startup       = Arr $startup
     shares        = Arr $shares
+    filesCollected = [bool]($collectFiles -and -not $errors.Contains('files'))
+    filesTruncated = $filesTruncated
+    files         = Arr $files
     errors        = $errors
 }
 
@@ -528,6 +664,7 @@ try {
     $answer = $reader.ReadToEnd() | ConvertFrom-Json
     $response.Close()
     if ($answer.token) { Set-ItemProperty -Path $StateKey -Name Token -Value ([string]$answer.token) }
+    if ($answer.settings) { Set-ItemProperty -Path $StateKey -Name Settings -Value (ConvertTo-Json -InputObject $answer.settings -Compress) }
     Set-ItemProperty -Path $StateKey -Name LastResult -Value "OK $(Iso (Get-Date)) $($answer.message)"
     Write-Output "HIT SIEM: $($answer.message)"
 } catch {
