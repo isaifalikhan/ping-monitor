@@ -1250,6 +1250,7 @@ export interface EndpointSettings {
   collectFiles: boolean;
   maxFilesPerMachine: number;
   hashMaxMb: number;
+  allowRemediation: boolean;
 }
 
 export interface EndpointDeployment {
@@ -1271,3 +1272,4 @@ export interface EndpointDeployment {
 
 export interface EndpointFile { endpointId: number; path: string; name: string; ext: string; user: string | null; folder: string | null; size: number; modifiedUtc: string | null; createdUtc: string | null; sha256: string | null }
 export interface FileHit { file: EndpointFile; machine: string; lastSeenUtc: string }
+export interface EndpointAction { id: number; kind: string; path: string; status: string; requestedBy: string; requestedUtc: string; sentUtc: string | null; ok: boolean | null; result: string | null; resultUtc: string | null }

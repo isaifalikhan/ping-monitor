@@ -46,6 +46,11 @@ public sealed record EndpointFileRow(int EndpointId, string Path, string? User, 
 /// <summary>What to change in a machine's file table (computed by <see cref="EndpointDiff.Files"/>).</summary>
 public sealed record FileDelta(IReadOnlyList<EpFile> Upserts, IReadOnlyList<string> Removed, int Total);
 
+/// <summary>A remediation action queued for a machine. Status: pending → sent → done/failed (or cancelled).</summary>
+public sealed record EndpointAction(
+    int Id, int EndpointId, string Kind, string TargetPath, string Status, string RequestedBy, DateTime RequestedUtc,
+    DateTime? SentUtc, bool? Ok, string? Result, DateTime? ResultUtc);
+
 /// <summary>A change found between two inventories of one machine.</summary>
 public sealed record EndpointChange(long Id, int EndpointId, DateTime TimestampUtc, string Kind, string Item, string? Detail);
 
@@ -145,6 +150,11 @@ public sealed class EndpointStore
             CREATE INDEX IF NOT EXISTS ix_files_name ON files(name);
             CREATE INDEX IF NOT EXISTS ix_files_ext ON files(ext);
             CREATE INDEX IF NOT EXISTS ix_files_sha ON files(sha256);
+            CREATE TABLE IF NOT EXISTS actions(
+                id INTEGER PRIMARY KEY AUTOINCREMENT, endpoint_id INTEGER NOT NULL, kind TEXT NOT NULL, target_path TEXT NOT NULL,
+                status TEXT NOT NULL, requested_by TEXT NOT NULL, requested_utc TEXT NOT NULL, sent_utc TEXT, ok INTEGER, result TEXT, result_utc TEXT);
+            CREATE INDEX IF NOT EXISTS ix_actions_endpoint ON actions(endpoint_id, id);
+            CREATE INDEX IF NOT EXISTS ix_actions_status ON actions(endpoint_id, status);
             """);
 
         // 2.0.2 → later: file list per machine. NULL = no file list received yet (the first one is the baseline).
@@ -583,6 +593,139 @@ public sealed class EndpointStore
         Exec(c, tx, "UPDATE endpoints SET file_count = $n WHERE id = $id", ("$id", id), ("$n", files.Total));
     }
 
+    // ---------------------------------------------------------------- remediation actions
+
+    /// <summary>Queues an action for a machine and returns its id.</summary>
+    public async Task<int> QueueActionAsync(int endpointId, string kind, string targetPath, string requestedBy, DateTime nowUtc)
+    {
+        await _write.WaitAsync();
+        try
+        {
+            using var c = Open();
+            using var cmd = c.CreateCommand();
+            cmd.CommandText = """
+                INSERT INTO actions(endpoint_id, kind, target_path, status, requested_by, requested_utc)
+                VALUES ($e, $k, $p, 'pending', $by, $now) RETURNING id
+                """;
+            Add(cmd, ("$e", endpointId), ("$k", kind), ("$p", targetPath), ("$by", requestedBy), ("$now", Ts(nowUtc)));
+            return Convert.ToInt32(cmd.ExecuteScalar(), CultureInfo.InvariantCulture);
+        }
+        finally
+        {
+            _write.Release();
+        }
+    }
+
+    public List<EndpointAction> ActionsFor(int endpointId, int limit)
+    {
+        using var c = Open();
+        return ActionRows(c, "WHERE endpoint_id = $e ORDER BY id DESC LIMIT $l", ("$e", endpointId), ("$l", limit));
+    }
+
+    public int PendingActionCount(int endpointId)
+    {
+        using var c = Open();
+        return Convert.ToInt32(Scalar(c, "SELECT COUNT(*) FROM actions WHERE endpoint_id = $e AND status IN ('pending','sent')", ("$e", endpointId)), CultureInfo.InvariantCulture);
+    }
+
+    /// <summary>Hands out the pending actions for a machine and marks them sent (called while answering a report).</summary>
+    public async Task<List<EndpointAction>> TakePendingActionsAsync(int endpointId, DateTime nowUtc)
+    {
+        await _write.WaitAsync();
+        try
+        {
+            using var c = Open();
+            var pending = ActionRows(c, "WHERE endpoint_id = $e AND status = 'pending' ORDER BY id LIMIT 50", ("$e", endpointId));
+            if (pending.Count > 0)
+            {
+                Exec(c, "UPDATE actions SET status = 'sent', sent_utc = $now WHERE endpoint_id = $e AND status = 'pending'", ("$e", endpointId), ("$now", Ts(nowUtc)));
+            }
+
+            return pending;
+        }
+        finally
+        {
+            _write.Release();
+        }
+    }
+
+    /// <summary>Records what a machine did with the actions it was given.</summary>
+    public async Task RecordActionResultsAsync(int endpointId, IReadOnlyList<EpActionResult> results, DateTime nowUtc)
+    {
+        if (results.Count == 0)
+        {
+            return;
+        }
+
+        await _write.WaitAsync();
+        try
+        {
+            using var c = Open();
+            using var tx = c.BeginTransaction();
+            using var cmd = c.CreateCommand();
+            cmd.Transaction = tx;
+            cmd.CommandText = """
+                UPDATE actions SET status = $s, ok = $ok, result = $r, result_utc = $now
+                WHERE id = $id AND endpoint_id = $e AND status IN ('sent','pending')
+                """;
+            cmd.Parameters.AddWithValue("$e", endpointId);
+            cmd.Parameters.AddWithValue("$now", Ts(nowUtc));
+            var pid = Param(cmd, "$id");
+            var ps = Param(cmd, "$s");
+            var pok = Param(cmd, "$ok");
+            var pr = Param(cmd, "$r");
+            foreach (var res in results)
+            {
+                pid.Value = res.Id;
+                ps.Value = res.Ok ? "done" : "failed";
+                pok.Value = res.Ok ? 1 : 0;
+                pr.Value = (object?)Cut(res.Message, 1000) ?? DBNull.Value;
+                cmd.ExecuteNonQuery();
+            }
+
+            tx.Commit();
+        }
+        finally
+        {
+            _write.Release();
+        }
+    }
+
+    /// <summary>Cancels a still-pending action (not one already sent to the machine).</summary>
+    public async Task<bool> CancelActionAsync(int endpointId, int actionId)
+    {
+        await _write.WaitAsync();
+        try
+        {
+            using var c = Open();
+            using var cmd = c.CreateCommand();
+            cmd.CommandText = "UPDATE actions SET status = 'cancelled' WHERE id = $id AND endpoint_id = $e AND status = 'pending'";
+            Add(cmd, ("$id", actionId), ("$e", endpointId));
+            return cmd.ExecuteNonQuery() > 0;
+        }
+        finally
+        {
+            _write.Release();
+        }
+    }
+
+    private static List<EndpointAction> ActionRows(SqliteConnection c, string where, params (string, object?)[] args)
+    {
+        using var cmd = c.CreateCommand();
+        cmd.CommandText = "SELECT id, endpoint_id, kind, target_path, status, requested_by, requested_utc, sent_utc, ok, result, result_utc FROM actions " + where;
+        Add(cmd, args);
+        var list = new List<EndpointAction>();
+        using var r = cmd.ExecuteReader();
+        while (r.Read())
+        {
+            list.Add(new EndpointAction(r.GetInt32(0), r.GetInt32(1), r.GetString(2), r.GetString(3), r.GetString(4), r.GetString(5),
+                ParseTs(r.GetString(6)), r.IsDBNull(7) ? null : ParseTs(r.GetString(7)), r.IsDBNull(8) ? null : r.GetInt32(8) != 0,
+                Str(r, 9), r.IsDBNull(10) ? null : ParseTs(r.GetString(10))));
+        }
+
+        return list;
+    }
+
     /// <summary>Forgets the machine's token: its next report must carry the enrollment key again.</summary>
     public Task ResetTokenAsync(int id) => WriteAsync("UPDATE endpoints SET token_hash = NULL WHERE id = $id", ("$id", id));
 
@@ -593,7 +736,7 @@ public sealed class EndpointStore
         {
             using var c = Open();
             using var tx = c.BeginTransaction();
-            foreach (var table in new[] { "software", "processes", "changes", "files" })
+            foreach (var table in new[] { "software", "processes", "changes", "files", "actions" })
             {
                 Exec(c, tx, $"DELETE FROM {table} WHERE endpoint_id = $id", ("$id", id));
             }

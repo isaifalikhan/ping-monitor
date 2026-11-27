@@ -32,6 +32,10 @@
 .PARAMETER CachePath
     File with the SHA-256 hashes already computed (a file is hashed again only when its size or date changes).
     Default %ProgramData%\HIT SIEM\Endpoint\filehash.json (SYSTEM and Administrators only).
+
+.PARAMETER QuarantineDir
+    Folder a quarantined file is moved to. Default %ProgramData%\HIT SIEM\Endpoint\Quarantine (SYSTEM and
+    Administrators only). Only override it for testing without administrator rights.
 #>
 [CmdletBinding()]
 param(
@@ -40,12 +44,13 @@ param(
     [string]$OutFile,
     [switch]$DryRun,
     [string]$StateKey = 'HKLM:\SOFTWARE\HIT SIEM\Endpoint',
-    [string]$CachePath = (Join-Path $env:ProgramData 'HIT SIEM\Endpoint\filehash.json')
+    [string]$CachePath = (Join-Path $env:ProgramData 'HIT SIEM\Endpoint\filehash.json'),
+    [string]$QuarantineDir = (Join-Path $env:ProgramData 'HIT SIEM\Endpoint\Quarantine')
 )
 
 $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
-$ScriptVersion = '1.1.0'
+$ScriptVersion = '1.2.0'
 $started = Get-Date
 
 if (-not $ConfigPath) { $ConfigPath = Join-Path $PSScriptRoot 'hitsiem-endpoint.json' }
@@ -71,6 +76,15 @@ try {
     if ($null -ne $saved.hashMaxMb) { $hashMaxMb = [int]$saved.hashMaxMb }
 } catch { }
 
+# Results of actions carried out after the previous report, sent now so HIT SIEM can confirm them.
+# Rebuilt as plain hashtables (Windows PowerShell 5.1 ConvertFrom-Json passes the array as one pipeline item,
+# and its objects serialise with a "value"/"Count" wrapper, which the server would not read).
+$pendingResults = @()
+try {
+    $savedResults = (Get-ItemProperty -Path $StateKey -Name ActionResults -ErrorAction Stop).ActionResults | ConvertFrom-Json
+    $pendingResults = @(foreach ($x in @($savedResults)) { [ordered]@{ id = [int]$x.id; ok = [bool]$x.ok; message = [string]$x.message; utc = [string]$x.utc } })
+} catch { }
+
 $errors = [ordered]@{}
 
 function Iso($d) {
@@ -87,6 +101,66 @@ function Section([string]$name, [scriptblock]$block) {
 }
 
 function Arr($x) { if ($null -eq $x) { return ,@() } return ,@($x) }
+
+# The folders whose files are listed and the only folders a quarantine action may touch: every user profile's
+# Desktop, Downloads and Documents (also redirected into OneDrive), the Public ones, and the Startup folders.
+function Get-HitSiemFileRoots {
+    $roots = New-Object System.Collections.Generic.List[object]
+    foreach ($profile in @(Get-ChildItem -LiteralPath (Join-Path $env:SystemDrive 'Users') -Directory -Force -ErrorAction SilentlyContinue)) {
+        if ($profile.Name -in 'Default', 'Default User', 'All Users', 'defaultuser0' -or ($profile.Attributes -band [IO.FileAttributes]::ReparsePoint)) { continue }
+        $user = $profile.Name
+        foreach ($folder in 'Desktop', 'Downloads', 'Documents') {
+            $roots.Add(@{ Path = Join-Path $profile.FullName $folder; User = $user; Folder = $folder })
+            foreach ($od in @(Get-ChildItem -LiteralPath $profile.FullName -Directory -Filter 'OneDrive*' -ErrorAction SilentlyContinue)) {
+                $roots.Add(@{ Path = Join-Path $od.FullName $folder; User = $user; Folder = $folder })
+            }
+        }
+        $roots.Add(@{ Path = Join-Path $profile.FullName 'AppData\Roaming\Microsoft\Windows\Start Menu\Programs\Startup'; User = $user; Folder = 'Startup' })
+    }
+    $roots.Add(@{ Path = Join-Path $env:ProgramData 'Microsoft\Windows\Start Menu\Programs\StartUp'; User = 'All users'; Folder = 'Startup' })
+    return $roots
+}
+
+# Moves one file to the protected quarantine folder, but ONLY a real file inside an allowed root (never a system
+# folder, a junction target or the quarantine folder itself). This is the one action that changes a machine, so the
+# path is validated here on the machine, no matter what the server asked for.
+function Invoke-HitSiemQuarantine([string]$target, [string[]]$allowedDirs) {
+    if ([string]::IsNullOrWhiteSpace($target)) { return @{ ok = $false; message = 'No path.' } }
+    if ($target -match '[*?]' -or $target.Contains('..')) { return @{ ok = $false; message = 'Path not allowed.' } }
+    if (-not (Test-Path -LiteralPath $target -PathType Leaf)) { return @{ ok = $false; message = 'File not found (already gone?).' } }
+    $info = Get-Item -LiteralPath $target -Force
+    if ($info.Attributes -band [IO.FileAttributes]::ReparsePoint) { return @{ ok = $false; message = 'Refused: the file is a reparse point.' } }
+    $full = [IO.Path]::GetFullPath($info.FullName)
+    $inScope = $false
+    foreach ($dir in $allowedDirs) {
+        $d = $dir.TrimEnd('\') + '\'
+        if ($full.StartsWith($d, [StringComparison]::OrdinalIgnoreCase)) { $inScope = $true; break }
+    }
+    if (-not $inScope) { return @{ ok = $false; message = 'Refused: the file is outside the allowed user folders.' } }
+    if ($full.StartsWith(([IO.Path]::GetFullPath($QuarantineDir).TrimEnd('\') + '\'), [StringComparison]::OrdinalIgnoreCase)) { return @{ ok = $false; message = 'Already in quarantine.' } }
+    try {
+        if (-not (Test-Path -LiteralPath $QuarantineDir)) {
+            New-Item -ItemType Directory -Path $QuarantineDir -Force | Out-Null
+            if ($QuarantineDir -like "$env:ProgramData*") {
+                $acl = New-Object System.Security.AccessControl.DirectorySecurity
+                $acl.SetAccessRuleProtection($true, $false)
+                foreach ($sid in 'S-1-5-18', 'S-1-5-32-544') {
+                    $id = New-Object System.Security.Principal.SecurityIdentifier $sid
+                    $acl.AddAccessRule((New-Object System.Security.AccessControl.FileSystemAccessRule($id, 'FullControl', 'ContainerInherit,ObjectInherit', 'None', 'Allow')))
+                }
+                Set-Acl -LiteralPath $QuarantineDir -AclObject $acl
+            }
+        }
+        $stamp = (Get-Date).ToUniversalTime().ToString('yyyyMMddHHmmss')
+        $dest = Join-Path $QuarantineDir ("$stamp-" + [guid]::NewGuid().ToString('N') + $info.Extension)
+        Move-Item -LiteralPath $full -Destination $dest -Force
+        @{ original = $full; quarantined = $dest; utc = (Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ') } |
+            ConvertTo-Json -Compress | Set-Content -LiteralPath ($dest + '.json') -Encoding UTF8
+        return @{ ok = $true; message = "Moved to $dest" }
+    } catch {
+        return @{ ok = $false; message = ($_.Exception.Message -replace '\s+', ' ').Trim() }
+    }
+}
 
 function Str($x, [int]$max = 1024) {
     if ($null -eq $x) { return $null }
@@ -476,22 +550,7 @@ if ($collectFiles) {
             } catch { }
         }
 
-        # Every user profile's Desktop, Downloads and Documents (also redirected to OneDrive), the Public ones,
-        # the Startup folders and the hosts file.
-        $roots = New-Object System.Collections.Generic.List[object]
-        foreach ($profile in @(Get-ChildItem -LiteralPath (Join-Path $env:SystemDrive 'Users') -Directory -Force -ErrorAction SilentlyContinue)) {
-            if ($profile.Name -in 'Default', 'Default User', 'All Users', 'defaultuser0' -or ($profile.Attributes -band [IO.FileAttributes]::ReparsePoint)) { continue }
-            $user = $profile.Name
-            foreach ($folder in 'Desktop', 'Downloads', 'Documents') {
-                $roots.Add(@{ Path = Join-Path $profile.FullName $folder; User = $user; Folder = $folder })
-                foreach ($od in @(Get-ChildItem -LiteralPath $profile.FullName -Directory -Filter 'OneDrive*' -ErrorAction SilentlyContinue)) {
-                    $roots.Add(@{ Path = Join-Path $od.FullName $folder; User = $user; Folder = $folder })
-                }
-            }
-            $roots.Add(@{ Path = Join-Path $profile.FullName 'AppData\Roaming\Microsoft\Windows\Start Menu\Programs\Startup'; User = $user; Folder = 'Startup' })
-        }
-        $roots.Add(@{ Path = Join-Path $env:ProgramData 'Microsoft\Windows\Start Menu\Programs\StartUp'; User = 'All users'; Folder = 'Startup' })
-
+        $roots = Get-HitSiemFileRoots
         $list = New-Object System.Collections.Generic.List[object]
         $newCache = @{}
         $sha = [System.Security.Cryptography.SHA256]::Create()
@@ -601,6 +660,7 @@ $report = [ordered]@{
     filesCollected = [bool]($collectFiles -and -not $errors.Contains('files'))
     filesTruncated = $filesTruncated
     files         = Arr $files
+    actionResults = Arr $pendingResults
     errors        = $errors
 }
 
@@ -665,6 +725,20 @@ try {
     $response.Close()
     if ($answer.token) { Set-ItemProperty -Path $StateKey -Name Token -Value ([string]$answer.token) }
     if ($answer.settings) { Set-ItemProperty -Path $StateKey -Name Settings -Value (ConvertTo-Json -InputObject $answer.settings -Compress) }
+
+    # The results we just sent have been recorded by HIT SIEM; forget them.
+    Set-ItemProperty -Path $StateKey -Name ActionResults -Value '[]'
+
+    # Carry out the actions HIT SIEM asked for (only quarantine is supported) and keep the results for the next report.
+    if ($answer.actions) {
+        $allowed = @(Get-HitSiemFileRoots | ForEach-Object { $_.Path })
+        $results = @()
+        foreach ($action in @($answer.actions)) {
+            $r = if ([string]$action.kind -eq 'quarantine') { Invoke-HitSiemQuarantine ([string]$action.path) $allowed } else { @{ ok = $false; message = "Unknown action '$($action.kind)'." } }
+            $results += [ordered]@{ id = [int]$action.id; ok = [bool]$r.ok; message = [string]$r.message; utc = (Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ') }
+        }
+        if ($results.Count -gt 0) { Set-ItemProperty -Path $StateKey -Name ActionResults -Value (ConvertTo-Json -InputObject $results -Compress) }
+    }
     Set-ItemProperty -Path $StateKey -Name LastResult -Value "OK $(Iso (Get-Date)) $($answer.message)"
     Write-Output "HIT SIEM: $($answer.message)"
 } catch {

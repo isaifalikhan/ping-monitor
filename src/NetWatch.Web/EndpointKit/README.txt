@@ -19,6 +19,13 @@ and the hosts file (names, sizes, dates, SHA-256 hashes; file contents never lea
 cached in %ProgramData%\HIT SIEM\Endpoint (SYSTEM and Administrators only). Turn it off or change the
 limits under Endpoints -> Deployment; machines apply settings from their next report.
 
+Quarantine (off by default): when an admin turns on "Allow file quarantine actions" in HIT SIEM, the
+script can move a listed file to a protected quarantine folder on the PC
+(%ProgramData%\HIT SIEM\Endpoint\Quarantine, SYSTEM and Administrators only) at the next run. The script
+only ever touches a file inside the listed user folders and refuses anything else, whatever the server
+asks. HIT SIEM never reads or edits file contents. To restore or permanently remove a quarantined file,
+use the PC (the quarantine folder, or its C$ admin share).
+
 Updating the script: copy the new HitSiemInventory.ps1 over the old one in NETLOGON. Enrolled machines
 keep their token; hitsiem-endpoint.json only needs replacing when the key or certificate changed.
 

@@ -446,6 +446,89 @@ public sealed class EndpointInventoryTests : IAsyncLifetime
         Assert.Empty(store.Files(row.Id, null, null, 10));
     }
 
+    // ---------------------------------------------------------------- remediation (quarantine) actions
+
+    private async Task EnableRemediationAsync()
+    {
+        var settings = _sp.GetRequiredService<SettingsService>();
+        var current = settings.Endpoints;
+        current.AllowRemediation = true;
+        await settings.SaveAsync(EndpointSettings.Key, current, null, CancellationToken.None);
+    }
+
+    [Fact]
+    public async Task Quarantine_is_handed_out_only_when_enabled_then_confirmed_on_the_next_report()
+    {
+        var enrolled = await Send(Report(5), machine: "machine-005-0000");
+        var id = enrolled.EndpointId!.Value;
+        var path = Store.Files(id, "budget", null, 10).First().Path;
+
+        // Disabled by default: a queued action is not handed out.
+        var actionId = await Store.QueueActionAsync(id, "quarantine", path, "admin", _clock.GetUtcNow().UtcDateTime);
+        _clock.Advance(TimeSpan.FromMinutes(30));
+        var offRun = await Send(Report(5), machine: "machine-005-0000", token: enrolled.NewToken);
+        Assert.True(offRun.Actions is null or { Count: 0 });
+        Assert.Equal("pending", Store.ActionsFor(id, 10).Single(a => a.Id == actionId).Status);
+
+        // Enabled: the action is handed out and marked sent.
+        await EnableRemediationAsync();
+        _clock.Advance(TimeSpan.FromMinutes(30));
+        var handout = await Send(Report(5), machine: "machine-005-0000", token: enrolled.NewToken);
+        Assert.Contains(handout.Actions!, a => a.Id == actionId && a.Kind == "quarantine" && a.TargetPath == path);
+        Assert.Equal("sent", Store.ActionsFor(id, 10).Single(a => a.Id == actionId).Status);
+
+        // The machine reports the result; it must not be handed out again.
+        var done = Report(5);
+        done.ActionResults.Add(new EpActionResult { Id = actionId, Ok = true, Message = "Moved to C:\\ProgramData\\HIT SIEM\\Endpoint\\Quarantine\\x", Utc = _clock.GetUtcNow().UtcDateTime });
+        _clock.Advance(TimeSpan.FromMinutes(30));
+        var after = await Send(done, machine: "machine-005-0000", token: enrolled.NewToken);
+        Assert.True(after.Actions is null or { Count: 0 });
+        var finished = Store.ActionsFor(id, 10).Single(a => a.Id == actionId);
+        Assert.Equal("done", finished.Status);
+        Assert.True(finished.Ok);
+        Assert.Equal(0, Store.PendingActionCount(id));
+    }
+
+    [Fact]
+    public void Action_results_on_the_wire_deserialize_into_the_report()
+    {
+        // The exact JSON shape the script sends (plain array, camelCase) must populate ActionResults.
+        const string json = """
+            {"schema":1,"system":{"computerName":"PC"},"files":[],
+             "actionResults":[{"id":3,"ok":true,"message":"Moved to C:\\...","utc":"2026-11-27T09:00:00Z"},
+                              {"id":4,"ok":false,"message":"Access denied","utc":"2026-11-27T09:01:00Z"}]}
+            """;
+        var report = System.Text.Json.JsonSerializer.Deserialize<EndpointReport>(json, EndpointStore.Json)!;
+        Assert.Equal(2, report.ActionResults.Count);
+        Assert.Equal(3, report.ActionResults[0].Id);
+        Assert.True(report.ActionResults[0].Ok);
+        Assert.False(report.ActionResults[1].Ok);
+        Assert.Equal("Access denied", report.ActionResults[1].Message);
+    }
+
+    [Fact]
+    public async Task A_pending_action_can_be_cancelled_but_a_sent_one_cannot()
+    {
+        await EnableRemediationAsync();
+        var enrolled = await Send(Report(5), machine: "machine-005-0000");
+        var id = enrolled.EndpointId!.Value;
+        var path = Store.Files(id, null, "Downloads", 50).First().Path;
+
+        var a1 = await Store.QueueActionAsync(id, "quarantine", path, "admin", _clock.GetUtcNow().UtcDateTime);
+        Assert.True(await Store.CancelActionAsync(id, a1));
+        Assert.Equal("cancelled", Store.ActionsFor(id, 10).Single(a => a.Id == a1).Status);
+
+        var a2 = await Store.QueueActionAsync(id, "quarantine", path, "admin", _clock.GetUtcNow().UtcDateTime);
+        _clock.Advance(TimeSpan.FromMinutes(30));
+        await Send(Report(5), machine: "machine-005-0000", token: enrolled.NewToken); // hands it out → sent
+        Assert.False(await Store.CancelActionAsync(id, a2));
+        Assert.Equal("sent", Store.ActionsFor(id, 10).Single(a => a.Id == a2).Status);
+
+        // Deleting the machine removes its actions.
+        await Store.DeleteAsync(id);
+        Assert.Empty(Store.ActionsFor(id, 10));
+    }
+
     // ---------------------------------------------------------------- forwarded endpoint events (WEF)
 
     private static string EventXml(string channel, int id, string data, long record = 100, string computer = "SIM-PC-003.corp.sim", string provider = "Microsoft-Windows-Security-Auditing") => $"""

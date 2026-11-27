@@ -563,6 +563,9 @@ function DeploymentTab() {
               <label className="check">
                 <input type="checkbox" checked={form.collectFiles} onChange={(e) => set('collectFiles', e.target.checked)} /> List files in users' Desktop, Downloads and Documents (names, sizes, dates, SHA-256; no contents)
               </label>
+              <label className="check" title="Lets admins quarantine a file on a PC. This sends commands to the machines; each action is confirmed and logged.">
+                <input type="checkbox" checked={form.allowRemediation} onChange={(e) => set('allowRemediation', e.target.checked)} /> Allow file quarantine actions (sends commands to PCs — off = inventory only)
+              </label>
               <NumberField label="Files per machine (max.)" hint="the list stops there" min={1000} max={200000} value={form.maxFilesPerMachine} onChange={(v) => set('maxFilesPerMachine', v)} />
               <NumberField label="Hash files up to (MB)" hint="0 = no hashes" min={0} max={4096} value={form.hashMaxMb} onChange={(v) => set('hashMaxMb', v)} />
               <NumberField label="Run every (minutes)" hint="written into README; set the same in the GPO trigger" min={5} max={1440} value={form.intervalMin} onChange={(v) => set('intervalMin', v)} />

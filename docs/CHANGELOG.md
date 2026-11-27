@@ -1,5 +1,13 @@
 # Changelog
 
+## 2.0.4 (2026-11-27)
+
+- **Endpoint quarantine (opt-in):** admins can quarantine a listed file on a PC (script 1.2) — it is moved to a
+  protected, restorable quarantine folder on the machine at its next check-in, and the result is reported back.
+  Off by default (*Allow file quarantine actions*, Endpoints → Deployment), admin-only, confirmed and audited;
+  the script refuses any path outside the user folders. Actions panel on the machine's Files tab; pending actions
+  can be cancelled. HIT SIEM never reads or edits file contents. Copy the new `HitSiemInventory.ps1` to NETLOGON.
+
 ## 2.0.3 (2026-11-26)
 
 - **Endpoint files:** the GPO script (1.1) lists every file in each user's Desktop, Downloads and Documents, the

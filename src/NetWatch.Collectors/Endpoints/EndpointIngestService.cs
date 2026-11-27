@@ -23,7 +23,8 @@ public enum IngestStatus
 }
 
 /// <param name="NewToken">Set when the machine enrolled: the script stores it and sends it from then on.</param>
-public sealed record IngestResult(IngestStatus Status, string Message, string? NewToken = null, int? EndpointId = null, int? DeviceId = null, int Changes = 0);
+/// <param name="Actions">Remediation actions the machine should carry out (handed out with the answer).</param>
+public sealed record IngestResult(IngestStatus Status, string Message, string? NewToken = null, int? EndpointId = null, int? DeviceId = null, int Changes = 0, IReadOnlyList<EndpointAction>? Actions = null);
 
 /// <param name="MachineId">Random ID the script created on the machine (HKLM, readable by SYSTEM and administrators only).</param>
 /// <param name="Simulated">Report from the built-in simulator: a created device gets the "simulated" tag.</param>
@@ -177,12 +178,19 @@ public sealed partial class EndpointIngestService
             report.Errors.Count == 0 ? null : Cut(string.Join("; ", report.Errors.Select(kv => $"{kv.Key}: {kv.Value}")), 2000));
         await _store.SaveReportAsync(row.Id, device?.Id, report, summary, changes, now, fileDelta);
 
+        if (report.ActionResults.Count > 0)
+        {
+            await _store.RecordActionResultsAsync(row.Id, report.ActionResults.Where(a => a.Id > 0).Take(100).ToList(), now);
+        }
+
         if (device is not null)
         {
             Publish(device, name, report, summary, changes, now);
         }
 
-        return new IngestResult(IngestStatus.Ok, newToken is null ? "Inventory received." : "Machine enrolled, inventory received.", newToken, row.Id, device?.Id, changes.Count);
+        // Hand out queued remediation actions only while remediation is enabled.
+        var actions = settings.AllowRemediation ? await _store.TakePendingActionsAsync(row.Id, now) : null;
+        return new IngestResult(IngestStatus.Ok, newToken is null ? "Inventory received." : "Machine enrolled, inventory received.", newToken, row.Id, device?.Id, changes.Count, actions);
     }
 
     private void Publish(DeviceSnapshot device, string name, EndpointReport report, EndpointSummary summary, List<(string Kind, string Item, string? Detail)> changes, DateTime now)

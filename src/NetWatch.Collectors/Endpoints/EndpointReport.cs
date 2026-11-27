@@ -41,6 +41,9 @@ public sealed class EndpointReport
     /// </summary>
     public List<EpFile> Files { get; set; } = new();
 
+    /// <summary>Results of the remediation actions the machine carried out since its previous report.</summary>
+    public List<EpActionResult> ActionResults { get; set; } = new();
+
     /// <summary>Section name → error text for the parts that could not be read on the machine.</summary>
     public Dictionary<string, string> Errors { get; set; } = new(StringComparer.OrdinalIgnoreCase);
 }
@@ -293,4 +296,13 @@ public sealed class EpShare
     public string? Name { get; set; }
     public string? Path { get; set; }
     public string? Description { get; set; }
+}
+
+/// <summary>What a machine did with one remediation action.</summary>
+public sealed class EpActionResult
+{
+    public int Id { get; set; }
+    public bool Ok { get; set; }
+    public string? Message { get; set; }
+    public DateTime? Utc { get; set; }
 }

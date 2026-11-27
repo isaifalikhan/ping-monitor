@@ -42,6 +42,8 @@ public static class EndpointEndpoints
         read.MapGet("/{id:int}/changes", (int id, int? days, EndpointStore store) =>
             store.Get(id) is null ? Results.NotFound() : Results.Ok(store.Changes(id, DateTime.UtcNow.AddDays(-Math.Clamp(days ?? 90, 1, 3650)), null, 2000).Select(ChangeDto.From)));
         read.MapGet("/{id:int}/events", EventsAsync);
+        read.MapGet("/{id:int}/actions", (int id, EndpointStore store) =>
+            store.Get(id) is null ? Results.NotFound() : Results.Ok(store.ActionsFor(id, 200).Select(ActionDto.From)));
         read.MapGet("/by-device/{deviceId:int}", (int deviceId, EndpointStore store) =>
             store.ForDevice(deviceId) is { } row ? Results.Ok(new { id = row.Id }) : Results.NotFound());
         read.MapGet("/software", (string? q, EndpointStore store) =>
@@ -60,6 +62,8 @@ public static class EndpointEndpoints
         admin.MapPost("/enrollment-key/rotate", RotateAsync);
         admin.MapPost("/{id:int}/reset", ResetAsync);
         admin.MapDelete("/{id:int}", DeleteAsync);
+        admin.MapPost("/{id:int}/quarantine", QuarantineAsync);
+        admin.MapPost("/{id:int}/actions/{actionId:int}/cancel", CancelActionAsync);
     }
 
     // ------------------------------------------------------------------ report (anonymous, machine-authenticated)
@@ -159,7 +163,15 @@ public static class EndpointEndpoints
             _ => StatusCodes.Status400BadRequest,
         };
         return status == StatusCodes.Status200OK
-            ? Results.Ok(new { message = result.Message, token = result.NewToken, endpointId = result.EndpointId, changes = result.Changes, settings = ScriptSettings(settings.Endpoints) })
+            ? Results.Ok(new
+            {
+                message = result.Message,
+                token = result.NewToken,
+                endpointId = result.EndpointId,
+                changes = result.Changes,
+                settings = ScriptSettings(settings.Endpoints),
+                actions = (result.Actions ?? []).Select(a => new { id = a.Id, kind = a.Kind, path = a.TargetPath }),
+            })
             : HttpExtensions.Error(result.Message, status);
     }
 
@@ -337,6 +349,64 @@ public static class EndpointEndpoints
         }
 
         await audit.WriteAsync(http.Actor(), "EndpointDeleted", "Endpoint", id.Inv(), row.Name + (deviceRemoved ? " (and its workstation device)" : string.Empty));
+        return Results.NoContent();
+    }
+
+    public sealed record ActionDto(int Id, string Kind, string Path, string Status, string RequestedBy, DateTime RequestedUtc, DateTime? SentUtc, bool? Ok, string? Result, DateTime? ResultUtc)
+    {
+        public static ActionDto From(EndpointAction a) => new(a.Id, a.Kind, a.TargetPath, a.Status, a.RequestedBy, a.RequestedUtc, a.SentUtc, a.Ok, a.Result, a.ResultUtc);
+    }
+
+    public sealed record QuarantineInput(string? Path);
+
+    private static async Task<IResult> QuarantineAsync(int id, QuarantineInput input, HttpContext http, EndpointStore store, SettingsService settings, AuditWriter audit, CancellationToken ct)
+    {
+        if (store.Get(id) is not { } row)
+        {
+            return Results.NotFound();
+        }
+
+        if (!settings.Endpoints.AllowRemediation)
+        {
+            return HttpExtensions.Error("Remediation is turned off. Turn on \"Allow file quarantine actions\" under Endpoints → Deployment first.", StatusCodes.Status403Forbidden);
+        }
+
+        var path = input.Path?.Trim();
+        if (string.IsNullOrEmpty(path))
+        {
+            return HttpExtensions.Error("No file path.");
+        }
+
+        // Only a file HIT SIEM actually inventoried for this machine, and never the hosts/system file.
+        var file = store.Files(id, null, null, 50000).FirstOrDefault(f => string.Equals(f.Path, path, StringComparison.OrdinalIgnoreCase));
+        if (file is null)
+        {
+            return HttpExtensions.Error("That file is not in this machine's inventory (refresh the file list first).");
+        }
+
+        if (string.Equals(file.Folder, "System", StringComparison.OrdinalIgnoreCase))
+        {
+            return HttpExtensions.Error("System files cannot be quarantined.");
+        }
+
+        var actionId = await store.QueueActionAsync(id, "quarantine", file.Path, http.User.Username() ?? "admin", DateTime.UtcNow);
+        await audit.WriteAsync(http.Actor(), "EndpointQuarantineQueued", "Endpoint", id.Inv(), $"{row.Name}: {file.Path}");
+        return Results.Ok(new { id = actionId, message = "Quarantine queued. The machine applies it at its next check-in." });
+    }
+
+    private static async Task<IResult> CancelActionAsync(int id, int actionId, HttpContext http, EndpointStore store, AuditWriter audit)
+    {
+        if (store.Get(id) is not { } row)
+        {
+            return Results.NotFound();
+        }
+
+        if (!await store.CancelActionAsync(id, actionId))
+        {
+            return HttpExtensions.Error("This action was already sent to the machine and can no longer be cancelled.");
+        }
+
+        await audit.WriteAsync(http.Actor(), "EndpointActionCancelled", "Endpoint", id.Inv(), $"{row.Name}: action {actionId}");
         return Results.NoContent();
     }
 }

@@ -21,7 +21,7 @@
 #>
 [CmdletBinding()]
 param(
-    [string]$Version = '2.0.3',
+    [string]$Version = '2.0.4',
     [string]$Configuration = 'Release',
     [switch]$Offline,
     [switch]$PrepareOffline,

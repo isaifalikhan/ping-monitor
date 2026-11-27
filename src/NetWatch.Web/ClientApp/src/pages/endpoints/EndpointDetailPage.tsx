@@ -3,7 +3,7 @@ import { ArrowLeft, RotateCcw, Trash2 } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { api, qs } from '../../api/client';
-import type { EndpointChange, EndpointDetail, EndpointEventRow, EndpointFile, EndpointReport, EpConnection, EpHotfix, EpPort, EpProcess, EpService, EpSoftware, EpUsb } from '../../api/types';
+import type { EndpointAction, EndpointChange, EndpointDetail, EndpointEventRow, EndpointFile, EndpointReport, EpConnection, EpHotfix, EpPort, EpProcess, EpService, EpSoftware, EpUsb } from '../../api/types';
 import { useAuth } from '../../auth/AuthContext';
 import { SeverityBadge, UtilBar } from '../../components/Badges';
 import { DataTable, type Column } from '../../components/DataTable';
@@ -132,7 +132,7 @@ export function EndpointDetailPage() {
           {tab === 'users' && r && <Users r={r} />}
           {tab === 'usb' && r && <Usb rows={r.usb} />}
           {tab === 'startup' && r && <Startup r={r} />}
-          {tab === 'files' && <Files id={e.id} count={e.fileCount} truncated={!!r?.filesTruncated} />}
+          {tab === 'files' && <Files id={e.id} count={e.fileCount} truncated={!!r?.filesTruncated} canAdmin={can('Admin')} />}
           {tab === 'changes' && <Changes id={e.id} />}
           {tab === 'events' && <Events id={e.id} hasDevice={!!device} />}
         </>
@@ -667,31 +667,58 @@ function SimpleTable({ title, head, rows }: { title: string; head: string[]; row
 
 const EXECUTABLE = new Set(['exe', 'msi', 'msix', 'appx', 'bat', 'cmd', 'ps1', 'psm1', 'vbs', 'vbe', 'js', 'jse', 'wsf', 'wsh', 'hta', 'scr', 'com', 'pif', 'dll', 'cpl', 'jar', 'iso', 'img', 'vhd', 'vhdx', 'reg']);
 
-function Files({ id, count, truncated }: { id: number; count: number | null; truncated: boolean }) {
+function Files({ id, count, truncated, canAdmin }: { id: number; count: number | null; truncated: boolean; canAdmin: boolean }) {
   const [term, setTerm] = useState('');
   const [query, setQuery] = useState('');
   const [folder, setFolder] = useState('');
   const [onlyPrograms, setOnlyPrograms] = useState(false);
+  const [confirmFile, setConfirmFile] = useState<EndpointFile | null>(null);
   useEffect(() => {
     const t = setTimeout(() => setQuery(term.trim()), 300);
     return () => clearTimeout(t);
   }, [term]);
   const q = useQuery({ queryKey: ['endpoint-files-one', id, query, folder], queryFn: () => api.get<EndpointFile[]>(`/api/endpoints/${id}/files` + qs({ q: query, folder })) });
+  const actions = useQuery({ queryKey: ['endpoint-actions', id], queryFn: () => api.get<EndpointAction[]>(`/api/endpoints/${id}/actions`), refetchInterval: 30000 });
+  const quarantine = useMutation({
+    mutationFn: (path: string) => api.post(`/api/endpoints/${id}/quarantine`, { path }),
+    onSuccess: () => {
+      setConfirmFile(null);
+      actions.refetch();
+    },
+  });
   const rows = (q.data ?? []).filter((f) => !onlyPrograms || EXECUTABLE.has(f.ext));
+  const pendingPaths = new Set((actions.data ?? []).filter((a) => a.status === 'pending' || a.status === 'sent').map((a) => a.path.toLowerCase()));
   const columns: Column<EndpointFile>[] = [
     { key: 'name', header: 'File', render: (f) => <span className="mono" style={{ color: EXECUTABLE.has(f.ext) ? 'var(--warn)' : undefined }} title={f.path}>{f.name}</span>, sort: (f) => f.name },
     { key: 'where', header: 'Where', render: (f) => <span className="muted">{f.user} / {f.folder}</span>, sort: (f) => `${f.user}/${f.folder}` },
     { key: 'size', header: 'Size', render: (f) => fmtBytes(f.size), sort: (f) => f.size, className: 'num', width: 100 },
     { key: 'mod', header: 'Modified', render: (f) => (f.modifiedUtc ? fmtDateTime(f.modifiedUtc) : '—'), sort: (f) => f.modifiedUtc ?? '', width: 170 },
-    { key: 'created', header: 'Created', render: (f) => (f.createdUtc ? fmtDateTime(f.createdUtc) : '—'), sort: (f) => f.createdUtc ?? '', width: 170 },
     { key: 'sha', header: 'SHA-256', render: (f) => <span className="mono muted" title={f.sha256 ?? 'not hashed (too large, locked, or not hashed yet)'}>{f.sha256 ? f.sha256.slice(0, 16) + '…' : '—'}</span> },
     { key: 'path', header: 'Path', render: (f) => <span className="mono muted" title={f.path}>{f.path}</span>, sort: (f) => f.path },
+    ...(canAdmin
+      ? [
+          {
+            key: 'act',
+            header: '',
+            width: 120,
+            render: (f: EndpointFile) =>
+              f.folder === 'System' ? null : pendingPaths.has(f.path.toLowerCase()) ? (
+                <span className="badge s-warning">queued</span>
+              ) : (
+                <button className="btn small" onClick={() => setConfirmFile(f)} title="Move this file to quarantine on the PC at its next check-in">
+                  Quarantine
+                </button>
+              ),
+          },
+        ]
+      : []),
   ];
   if (count == null) {
     return <div className="empty">No file list received from this machine yet (it needs script version 1.1 or later; see Endpoints → Deployment).</div>;
   }
   return (
     <>
+      {(actions.data?.length ?? 0) > 0 && <ActionsPanel id={id} actions={actions.data!} canAdmin={canAdmin} onChange={() => actions.refetch()} />}
       <div className="toolbar" style={{ marginBottom: 12 }}>
         <input type="search" placeholder="Filter by name or path…" value={term} onChange={(e) => setTerm(e.target.value)} style={{ minWidth: 300 }} />
         <select value={folder} onChange={(e) => setFolder(e.target.value)}>
@@ -717,7 +744,58 @@ function Files({ id, count, truncated }: { id: number; count: number | null; tru
       <div className="card">
         <DataTable rows={rows} columns={columns} rowKey={(f) => f.path} initialSort={{ key: 'mod', desc: true }} maxHeight="calc(100vh - 470px)" empty={q.isLoading ? 'Loading…' : 'No files.'} />
       </div>
+      {confirmFile && (
+        <Confirm
+          title="Quarantine this file?"
+          message={`${confirmFile.path}\n\nThe file is moved to a protected quarantine folder on the PC (C:\\ProgramData\\HIT SIEM\\Endpoint\\Quarantine) at its next check-in, so it is restorable there. The user loses access to it. This is logged.`}
+          confirmLabel="Quarantine"
+          danger
+          busy={quarantine.isPending}
+          onConfirm={() => quarantine.mutate(confirmFile.path)}
+          onClose={() => setConfirmFile(null)}
+        />
+      )}
+      {quarantine.error != null && <ErrorBox error={quarantine.error} />}
     </>
+  );
+}
+
+function ActionsPanel({ id, actions, canAdmin, onChange }: { id: number; actions: EndpointAction[]; canAdmin: boolean; onChange: () => void }) {
+  const cancel = useMutation({ mutationFn: (actionId: number) => api.post(`/api/endpoints/${id}/actions/${actionId}/cancel`), onSuccess: onChange });
+  const badge = (s: string) =>
+    s === 'done' ? <span className="badge s-up">done</span> : s === 'failed' ? <span className="badge s-down">failed</span> : s === 'cancelled' ? <span className="badge s-unknown">cancelled</span> : s === 'sent' ? <span className="badge s-warning">sent</span> : <span className="badge s-warning">pending</span>;
+  return (
+    <div className="card" style={{ marginBottom: 12 }}>
+      <div className="card-head">
+        <h3>Remediation actions</h3>
+      </div>
+      <div className="card-body flush">
+        <table className="data">
+          <thead>
+            <tr>
+              <th>Action</th>
+              <th>File</th>
+              <th>Status</th>
+              <th>Requested by</th>
+              <th>Result</th>
+              {canAdmin && <th></th>}
+            </tr>
+          </thead>
+          <tbody>
+            {actions.map((a) => (
+              <tr key={a.id}>
+                <td>{a.kind === 'quarantine' ? 'Quarantine' : a.kind}</td>
+                <td className="mono muted" title={a.path}>{a.path}</td>
+                <td>{badge(a.status)}</td>
+                <td className="muted">{a.requestedBy} · {fmtAgo(a.requestedUtc)}</td>
+                <td className="muted" title={a.result ?? ''}>{a.result ?? (a.status === 'sent' ? 'awaiting confirmation' : '')}</td>
+                {canAdmin && <td>{a.status === 'pending' && <button className="btn small" disabled={cancel.isPending} onClick={() => cancel.mutate(a.id)}>Cancel</button>}</td>}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
   );
 }
 

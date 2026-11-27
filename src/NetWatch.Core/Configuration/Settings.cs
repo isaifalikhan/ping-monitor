@@ -380,6 +380,12 @@ public sealed class EndpointSettings
     /// <summary>Create a Workstation device for a reporting machine that is not in the inventory yet.</summary>
     public bool AutoCreateDevices { get; set; } = true;
 
+    /// <summary>
+    /// Allow admins to send remediation actions to machines (quarantine a file). Off by default: this turns the
+    /// one-way inventory into a channel that can change files on the machines. Each action is confirmed and audited.
+    /// </summary>
+    public bool AllowRemediation { get; set; }
+
     /// <summary>Read workstation / member-server events from this server's ForwardedEvents log (WEF).</summary>
     public bool ReadForwardedEvents { get; set; } = true;
 

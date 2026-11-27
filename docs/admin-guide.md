@@ -334,6 +334,17 @@ user folders* (new .exe, .msi, .ps1, .bat, .js, .iso …) and *Hosts file change
 *Endpoints → Files* (name, extension, minimum size, exact SHA-256 — e.g. where a malware hash is). The settings
 (*Endpoints → Deployment*) reach the machines with the next answer to their report, without a new kit.
 
+**Quarantine** (script 1.2, **off by default**): an admin can move a listed file to a protected quarantine folder
+on the PC (`C:\ProgramData\HIT SIEM\Endpoint\Quarantine`, SYSTEM and Administrators only), where it is restorable.
+Turn it on with *Allow file quarantine actions* under *Endpoints → Deployment* — it is off because it turns the
+one-way inventory into a channel that can change files on the machines. The action is queued when an admin clicks
+*Quarantine* on a file (on the machine's Files tab), confirmed, and written to the audit log; the PC carries it out
+at its next check-in and reports the result back (*Remediation actions* panel shows pending → sent → done/failed).
+Only a file HIT SIEM has inventoried can be chosen (never a system file), and the script independently refuses any
+path outside the user folders, a reparse point, or the quarantine folder itself, whatever the server asks. HIT SIEM
+does not read, edit or delete file contents; to restore a quarantined file or remove it for good, use the PC (the
+quarantine folder, or its `C$` admin share). A pending action can be cancelled until the PC has picked it up.
+
 **Set up** (*Endpoints → Deployment*, Admin):
 
 1. Enter the address the machines use to reach HIT SIEM (DNS name, not localhost) and download the kit. It holds
